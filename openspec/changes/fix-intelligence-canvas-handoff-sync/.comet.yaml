@@ -1,6 +1,6 @@
 workflow: hotfix
 language: zh-CN
-phase: build
+phase: archive
 context_compression: off
 build_mode: direct
 build_pause: null
@@ -8,18 +8,18 @@ subagent_dispatch: null
 tdd_mode: direct
 review_mode: off
 isolation: branch
-verify_mode: light
+verify_mode: full
 auto_transition: true
 base_ref: 5ad423dbc20a17e2c48371e50c792e737ac97b7e
 design_doc: null
 plan: null
-verify_result: pending
+verify_result: pass
 verify_failures: 0
-verification_report: null
+verification_report: docs/superpowers/reports/2026-10-20-fix-intelligence-canvas-handoff-sync-verify.md
 branch_status: pending
 created_at: 2026-10-20
-verified_at: null
-archive_confirmation: null
+verified_at: 2026-10-20
+archive_confirmation: pending
 archived: false
 bound_branch: codex/fix-intelligence-canvas-handoff-sync
 direct_override: null
@@ -28,4 +28,4 @@ handoff_hash: null
 classic_profile: hotfix
 classic_migration: 1
 run_id: 5f4828ba-a8c0-4823-8196-4ce1e79d32b6
-check_epoch: 1
+check_epoch: 3

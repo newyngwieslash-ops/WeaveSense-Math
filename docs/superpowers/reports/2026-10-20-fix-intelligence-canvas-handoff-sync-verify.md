@@ -34,3 +34,20 @@
 不把旧94/46等历史结果当本轮结果。API、表和权限合同未改；自动审查按本次hotfix review_mode=off跳过，人工核对共享入口、全部调用方、session epoch和冲突守卫。U01–U05和A/G门槛仍部分未完成。
 
 未执行Go/Engine/PG迁移测试：没有后端、API、表或依赖变化。本检查使用内存存储与可控HTTP返回，是自动回归，不是live采集/MCP/模型；真实UI另记。U01–U05和A/G门槛不会批量勾选。
+
+## Comet正式验证
+
+2026-10-21 00:04 +08:00继续收口。build guard首次因文档更新使旧输入证据失效而拒绝推进；重新通过运行器实际执行 `bun run --cwd web build`，退出0（7515ab91-4f37-40e3-bec5-e9d8eaeeb270），随后build guard 14/14通过，phase进入verify、check_epoch=2。这不是产品构建失败，不隐瞒旧证据失效。
+
+| 检查 | 结果与依据 |
+|---|---|
+| 完整性 | 3/3任务已完成，openspec instructions apply为all_done；源码改动仅1共享入口+1测试文件 |
+| 正确性 | 实际RED→GREEN；6边界与38专项通过；真实已有/新画布UI及PG存在性见上文 |
+| 一致性 | 与design四项决定一致，复用既有合并、保存两份不同语义快照、保留冲突和会话守卫，无新同步协议 |
+| 构建 | 实际tsc与Vite退出0；大chunk提示为已有构建提示，不在本次改动范围 |
+| 安全和归属 | 无新依赖/密钥/权限放宽/迁移；不提交.env、截图或本地数据；他人面板和旧归档修改明确归属并按用户授权保留 |
+| 审查策略 | 本变更review_mode=off，跳过自动审查和子代理；人工复核本变更diff、调用方、冲突及session epoch |
+
+按提交范围补充完整性/正确性/一致性核对，而非仅按工作区剩余脏文件估计范围。无delta specs（明确skip_specs，恢复现行行为），不做虚构的delta场景覆盖；hotfix无独立Superpowers Design Doc/Plan，按已确认的proposal/design/tasks核对。本次范围未发现需修复的CRITICAL/IMPORTANT或待接受的行为偏差。旧缓存恢复、原tab观察及完整U/A/G是已明确未验边界，不能升级为通过结论。
+
+verify阶段需独立运行器证据与guard，最终状态以本变更.comet.yaml为准；归档还需本hotfix的单独最终确认，未推送发布。
