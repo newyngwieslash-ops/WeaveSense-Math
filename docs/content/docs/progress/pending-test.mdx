@@ -5,6 +5,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## Flow 命令 Outbox 并发领取与持久化错误传播
+
+- 已修复：仅条件领取命中者发送，所有回执以领取版本约束；迟到成功/4xx/5xx 不改写其他派发者的回执、投影和预算。成功/失败/重试/未知状态的数据库错误向 REST、Agent 和后台传播。
+- 已修复：外层租户事务中的派发延后到后台，避免 savepoint 成功但外层回滚后丢失已发命令；自动生成的幂等键也会转发给 Engine，重试不更换键。未派发返回实际排队或对账状态。
+- 本轮验证命令与结果以 `docs/superpowers/reports/2026-10-20-fix-command-outbox-ownership-and-errors-verify.md` 为准；测试使用本地 SQLite、可控 Engine 和数据库故障注入，不是 live 采集或模型验收。
+- [ ] 真实 PG17 非超级用户 RLS、多实例争抢及数据库连接中断/提交不确定：核对 Outbox、操作投影、余额和幂等 Job；恢复后只对账，不盲重发或重复计费。
+- [ ] 实际 REST/Agent 租户事务受理后由后台派发，确认刷新/重启、操作卡和状态查询能衔接；中间件外层提交失败的 HTTP 回执诚实性需独立核验，不能仅由本次共享派发专项证明。
+
 ## 画布低代码数据流与逻辑门（数据源 + If/Else 分支 + 集合交并差 + 画布内调情报/MCP/Skill 建模）
 
 - 已实现：新增独立节点类型 `data-source`（支持 JSON、CSV、Markdown、TXT、情报条目多格式解析、本地文件导入与源码/条目预览切换）和 `logic`（支持 `if_else` 条件分支、`intersect` 交集、`union` 并集、`difference` 差集、`filter` 条件过滤、`json_extract` 点路径字段提取）。

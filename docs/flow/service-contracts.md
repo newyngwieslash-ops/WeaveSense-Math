@@ -42,6 +42,11 @@ Command acceptance and Job creation happen in one intel-DB transaction; response
 
 ## 4. Outbox / Inbox
 - Manual: platform tx creates operation (`flow_operation_projections`) + reservation (`flow_budget_reservations`, optional) + outbox row (`flow_command_outbox`) → `CommandDispatcher` (`DispatchOne` / `DispatchDue` / `RunCommandDispatcher`, plus optional `X-Flow-Outbox-Mode: async` 202 queue mode) → Engine inbox (dedupe on `idempotency_key`) → Job.
+- 手动命令仅由条件领取实际命中的派发者发送；`attempts` 是本次领取版本，所有回执、投影和预算变更在同一事务内先验证该版本。领取失败、活跃租约和未到退避时间均不发送，旧响应不能改写新回执或资金状态。
+- 如果调用方已处于租户事务（REST `TenantMiddleware` 或 Agent `UserTx`），GORM 内层事务只建立 savepoint；派发入口因此只返回已入队状态，由后台在外层提交后发送。REST 返回 202 和实际 `status`；Agent 工具成功表示命令受理，输出中的 pending/dispatching/reconciliation_required 不代表业务完成。
+- 用户没有提供幂等键时，平台仍向 Engine 转发持久化的自动键，所有重试复用同一键。Engine 幂等保证仍是网络/5xx 有界重试的必要条件。
+- 成功回执、4xx 终态、预算释放/未知标记、投影删除/创建/更新和最终读取失败必须传播，REST/Agent 不按已拿到的上游状态码清除错误。事务失败回滚到 dispatching 并保留资金，活跃租约期间不重发；租约过期或结果不确定进入 reconciliation_required，只对账。数据库仍不可写时不能声称已成功进入对账状态。
+- `DispatchDue` 聚合返回派发/数据库错误；后台循环记录不含上游正文或敏感 URL 的失败提示。强制数据库连接中断时的提交不确定、真实 PG17 多实例及非超级用户 RLS 仍需部署验收；SQLite 故障注入不能替代这些证据。
 - Scheduled: Engine claims windows (lease + fencing token) and requests a platform grant; no platform-side scanner.
 - Completion: business result and outbox event committed in the same tx. Platform consumes, dedupes on `consumer_id + event_id`, updates projections, settles, notifies.
 

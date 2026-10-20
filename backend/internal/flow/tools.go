@@ -360,8 +360,9 @@ func (t Tools) execute(ctx context.Context, row model.FlowAgentToolCall, spec To
 			Payload:        payload,
 		})
 		status, out, err = dispatched.ResponseStatus, []byte(dispatched.ResponseBody), derr
-		if status > 0 && status < 500 {
-			err = nil
+		if err == nil && dispatched.Status != "dispatched" && dispatched.Status != "failed" {
+			status = http.StatusAccepted
+			out, _ = json.Marshal(map[string]any{"operation_id": dispatched.OperationID, "outbox_id": dispatched.ID, "status": dispatched.Status, "accepted": true})
 		}
 	} else {
 		status, out, err = t.Engine.Do(cctx, ss.Scope, Actor{Type: "user", ID: userID}, method, path, key, payload)

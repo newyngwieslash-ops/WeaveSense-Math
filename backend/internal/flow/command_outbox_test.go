@@ -14,7 +14,353 @@ import (
 	"yingce/backend/internal/model"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+type commandEngineFunc func() (int, []byte, error)
+
+func (f commandEngineFunc) Do(context.Context, Scope, Actor, string, string, string, []byte) (int, []byte, error) {
+	return f()
+}
+
+func enqueueTestCommand(t *testing.T, d CommandDispatcher) model.FlowCommandOutbox {
+	t.Helper()
+	scope, err := ResolveScope(d.DB, "u_alice", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fund(t, Billing{DB: d.DB}, "u_alice", 50_000)
+	row, _, err := d.Enqueue(context.Background(), CommandInput{
+		Scope: scope, Actor: Actor{Type: "user", ID: "u_alice"},
+		Command: "collection.request", Method: http.MethodPost, Path: "/v1/collection-runs",
+		IdempotencyKey: "outbox-regression", Payload: []byte(`{"source_ids":["src_1"]}`),
+		ReserveMicro: 1_000, MaxAttempts: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
+func TestCommandOutboxCompetingDispatchers(t *testing.T) {
+	db := testDB(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int32
+	d := CommandDispatcher{DB: db, Engine: commandEngineFunc(func() (int, []byte, error) {
+		if calls.Add(1) == 1 {
+			close(entered)
+			<-release
+		}
+		return 202, []byte(`{"operation_id":"engine_op"}`), nil
+	})}
+	row := enqueueTestCommand(t, d)
+	done := make(chan error, 1)
+	go func() { _, err := d.DispatchOne(context.Background(), row.ID); done <- err }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("first dispatcher never entered Engine")
+	}
+	other, err := d.DispatchOne(context.Background(), row.ID)
+	close(release)
+	firstErr := <-done
+	if err != nil || firstErr != nil || calls.Load() != 1 || other.Status != "dispatching" {
+		t.Fatalf("only lease holder may send: calls=%d other=%s errors=%v/%v", calls.Load(), other.Status, err, firstErr)
+	}
+}
+
+func TestCommandOutboxConcurrentClaimFromSameVersion(t *testing.T) {
+	db := testDB(t)
+	var calls, reads atomic.Int32
+	d := CommandDispatcher{DB: db, Engine: commandEngineFunc(func() (int, []byte, error) { calls.Add(1); return 202, nil, nil })}
+	row := enqueueTestCommand(t, d)
+	read, release := make(chan struct{}, 2), make(chan struct{})
+	if err := db.Callback().Query().After("gorm:query").Register("hold_initial_reads", func(tx *gorm.DB) {
+		if tx.Statement.Table == "flow_command_outbox" && reads.Add(1) <= 2 {
+			read <- struct{}{}
+			<-release
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Callback().Query().Remove("hold_initial_reads") })
+	done := make(chan error, 2)
+	for range 2 {
+		go func() { _, err := d.DispatchOne(context.Background(), row.ID); done <- err }()
+	}
+	for range 2 {
+		select {
+		case <-read:
+		case <-time.After(5 * time.Second):
+			close(release)
+			t.Fatal("dispatchers did not read the same initial version")
+		}
+	}
+	close(release)
+	for range 2 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("same-version claims sent %d times", calls.Load())
+	}
+}
+
+func TestCommandOutboxLateReceiptCannotOverwrite(t *testing.T) {
+	for _, status := range []int{202, 422, 503} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			db := testDB(t)
+			d := CommandDispatcher{DB: db}
+			row := enqueueTestCommand(t, d)
+			d.Engine = commandEngineFunc(func() (int, []byte, error) {
+				// A newer owner/result became durable while this external call was in flight.
+				if err := db.Model(&model.FlowCommandOutbox{}).Where("id = ?", row.ID).
+					Updates(map[string]any{"attempts": 2, "status": "dispatched", "response_status": 202, "response_body": "new receipt"}).Error; err != nil {
+					t.Fatal(err)
+				}
+				return status, []byte(`{"operation_id":"old_op"}`), nil
+			})
+			_, _ = d.DispatchOne(context.Background(), row.ID)
+			var stored model.FlowCommandOutbox
+			if err := db.First(&stored, "id = ?", row.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			var reservation model.FlowBudgetReservation
+			db.First(&reservation, "id = ?", row.ReservationID)
+			var projection model.FlowOperationProjection
+			db.First(&projection, "operation_id = ?", row.OperationID)
+			if stored.ResponseBody != "new receipt" || stored.Status != "dispatched" || reservation.Status != "reserved" || projection.Status != "queued" {
+				t.Fatalf("stale writer changed durable result: outbox=%s/%s reservation=%s projection=%s", stored.Status, stored.ResponseBody, reservation.Status, projection.Status)
+			}
+		})
+	}
+}
+
+func TestCommandOutboxPersistenceFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name, trigger string
+		status        int
+	}{
+		{"receipt", "BEFORE UPDATE ON flow_command_outbox WHEN NEW.status = 'dispatched'", 202},
+		{"projection_delete", "BEFORE DELETE ON flow_operation_projections", 202},
+		{"projection_create", "BEFORE INSERT ON flow_operation_projections", 202},
+		{"projection_update", "BEFORE UPDATE ON flow_operation_projections", 422},
+		{"release", "BEFORE UPDATE ON flow_budget_reservations WHEN NEW.status = 'released'", 422},
+		{"failed_receipt", "BEFORE UPDATE ON flow_command_outbox WHEN NEW.status = 'failed'", 422},
+		{"unknown", "BEFORE UPDATE ON flow_budget_reservations WHEN NEW.status = 'reconciliation_required'", 503},
+		{"retry_receipt", "BEFORE UPDATE ON flow_command_outbox WHEN NEW.status = 'reconciliation_required'", 503},
+		{"retry_wait_receipt", "BEFORE UPDATE ON flow_command_outbox WHEN NEW.status = 'retry_wait'", 503},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := testDB(t)
+			var calls int
+			d := CommandDispatcher{DB: db, Engine: commandEngineFunc(func() (int, []byte, error) {
+				calls++
+				return tc.status, []byte(`{"operation_id":"engine_op"}`), nil
+			})}
+			row := enqueueTestCommand(t, d)
+			if tc.name == "retry_wait_receipt" {
+				if err := db.Model(&row).Update("max_attempts", 2).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := db.Exec("CREATE TRIGGER fail_write " + tc.trigger + " BEGIN SELECT RAISE(ABORT, 'injected persistence failure'); END").Error; err != nil {
+				t.Fatal(err)
+			}
+			_, err := d.DispatchOne(context.Background(), row.ID)
+			if err == nil || !strings.Contains(err.Error(), "injected persistence failure") {
+				t.Errorf("database failure must propagate, got %v", err)
+			}
+			var stored model.FlowCommandOutbox
+			db.First(&stored, "id = ?", row.ID)
+			var reservation model.FlowBudgetReservation
+			db.First(&reservation, "id = ?", row.ReservationID)
+			if stored.Status != "dispatching" || reservation.Status != "reserved" {
+				t.Errorf("partial terminal transaction: outbox=%s reservation=%s", stored.Status, reservation.Status)
+			}
+			if err := db.Exec("DROP TRIGGER fail_write").Error; err != nil {
+				t.Fatal(err)
+			}
+			_, _ = d.DispatchOne(context.Background(), row.ID)
+			if calls != 1 {
+				t.Errorf("unknown outcome resent: calls=%d", calls)
+			}
+			var account model.CreditAccount
+			if err := db.First(&account, "user_id = ?", "u_alice").Error; err != nil {
+				t.Fatal(err)
+			}
+			if account.ReservedMicrocredits != 1_000 || account.AvailableMicrocredits != 49_000 {
+				t.Errorf("held funds changed after failure/replay: reserved=%d available=%d", account.ReservedMicrocredits, account.AvailableMicrocredits)
+			}
+		})
+	}
+}
+
+func TestCommandOutboxExpiredLeaseReconcilesAtomically(t *testing.T) {
+	for _, due := range []bool{false, true} {
+		t.Run(map[bool]string{false: "direct", true: "background"}[due], func(t *testing.T) {
+			db := testDB(t)
+			var calls int
+			d := CommandDispatcher{DB: db, Engine: commandEngineFunc(func() (int, []byte, error) { calls++; return 202, nil, nil })}
+			row := enqueueTestCommand(t, d)
+			if err := db.Model(&row).Updates(map[string]any{"status": "dispatching", "attempts": 1, "lease_until": time.Now().UTC().Add(-time.Minute)}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if due {
+				_, _ = d.DispatchDue(context.Background(), 1)
+			} else {
+				_, _ = d.DispatchOne(context.Background(), row.ID)
+			}
+			var stored model.FlowCommandOutbox
+			db.First(&stored, "id = ?", row.ID)
+			var reservation model.FlowBudgetReservation
+			db.First(&reservation, "id = ?", row.ReservationID)
+			var projection model.FlowOperationProjection
+			db.First(&projection, "operation_id = ?", row.OperationID)
+			if calls != 0 || stored.Status != StatusReconciliation || reservation.Status != StatusReconciliation || projection.Status != StatusReconciliation {
+				t.Fatalf("expired lease must reconcile without resend: calls=%d states=%s/%s/%s", calls, stored.Status, reservation.Status, projection.Status)
+			}
+		})
+	}
+}
+
+func TestCommandOutboxCallersPreserveReadFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, caller := range []string{"REST", "Agent"} {
+		t.Run(caller, func(t *testing.T) {
+			tools, _, _, conv, ss := setupAgent(t)
+			var afterResponse atomic.Bool
+			if err := tools.DB.Callback().Query().After("gorm:query").Register("fail_final_read", func(tx *gorm.DB) {
+				if afterResponse.Load() && tx.Statement.Table == "flow_command_outbox" {
+					tx.AddError(errors.New("injected final read failure"))
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { tools.DB.Callback().Query().Remove("fail_final_read") })
+			if caller == "Agent" {
+				tools.Engine = commandEngineFunc(func() (int, []byte, error) {
+					afterResponse.Store(true)
+					return 202, []byte(`{"operation_id":"accepted_op"}`), nil
+				})
+				result, err := tools.Invoke(context.Background(), conv, ss, "u_alice", "read_fail", "intel_collect_once", map[string]any{"source_ids": []any{"src_1"}}, "")
+				if err == nil && result.Status != "failed" {
+					t.Fatalf("Agent hid persistence error: %+v", result)
+				}
+				return
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				afterResponse.Store(true)
+				w.WriteHeader(202)
+				_, _ = w.Write([]byte(`{"operation_id":"accepted_op"}`))
+			}))
+			t.Cleanup(srv.Close)
+			cfg := Config{EngineURL: srv.URL, SigningKey: key, Issuer: "flow-platform", Audience: "loom-engine", TTL: MaxTokenTTL}
+			r := gin.New()
+			RegisterRoutes(r.Group("/api"), tools.DB, cfg, func(*gin.Context) (*model.User, error) { return &model.User{ID: "u_alice"}, nil })
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/intelligence/collection-runs", strings.NewReader(`{"source_ids":["src_1"]}`)))
+			if w.Code < 500 {
+				t.Fatalf("REST hid persistence error: %d %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestCommandOutboxDispatchDuePropagatesFailure(t *testing.T) {
+	db := testDB(t)
+	d := CommandDispatcher{DB: db, Engine: commandEngineFunc(func() (int, []byte, error) { return 202, nil, nil })}
+	enqueueTestCommand(t, d)
+	if err := db.Exec("CREATE TRIGGER fail_write BEFORE UPDATE ON flow_command_outbox WHEN NEW.status = 'dispatched' BEGIN SELECT RAISE(ABORT, 'injected background failure'); END").Error; err != nil {
+		t.Fatal(err)
+	}
+	if n, err := d.DispatchDue(context.Background(), 1); n != 0 || err == nil || !strings.Contains(err.Error(), "injected background failure") {
+		t.Fatalf("background failure hidden: n=%d err=%v", n, err)
+	}
+}
+
+func TestCommandOutboxDefersUntilOuterTransactionCommits(t *testing.T) {
+	db := testDB(t)
+	d := CommandDispatcher{DB: db}
+	row := enqueueTestCommand(t, d)
+	var calls int
+	d.Engine = commandEngineFunc(func() (int, []byte, error) { calls++; return 202, nil, nil })
+	// REST TenantMiddleware and background Agent UserTx both pass an open transaction.
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	d.DB = tx
+	_, err := d.DispatchOne(context.Background(), row.ID)
+	if rollbackErr := tx.Rollback().Error; rollbackErr != nil {
+		t.Fatal(rollbackErr)
+	}
+	if err != nil || calls != 0 {
+		t.Fatalf("external effect before outer commit: calls=%d err=%v", calls, err)
+	}
+	d.DB = db
+	if _, err := d.DispatchOne(context.Background(), row.ID); err != nil || calls != 1 {
+		t.Fatalf("committed background dispatch: calls=%d err=%v", calls, err)
+	}
+}
+
+func TestCommandOutboxGeneratedKeySurvivesLostACK(t *testing.T) {
+	db := testDB(t)
+	keys := make(chan string, 2)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys <- r.Header.Get("X-Idempotency-Key")
+		if calls.Add(1) == 1 {
+			w.WriteHeader(503)
+			return
+		}
+		w.WriteHeader(202)
+		_, _ = w.Write([]byte(`{"operation_id":"stable_op"}`))
+	}))
+	t.Cleanup(srv.Close)
+	now := time.Now().UTC()
+	d := CommandDispatcher{DB: db, Now: func() time.Time { return now }, Engine: EngineClient{Cfg: Config{EngineURL: srv.URL, SigningKey: key, Issuer: "flow-platform", Audience: "loom-engine", TTL: MaxTokenTTL}}}
+	scope, err := ResolveScope(db, "u_alice", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, _, err := d.Enqueue(context.Background(), CommandInput{Scope: scope, Actor: Actor{Type: "user", ID: "u_alice"}, Command: "collection.request", Method: http.MethodPost, Path: "/v1/collection-runs", Payload: []byte(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = d.DispatchOne(context.Background(), row.ID)
+	now = now.Add(time.Minute)
+	if _, err := d.DispatchOne(context.Background(), row.ID); err != nil {
+		t.Fatal(err)
+	}
+	firstKey, secondKey := <-keys, <-keys
+	if firstKey == "" || firstKey != secondKey || firstKey != row.IdempotencyKey || calls.Load() != 2 {
+		t.Fatalf("lost-ACK retries require stable generated key: key=%q calls=%d", firstKey, calls.Load())
+	}
+}
+
+func TestCommandOutboxFinalReadFailure(t *testing.T) {
+	db := testDB(t)
+	d := CommandDispatcher{DB: db}
+	row := enqueueTestCommand(t, d)
+	readErr := errors.New("injected receipt read failure")
+	d.Engine = commandEngineFunc(func() (int, []byte, error) {
+		if err := db.Callback().Query().Before("gorm:query").Register("fail_receipt_read", func(tx *gorm.DB) {
+			if tx.Statement.Table == "flow_command_outbox" {
+				tx.AddError(readErr)
+			}
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return 202, nil, nil
+	})
+	t.Cleanup(func() { db.Callback().Query().Remove("fail_receipt_read") })
+	if _, err := d.DispatchOne(context.Background(), row.ID); !errors.Is(err, readErr) {
+		t.Fatalf("receipt read failure hidden: %v", err)
+	}
+}
 
 func TestCommandOutboxTransactionalEnqueueAndDispatch(t *testing.T) {
 	db := testDB(t)

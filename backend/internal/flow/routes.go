@@ -140,8 +140,12 @@ func RegisterRoutes(api gin.IRouter, db *gorm.DB, cfg Config, user UserFunc) {
 				return
 			}
 			dispatched, derr := dispatcher.DispatchOne(c.Request.Context(), row.ID)
-			if derr != nil && dispatched.ResponseStatus == 0 {
-				reply(c, http.StatusBadGateway, gin.H{"operation_id": dispatched.OperationID, "outbox_id": dispatched.ID, "status": dispatched.Status}, "loom engine unavailable")
+			if derr != nil {
+				reply(c, http.StatusBadGateway, gin.H{"operation_id": dispatched.OperationID, "outbox_id": dispatched.ID, "status": dispatched.Status}, "command dispatch could not be confirmed; inspect operation before retrying")
+				return
+			}
+			if dispatched.Status != "dispatched" && dispatched.Status != "failed" {
+				reply(c, http.StatusAccepted, gin.H{"operation_id": dispatched.OperationID, "outbox_id": dispatched.ID, "status": dispatched.Status, "accepted": true, "replayed": replayed}, "command pending dispatch or reconciliation")
 				return
 			}
 			c.Data(dispatched.ResponseStatus, "application/json", []byte(dispatched.ResponseBody))
