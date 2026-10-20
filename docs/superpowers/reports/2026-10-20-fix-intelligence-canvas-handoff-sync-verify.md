@@ -17,8 +17,20 @@
 - `bun run --cwd web build`：实际执行tsc --noEmit与Vite，退出0，Vite10.93s，保留大chunk警告。
 - 一次错误的Comet命令 `bun --cwd web run build`只输出Bun帮助却退出0；该条记录**无效，不作为构建通过证据**，后续必须记录实际构建命令。
 
-## 待完成
+## 18088真实复验（23:53–23:56 +08:00）
 
-18088仅前端重建、旧失败画布与新画布UI/PG复验、包含底层合并的扩大专项、Comet build/verify实际执行证据和阶段guard仍待本轮收口。不会把旧94/46等历史结果当本轮结果。
+仅隔离web重建成功（日志 `.local/flow-uat-20261020/web-hotfix-build.log`）；浏览器及容器入口同为 `index-CWWXyWVj.js`。前端包含他人未提交的canvas-cloud-agent-panel修改，不称为纯HEAD构建。
+
+已有画布 `canvas_5158db1cc61dae10566679a8`：完整新标签打开后3节点可见；同一会话投送后4节点，创建数据源连线后5节点/1连线，再次投送唯一标题“U02 hotfix 连线保留复验”后6节点/原连线保留。刷新后先适应画布，DOM与UI显示6节点；PG只读查询revision13/6节点/1连线，指定新节点及原连线均true；后续查询revision14/6/1仍存在。原连线ID `Oel0tjAi3pF-NmhR4RiZf`，交接ID `intel_node_d54ec6430dd080cc2fe87c5c`。
+
+同一专题新画布对照 `canvas_b58dddabd32d632a1bbbbd3e`：1节点、正文和来源脚注可见，刷新后保留；PG revision3/1节点/0连线、交接节点存在。自动唤起Agent关闭，全程无模型或外发。
+
+旧U03画布缺少可信基线，UI保留原两节点且同步错误；PG仍保留交接节点与原连线。按设计保护本地，不清缓存、不猜测恢复，该历史脏缓存不算正常合并验收通过。原tab1还曾在已同步状态显示旧内容，数据库节点存在；新完整标签可正常打开并后续连续投送通过，无法据此证实额外代码缺陷，保留观察。视口裁切会使DOM暂不呈现屏外节点，刷新后必须适应画布再比较。
+
+真实截图位于Git忽略目录 `.local/flow-uat-20261020/screenshots/`：`u02-hotfix-reopen-three.jpg`、`u02-hotfix-existing-six-with-link.jpg`、`u02-hotfix-refreshed-six-with-link.jpg`、`u02-hotfix-new-canvas.jpg`、`u02-hotfix-new-canvas-refreshed.jpg`。
+
+扩大专项实际通过Comet运行器执行5文件：`bun test --cwd web test/canvas-handoff-sync.test.ts test/canvas-operations-build.test.ts test/canvas-persistence-loss.test.ts test/agent-canvas-sync.test.ts test/agent-canvas-patch.test.ts`，38通过/0失败/114断言，退出0，日志5b003e22-b459-436b-9a6b-e08a2e87540f。此前误填不存在的agent-canvas-merge文件仅运行4文件27测试，不计为扩大专项。
+
+不把旧94/46等历史结果当本轮结果。API、表和权限合同未改；自动审查按本次hotfix review_mode=off跳过，人工核对共享入口、全部调用方、session epoch和冲突守卫。U01–U05和A/G门槛仍部分未完成。
 
 未执行Go/Engine/PG迁移测试：没有后端、API、表或依赖变化。本检查使用内存存储与可控HTTP返回，是自动回归，不是live采集/MCP/模型；真实UI另记。U01–U05和A/G门槛不会批量勾选。
