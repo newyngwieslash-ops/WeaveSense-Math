@@ -42,4 +42,4 @@
 
 C01 当前文档口径已对齐，C02 的可独立自动检查已记录，C02 更广集成和 U/A/G 门槛仍未完成：真实 PG/RLS/多实例/提交不确定、实际 UI/Agent/SSE/重启链路、Compose/恢复/迁移副本、真实模型/实采/MCP/OAuth/外发及最终远端交付。TenantMiddleware 外层 Commit 与 HTTP 回执仍待独立复现。未配置凭据时只记录名称，不降低验收要求。
 
-本地文档范围验证通过，归档仍需最终确认；没有网络重试、付费调用、服务启动、推送、合并或发布。
+本地文档提交为 `55210c10`。Comet Runtime 已实际运行上述 Python 文档检查作为本变更的 build/verify 文档校验（不是产品或文档站构建），两次均退出 0；build guard 14/14、verify guard 5/5、archive 入口 5/5 通过。状态为 phase=archive、verify_result=pass、archived=false，归档仍需本变更的最终确认；没有网络重试、付费调用、服务启动、推送、合并或发布。
