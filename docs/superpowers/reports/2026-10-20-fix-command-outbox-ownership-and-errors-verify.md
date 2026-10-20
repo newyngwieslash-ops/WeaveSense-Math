@@ -2,6 +2,8 @@
 
 变更：fix-command-outbox-ownership-and-errors。时区：Asia/Shanghai。基线：f0231e841fd17d24c6b81125625f02f41e76be78；实施分支：codex/fix-command-outbox-ownership-and-errors。本报告仅覆盖本轮 hotfix，不表示当前项目全量验收或发布通过。
 
+本地实现提交：0419fd7f。后续工作流元数据及本报告证据补充不改变该实现提交中的产品代码。
+
 ## 工作流与范围
 
 用户明确确认方案、新分支和同一聚焦 hotfix；采用本次 hotfix 默认 direct 执行、direct TDD 编排、review_mode=off，仍先复现再修复。未使用子代理或新聊天，未推送、合并、发布、运行生产迁移或调用付费模型/真实外发。
@@ -57,4 +59,4 @@ race 检查后仅增加 retry_wait 故障子项并将测试 HTTP handler 的共�
 - 没有执行 web/Engine 构建、真实 UI、Docker 部署、模型/实采、外发、备份恢复、生产迁移或远端 SHA/CI 核验。没有把旧报告当成本轮测试证据。
 - 用户原有归档元数据、交接、审计表、table.csv 与参考文件均保留、不纳入本变更提交。
 
-本地 hotfix 规格和代码检查满足本轮范围；全项目 C01/C02、U/A/G 发布门槛继续保留。归档必须等待最终用户确认。
+本地 hotfix 规格和代码检查满足本轮范围；全项目 C01/C02、U/A/G 发布门槛继续保留。Comet Runtime 实际运行 `go -C backend build ./internal/flow` 退出 0，并再次实际运行 `go -C backend test ./internal/flow/... -count=1` 退出 0（24.061s）。build guard 14/14、verify guard 5/5 通过，状态为 phase=archive、verify_result=pass，archive 入口 5/5 通过；尚未归档，必须等待最终用户确认。
