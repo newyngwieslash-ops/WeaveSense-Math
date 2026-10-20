@@ -207,27 +207,28 @@ export async function loadCanvasProjectForEditing(id: string, options: { onLoad?
         const local = useCanvasStore.getState().openProject(id);
         const cachedClean = local?.remoteContentHash && local.remoteContentHash === (await canvasContentHash(local));
         const dirty = local && (!verifiedProjects.has(id) && incrementalSession ? !cachedClean : !sameCanvasContent(acknowledgedProjects.get(id), local));
+        let projected = remote;
         if (dirty && !sameCanvasContent(local, remote)) {
-            const live = requireUnchangedLocal(local, "画布仍在更新，未确认操作已保留");
-            acknowledgedProjects.set(id, { ...remote, remoteContentHash: hash });
-            verifiedProjects.add(id);
-            useSyncProgressStore.getState().setProjectProgress(id, { phase: "pending", cloudRevision: remote.revision, pendingChanges: 1, message: "保留本地未确认操作，等待自动重放" });
-            options.onLoad?.(live || local);
-            scheduleRemoteUserDataSync();
-            return live || local;
+            const baseline = acknowledgedProjects.get(id);
+            if (!baseline || (!verifiedProjects.has(id) && baseline.remoteContentHash !== (await canvasContentHash(baseline)))) throw new Error("缺少可信画布合并基线，已保留本地编辑");
+            // Rebase only actual local edits; keeping the stale document against
+            // a new baseline would turn cloud-only nodes into remove_node writes.
+            projected = mergeAgentCanvasEditor(baseline, remote, local.nodes, local.connections, local);
         }
         // Editing/generation may continue during the network request or draft write.
         // Viewport-only updates are not document edits and must not block adopting cloud content.
         const live = requireUnchangedLocal(local, "画布仍在更新，已保留本地内容");
-        const project = { ...remote, viewport: live?.viewport || local?.viewport || remote.viewport || { x: 0, y: 0, k: 1 }, remoteContentHash: hash };
+        const project = { ...projected, viewport: live?.viewport || local?.viewport || remote.viewport || { x: 0, y: 0, k: 1 }, remoteContentHash: hash };
         // Align live editor refs synchronously before publishing the new revision.
         // A generation callback must never see old rendered nodes paired with a new revision.
         options.onLoad?.(project);
-        acknowledgedProjects.set(id, project);
+        acknowledgedProjects.set(id, { ...remote, remoteContentHash: hash });
         verifiedProjects.add(id);
         useCanvasStore.setState((state) => ({ projects: local ? state.projects.map((item) => (item.id === id ? project : item)) : [...state.projects, project] }));
         await flushCanvasStorePersistence();
-        useSyncProgressStore.getState().setProjectProgress(id, { phase: "done", cloudRevision: project.revision, pendingChanges: 0, message: "已确认云端画布基线" });
+        const pending = !sameCanvasContent(remote, project);
+        useSyncProgressStore.getState().setProjectProgress(id, { phase: pending ? "pending" : "done", cloudRevision: remote.revision, pendingChanges: pending ? 1 : 0, message: pending ? "已合并云端画布，本地修改等待保存" : "已确认云端画布基线" });
+        if (pending) scheduleRemoteUserDataSync();
         return project;
     });
     const pending = { mode, promise: request } as RemoteProjectLoad;
