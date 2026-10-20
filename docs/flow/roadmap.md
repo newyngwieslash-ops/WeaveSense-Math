@@ -1,6 +1,6 @@
 # Roadmap P0–P5
 
-Status: P0 delivered (main 6453c151). P1 core slice in PR `p1-tenants-rss` — see `p1-implementation.md` for scope and gaps.
+当前状态：P0–P5 的主要业务已有本地实现，最近的画布联动、MCP 缓存及 Outbox 修复已归档；真实 UI、PG/RLS、多实例、部署恢复、实采和最终远端交付仍需验收。实现与本轮运行证据分别见[实现状态](../implementation-status.md)和[基线证据账](2026-10-20-current-baseline-evidence.md)。P0 `6453c151`、P1 `p1-tenants-rss` 是历史阶段节点，不是当前开发进度。
 
 Delivered as runnable vertical slices; directories, interface definitions or passing unit tests alone do not count as feature completion.
 
@@ -13,11 +13,13 @@ Delivered as runnable vertical slices; directories, interface definitions or pas
 | P4 MCP 与来源 | 受管 MCP Telegram 微信 按需提取 | 每个 connector 实采验收 权限预算生效 |
 | P5 SaaS 交付 | 配额账务 运维 迁移 发布 Git 交付 | 恢复 对账 权限回归 远端 SHA 核实 |
 
-Estimate (2 Go/TS engineers + test support): first RSS + Q&A loop ≈ 2–3 weeks; text-first pilot with managed MCP ≈ 8–12 weeks. Complex account collection, audio/video, multi-runtime concurrency, self-serve MCP marketplace are estimated separately.
+历史立项估算（不是当前剩余工期承诺）：2 名 Go/TS 工程师及测试支持，RSS + 问答约 2–3 周，带受管 MCP 的文本试点约 8–12 周。当前剩余工作应按实际依赖与验收证据判断，不能继续把已实现能力按此估算重做。
 
 **First milestone:** two-tenant scheduled RSS collection, evidence-backed multi-turn Q&A, and a monitor created through conversation that actually runs.
 
 ## Acceptance matrix (A01–A21, all must pass before launch)
+
+本表 A01–A21 是原业务验收场景编号。[完整交接](2026-10-20-202424-handoff.md)中的 A01–A15 是部署/依赖工作包，两者不是同一编号体系。当前仍需 U01–U05 的实际 UI/集成和真实环境证据；fixture、归档及健康检查不能替代。A20 测试存在离线回退，本轮测试通过也不代表远端已确认。
 
 | ID | Scenario | Evidence of success | Phase |
 |---|---|---|---|

@@ -1,6 +1,16 @@
-# Implementation status (PRD v2 mapping)
+# Flow 实现状态与证据入口
 
-Last updated 2026-10-15 (Asia/Shanghai) after round 8 (capability enforcement, Reviewer, cancel propagation, alerts, daily backup) and round 7 (budgets, fair claim, event time, capability snapshots, ASR, intelligence tabs; see `docs/flow/delivery-report.md` "Round 7"). Phase reports are in `docs/flow/delivery-report.md`.
+## 当前口径
+
+本地能力已覆盖 P0–P5 主干，以及报告 PDF/DOCX、原始 HTTP 字节归档、OpenAI 兼容 Embedding/混合检索、媒体二进制代理/预签名、analyst、复合外键、情报交接画布、低代码 DAG、MCP 缓存和画布 Agent 建模。Outbox 所有权及错误传播修复已本地归档，细节见[服务合同](flow/service-contracts.md)。这些是实现状态，不表示真实 UI、PG、多实例、恢复、实采或远端发布通过。
+
+本轮自动检查基线为 `9fbcf028`，实际通过、跳过与环境见[基线证据账](flow/2026-10-20-current-baseline-evidence.md)；发布前仍按[待验收清单](flow/pending-acceptance.md)及[路线图](flow/roadmap.md)逐项收口。旧 W1/W2/D1 已有归档，不再作为待开发功能。
+
+当前可追溯需求来源是仓库的 196 项审计明细和现行 OpenSpec；尚未找到独立的 Flow PRD v2 完整原文，旧 Loom `/prd` 页面不能替代。用户保留的 `prd-audit-9.md` 表头为 Y176/D9/E7/O4，但本轮逐行复算为 **Y177/D8/E7/O4 = 196**。后续增量的 **185 Y / 1 D / 7 E / 3 O** 仅作历史实现映射，不是当前测试通过率；原审计快照未修改。原产品 861 个未勾选项是历史验收登记，不是 861 个待开发功能。
+
+## 历史分轮记录与代码映射
+
+下表沿用各分轮的证据名称；历史测试和 CI 未在本轮逐项重跑。原更新时间为 2026-10-15（Asia/Shanghai），Round 7/8/9 的日期、SHA 和验证结果详见 [delivery-report](flow/delivery-report.md)。表中 done 表示已有实现，不能自动提升为当前真实环境验收通过。
 
 **A file existing does not mean the feature has passed:** the evidence column says what was actually exercised.
 
@@ -39,7 +49,7 @@ Round 9 additions (2026-10-15, audit-8 gaps; details in `docs/flow/delivery-repo
 | §10.3 RLS on topics, event inbox, projections, billing accounts, skill pins, command outbox | done (v66–v67) | `flow_rls.go` | `TestFlowRLSPostgres` (PG17 non-superuser) |
 | §5.1 structured plan, cost estimate, budget, re-approval | done | `engine.ts`, `plan-card.tsx`, `monitor-editor.tsx` | `gaps9.test.ts`, Go route tests |
 | §7.3 snippet hash + URL | done | engine `0016`, `reports.ts`, `citations.go` | `gaps9.test.ts`, `TestCitationSnippetHashAndURL` |
-| §6.3 raw item + digest + raw HTTP response archive | done (normalised item + gzipped raw HTTP bytes in object store `0017_raw_response_archive.sql`) | `engine.ts execute`, `gaps9.ts archiveRawResponse/downloadRawResponse` | `gaps9.test.ts` |
+| §6.3 raw item + digest + raw HTTP response archive | done（规范化条目与原始 HTTP bytes；直接保存原始字节，不额外 gzip；`0017_raw_response_archive.sql`） | `engine.ts execute`, `gaps9.ts archiveRawResponse/downloadRawResponse` | `gaps9.test.ts`；真实对象存储待验收 |
 | §6.4 / §7.3 embed / analyze jobs & hybrid vector search | done (`none`/`hash`/`openai` embedders + optional hybrid FTS + cosine similarity search) | `gaps9.ts derivedTick/openaiEmbedder`, `engine.ts searchDocuments` | `gaps9.test.ts` |
 | §11.1 cancel/retry projection | done | `events.go` | `TestProjectionCancelAndRetryEvents` |
 | §11.3 manual command outbox + async dispatcher | done (`flow_command_outbox` v67 + `CommandDispatcher` + `RunCommandDispatcher`) | `command_outbox.go`, `routes.go`, `routes_contract.go`, `tools.go` | `command_outbox_test.go` |

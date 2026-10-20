@@ -1,4 +1,10 @@
-# Pending real-sample acceptance (deferred to the very last step)
+# Flow 待验收：真实环境、依赖与发布门槛
+
+本地实现状态见[实现状态](../implementation-status.md)，本轮当前基线的实际检查见[证据账](2026-10-20-current-baseline-evidence.md)。本文件区分“已有实现待验收”和“未开发”，不因 fixture、归档或测试进程退出 0 自动解除真实环境门槛。下方按 Round 分组保留历史登记时间，其“CI 已跑”是历史引用。
+
+当前仍需：真实 PG17 非超级用户 RLS、多实例/租约/提交不确定、实际 REST/Agent 受理→后台→操作卡/重启链路、真实 UI、整套 Compose profiles（含 subtitles/asr/backup）、私有存储/媒体/raw-response、旧库与 PG16→17 隔离副本迁移、备份恢复、监控告警、实际价目表/预算。外层租户中间件 Commit 与 HTTP 回执的关系仍待独立复现，不能因 Outbox 共享入口修复而声称全部解决。
+
+真实模型/Embedding、SMTP/Webhook、生产迁移、付费来源及最终交付需要各自授权。缺少凭据时只记录变量名称和本地配置步骤，继续无凭据工作，不在文档填写值。A20 离线回退不证明远端 SHA/CI/部署一致，G01 继续待核实。
 
 Live, real-account acceptance for the connectors below is **deferred to the very last step** of delivery. Until the user provides these credentials, A19 (and the live part of A14) stays **pending-credentials**. All current connector tests run on fixtures (`mode=fixture`), and no RSS test is counted as Telegram/WeChat acceptance.
 
@@ -45,7 +51,7 @@ These need a real environment. None of them has been run yet.
 ## Added in round 9 (2026-10-15)
 - Media download against a real MinIO bucket (`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` on `loom-engine`): download a stored Telegram attachment from the content library and confirm another workspace gets 404. Tests use a fake object store and check the SigV4 URL shape only.
 - Monitor cost estimate with a real price book: set `FLOW_PRICE_BOOK` (`paid_source_calls`) and `FLOW_PAID_SOURCE_KINDS`, then check the approval card numbers.
-- Optional embedding provider: only `none` and `hash` exist; a model-based provider and vector retrieval are not implemented (optional in the PRD).
+- Embedding 与混合检索已有实现：`none` / `hash` / `openai` 提供者及可选 FTS + 余弦检索；真实提供者仍待配置 `EMBED_PROVIDER`、`EMBED_BASE_URL`、`EMBED_API_KEY`、`EMBED_MODEL`、`EMBED_DIMS`、`VECTOR_SEARCH_ENABLED` 并经独立授权验收。不把本地 hash 或 fake HTTP 当作真实模型通过。
 
 ## Known simplifications (local development)
-Four intentional simplifications vs the PRD (report export formats, raw-response storage, embed providers, 25 MiB media proxy limit) are listed with code paths and suggested next steps in [`known-limitations.md`](./known-limitations.md). Update that file when you close any of them locally.
+历史四项简化（导出格式、原始响应存储、Embedding、25 MiB 媒体代理）已有本地增量，当前实现与保留限制见 [known-limitations](known-limitations.md)。媒体默认二进制代理支持流式分支上限 512 MiB，另有短时预签名；Engine 当前仍完整读取 Buffer 并校验 hash，不是全链路恒定内存，真实 MinIO 与大文件完整性仍待验收。

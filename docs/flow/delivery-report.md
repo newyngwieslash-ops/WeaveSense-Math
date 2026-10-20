@@ -1,5 +1,13 @@
 # Delivery Report
 
+## 当前状态入口与历史证据边界
+
+本文后续 P0–P5 和各 Round 是当时的交付记录，保留原日期、SHA、通过数、环境及已知限制；其中“P0 only”“未接线”“25 MiB”等描述不直接代表当前现状。当前能力见[实现状态](../implementation-status.md)，当前可复跑结果见[基线证据账](2026-10-20-current-baseline-evidence.md)，真实环境门槛见[待验收清单](pending-acceptance.md)。
+
+本轮基线为本地 `9fbcf028`：Flow/画布 Agent 专项、前端 46 项和构建通过，Engine 94 通过/4 跳过；真实 PG/RLS 及远端交付未确认。A20 的网络查询失败后回退本地引用，不能沿用旧“无本地超前”或远端 SHA 已一致的结论。本地保存的 origin/main 比当前基线少 32 个提交，该计数未获真实远端确认。Outbox 修复和其余共 15 个历史归档是本地生命周期证据，不是发布结果。
+
+报告导出、原始响应归档、Embedding、媒体代理及画布联动已经有后续增量；下述早期限制留作历史，不作为新开发清单。Flow PRD v2 完整原文尚未定位，当前按 196 项审计明细及现行 OpenSpec 追溯，不使用旧 Loom `/prd` 替代。
+
 ## P0 — Engineering baseline (2026-10-12, Asia/Shanghai)
 
 | Item | Value |
