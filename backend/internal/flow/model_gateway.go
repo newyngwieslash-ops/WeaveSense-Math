@@ -171,7 +171,7 @@ func StartSynthesis(gw ModelGateway, b Billing, req SynthesisRequest) (ModelTask
 		fmt.Fprintf(&sb, "- id=%s revision=%d source=%s title=%q\n  quote: %s\n", e.EvidenceID, e.Revision, e.SourceID, e.Title, truncRunes(e.Quote, 600))
 	}
 	cx, _ := json.Marshal(SynthesisContext{WorkspaceID: req.WorkspaceID, Question: req.Question, Evidence: req.Evidence, Scope: req.Scope})
-	task, err := tasks.Enqueue(ModelTaskInput{TenantID: req.TenantID, ParentResID: req.ParentResID, Key: req.Key, Purpose: req.Purpose, RefID: req.Question,
+	task, err := tasks.Enqueue(ModelTaskInput{TenantID: req.TenantID, ParentResID: req.ParentResID, Key: req.Key, Purpose: req.Purpose, RefID: truncRunes(req.Question, 80),
 		System: synthesisSystem, User: sb.String(), MaxTokens: req.MaxTokens, BudgetMicro: req.BudgetMicro, Context: string(cx)})
 	return tasks, task, err
 }
