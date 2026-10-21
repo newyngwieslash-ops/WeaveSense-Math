@@ -148,11 +148,35 @@ func AcceptInvite(db *gorm.DB, userID, token string) (Scope, error) {
 
 // RemoveMember deactivates a tenant membership (ongoing authorization checks then fail).
 func RemoveMember(db *gorm.DB, scope Scope, userID string) error {
-	if scope.Role != "admin" {
+	if scope.Role != "admin" && scope.Role != "owner" {
 		return ErrForbidden
 	}
 	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.Membership{}).Where("tenant_id = ? AND user_id = ? AND role <> ?", scope.TenantID, userID, "owner").Update("status", "removed").Error; err != nil {
+		// Serialize with SetMemberRole before checking the tenant's remaining admins.
+		var tenant model.Tenant
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&tenant, "id = ?", scope.TenantID).Error; err != nil {
+			return err
+		}
+		var m model.Membership
+		if err := tx.First(&m, "tenant_id = ? AND user_id = ? AND status = ?", scope.TenantID, userID, "active").Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if m.Role == "owner" {
+			return ErrForbidden
+		}
+		if m.Role == "admin" {
+			var n int64
+			if err := tx.Model(&model.Membership{}).Where("tenant_id = ? AND status = ? AND role IN ?", scope.TenantID, "active", []string{"admin", "owner"}).Count(&n).Error; err != nil {
+				return err
+			}
+			if n <= 1 {
+				return ErrForbidden
+			}
+		}
+		if err := tx.Model(&m).Update("status", "removed").Error; err != nil {
 			return err
 		}
 		return tx.Where("user_id = ? AND workspace_id IN (?)", userID, tx.Model(&model.Workspace{}).Select("id").Where("tenant_id = ?", scope.TenantID)).Delete(&model.WorkspaceMembership{}).Error

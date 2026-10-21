@@ -5,6 +5,14 @@ description: 信封、错误码与 OpenAPI
 
 # HTTP API 合同
 
+## Flow 成员撤销与分析员专题权限
+
+既有 `DELETE /api/intelligence/members/:userId` 撤销目标在该组织的成员身份和全部工作区关系，个人及其他组织不受影响。仅管理者可执行；owner始终拒绝，最后一位active owner/admin不可移除。有其他有效管理者时允许管理员自撤销。目标不属于当前租户、已撤销或数据库失败均不返回成功。
+
+撤销和 `PATCH /api/intelligence/members/:userId` 角色修改在原事务内先锁同一租户行，再查成员、计数并写入，避免并发撤销/降级同时绕过最后管理员检查。查询、计数及工作区写入错误向上返回并原子回滚；未改变RLS策略、API路径、信封或表结构。
+
+邀请与角色编辑保留 `analyst`，列表准确展示分析员。专题POST/PATCH及 `intel_save_topic` 共享既有 `intel.reports.write` scope：owner/admin/editor/analyst可写，viewer和未知角色拒绝；analyst仍不能管理成员，跨工作区对象继续返回404，版本冲突继续409。运行环境及浏览器复验见待测试清单。
+
 ## Flow 邀请接受与租户范围
 
 `POST /api/intelligence/invites/accept` 使用登录用户和请求正文中的一次性 `token`，成功返回原有 `{ tenantId, workspaceId, role }`；无效、过期、已撤销或已兑换的邀请仍返回 HTTP 400。令牌只以哈希定位记录，不加入 URL、日志或持久化正文。

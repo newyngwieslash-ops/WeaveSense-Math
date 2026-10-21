@@ -234,16 +234,26 @@ func SetMemberRole(db *gorm.DB, scope Scope, userID, role string) error {
 		return ErrInvalid
 	}
 	return db.Transaction(func(tx *gorm.DB) error {
+		// Use the same tenant lock as RemoveMember; target-row locks cannot protect a count.
+		var tenant model.Tenant
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&tenant, "id = ?", scope.TenantID).Error; err != nil {
+			return err
+		}
 		var m model.Membership
 		if err := tx.First(&m, "tenant_id = ? AND user_id = ? AND status = ?", scope.TenantID, userID, "active").Error; err != nil {
-			return ErrNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
 		}
 		if m.Role == "owner" {
 			return ErrForbidden
 		}
 		if m.Role == "admin" && tenantRole != "admin" {
 			var n int64
-			tx.Model(&model.Membership{}).Where("tenant_id = ? AND status = ? AND role IN ?", scope.TenantID, "active", []string{"admin", "owner"}).Count(&n)
+			if err := tx.Model(&model.Membership{}).Where("tenant_id = ? AND status = ? AND role IN ?", scope.TenantID, "active", []string{"admin", "owner"}).Count(&n).Error; err != nil {
+				return err
+			}
 			if n <= 1 {
 				return ErrForbidden
 			}
