@@ -53,5 +53,10 @@ These need a real environment. None of them has been run yet.
 - Monitor cost estimate with a real price book: set `FLOW_PRICE_BOOK` (`paid_source_calls`) and `FLOW_PAID_SOURCE_KINDS`, then check the approval card numbers.
 - Embedding 与混合检索已有实现：`none` / `hash` / `openai` 提供者及可选 FTS + 余弦检索；真实提供者仍待配置 `EMBED_PROVIDER`、`EMBED_BASE_URL`、`EMBED_API_KEY`、`EMBED_MODEL`、`EMBED_DIMS`、`VECTOR_SEARCH_ENABLED` 并经独立授权验收。不把本地 hash 或 fake HTTP 当作真实模型通过。
 
+## 2026-10-21 邀请RLS部署闭环
+
+- [x] 18088已部署commit7a009195，31项真实登录HTTP检查通过：接受、单次使用、viewer只读和owner撤销后原会话立即拒绝访问。PG持久结果一致；原组织/邀请/画布和实采报告文档保持，RLS开启，无模型/预算新增。详见[本轮证据](2026-10-21-invite-rls-deployment-acceptance.md)。
+- [ ] 浏览器点击旅程、完整角色矩阵/同租户多workspace、缓存竞态、恢复迁移及其余U/A门槛仍待；不称全栈正式发布构建。
+
 ## Known simplifications (local development)
 历史四项简化（导出格式、原始响应存储、Embedding、25 MiB 媒体代理）已有本地增量，当前实现与保留限制见 [known-limitations](known-limitations.md)。媒体默认二进制代理支持流式分支上限 512 MiB，另有短时预签名；Engine 当前仍完整读取 Buffer 并校验 hash，不是全链路恒定内存，真实 MinIO 与大文件完整性仍待验收。
