@@ -19,8 +19,8 @@ verification_report: docs/superpowers/reports/2026-10-21-fix-organization-create
 branch_status: pending
 created_at: 2026-10-21
 verified_at: 2026-10-21
-archive_confirmation: pending
-archived: false
+archive_confirmation: confirmed
+archived: true
 bound_branch: codex/fix-organization-create-rls-context
 direct_override: null
 handoff_context: null
