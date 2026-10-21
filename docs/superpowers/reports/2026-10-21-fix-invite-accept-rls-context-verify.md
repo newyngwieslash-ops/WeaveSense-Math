@@ -42,7 +42,7 @@ HTTP成功场景校验真实响应role=viewer、ResolveScope为viewer且无信�
 | 文档 | 功能/API边界、pending-test与交接同步，旧修改独立保留 |
 | 自动审查 | hotfix默认review_mode=off，用户禁止子代理；跳过自动代码审查，主会话检查全部调用方与事务路径 |
 
-Comet guards和最终phase结果以 `.comet.yaml` 及本次交接为准。若scale因工件/文档数量选full，按技能允许override为light：本次仅局部生产入口+PG专项，无delta、迁移或跨模块实现；不豁免真实安全回归。
+Comet build guard实际14/14、verify guard实际5/5通过，verify_result=pass、phase=archive、archive_confirmation=pending。scale统计11文件选full，按技能允许显式override为light：本次仅局部生产入口+PG专项，其余是工件/文档，无delta、迁移或跨模块实现；不豁免真实安全回归。实现提交c94988d5，后续仅补验证状态和交接。
 
 ## 未执行与剩余门槛
 

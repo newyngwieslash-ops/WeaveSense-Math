@@ -1,6 +1,6 @@
 workflow: hotfix
 language: zh-CN
-phase: build
+phase: archive
 context_compression: off
 build_mode: direct
 build_pause: null
@@ -13,13 +13,13 @@ auto_transition: true
 base_ref: 6d7c00ec55548f3c4419b800d5139e113a545812
 design_doc: null
 plan: null
-verify_result: pending
+verify_result: pass
 verify_failures: 0
-verification_report: null
+verification_report: docs/superpowers/reports/2026-10-21-fix-invite-accept-rls-context-verify.md
 branch_status: pending
 created_at: 2026-10-21
-verified_at: null
-archive_confirmation: null
+verified_at: 2026-10-21
+archive_confirmation: pending
 archived: false
 bound_branch: codex/fix-invite-accept-rls-context
 direct_override: null
