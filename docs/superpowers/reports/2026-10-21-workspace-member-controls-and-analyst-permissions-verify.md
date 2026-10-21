@@ -6,6 +6,8 @@
 
 产品实现、最小RED→GREEN、相关构建、普通PG并发/回滚和18088真实HTTP/浏览器专项通过。四项任务完成；Comet阶段guard另以实际运行输出为准，不手写verify_result=pass。没有新API、数据库字段、RLS策略或依赖变化。未调用真实模型、外发、生产迁移、子代理、推送、合并或发布。
 
+收尾：Comet full实际build/verify检查均退出0，build guard14/14通过，verify guard已将状态推进archive、verify_result=pass。归档仍未执行，branch_status=pending。首次guard发现计划步骤缺任务ID，已为四项任务补稳定映射；旧技能record-check声明不被新版guard认可，改用已安装公共CLI的实际check run，未修改工具或绕过检查。
+
 ## 实际RED与根因
 
 | 边界 | 旧实现失败 | 共享修复 |
@@ -53,6 +55,12 @@
 浏览器退出测试账号曾被自动审批拒绝；用户明确授权两测试账号切换后才执行。并发撤销脚本曾被误判目标为历史组织；只读证明目标不在部署前备份且与旧matrix不同后，同一操作重试获准，未绕过拒绝。
 
 ## 规格与设计核对
+
+| 维度 | 结果 |
+|---|---|
+| 完整性 | 4/4任务、2项修改需求、11个场景均有实现和可追溯证据 |
+| 正确性 | 共享入口、权限、并发、回滚及真实UI行为符合本次规格，无CRITICAL/IMPORTANT发现 |
+| 一致性 | 符合高层及技术设计，无规格漂移；无新增抽象、依赖、API或表结构 |
 
 两份delta共11个场景均能映射：旧viewer/editor投影由P7回归；analyst邀请/编辑由真实UI+PG+HTTP；撤销取消/失败由真实UI+请求计数；撤销成功/即时失权由UI+保留原HTTP会话；owner/最后管理员/自撤销由SQLite+普通PG；非管理角色由UI/HTTP；analyst专题及隔离由服务/工具/HTTP/浏览器；viewer/未知由专项。设计中租户行锁顺序、原事务回滚、共用scope、http和AppModal均落地，无delta与技术设计分歧。
 
