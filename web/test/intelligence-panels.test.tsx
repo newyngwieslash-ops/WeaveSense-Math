@@ -17,6 +17,19 @@ import { normalizeEditableRole, RESERVATION_STATUS_LABEL, ROLE_LABEL, WorkspaceA
 import { fileNameFrom } from "../src/services/api/intelligence";
 
 describe("SourcesPanel helpers and rendering", () => {
+    test("member controls preserve analyst", () => {
+        expect(normalizeEditableRole("analyst")).toBe("analyst");
+        expect(ROLE_LABEL.analyst).toBe("分析员 (analyst)");
+    });
+    test("member controls only expose non-owner revocation to managers", () => {
+        const member = { userId: "u2", name: "Analyst", email: "", role: "analyst" as const, status: "active", joinedAt: "" };
+        const render = (canManage: boolean, role: "analyst" | "owner") => renderToStaticMarkup(
+            <WorkspaceAdminPanel workspaceId="ws_1" initialData={{ canManage, members: [{ ...member, role }] }} />,
+        );
+        expect(render(true, "analyst")).toContain("撤销成员");
+        expect(render(false, "analyst")).not.toContain("撤销成员");
+        expect(render(true, "owner")).not.toContain("撤销成员");
+    });
     test("buildSourceInput trims values, rejects blank input, and builds protocol-specific payloads", () => {
         expect(buildSourceInput("rss", "   ")).toBeUndefined();
         expect(buildSourceInput("rss", " https://example.com/feed.xml ")).toEqual({

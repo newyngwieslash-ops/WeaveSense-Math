@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, Input, List, Select, Space, Tag, Typography, message } from "antd";
 import { StatusBadge } from "@/components/ui/base/badges";
+import { AppModal } from "@/components/ui/product/app-modal/app-modal";
 
 import {
     acceptInvite,
@@ -13,6 +14,7 @@ import {
     listSkills,
     markNotificationRead,
     resolveReservation,
+    removeMember,
     setMemberRole,
     type OrgMember,
     type BillingAccount,
@@ -34,11 +36,12 @@ export const ROLE_LABEL: Record<string, string> = {
     admin: "管理员 (admin)",
     editor: "编辑者 (editor)",
     member: "编辑者 (editor)",
+    analyst: "分析员 (analyst)",
     viewer: "只读 (viewer)",
 };
 
-export function normalizeEditableRole(role: OrgMember["role"]): "admin" | "editor" | "viewer" {
-    if (role === "admin" || role === "viewer") return role;
+export function normalizeEditableRole(role: OrgMember["role"]): "admin" | "editor" | "analyst" | "viewer" {
+    if (role === "admin" || role === "analyst" || role === "viewer") return role;
     return "editor";
 }
 
@@ -74,6 +77,12 @@ export function WorkspaceAdminPanel({
     const [acceptToken, setAcceptToken] = useState("");
     const [members, setMembers] = useState<OrgMember[]>(initialData?.members ?? []);
     const [canManage, setCanManage] = useState(initialData?.canManage ?? false);
+    const [revokeTarget, setRevokeTarget] = useState<{ member: OrgMember; workspaceId: string }>();
+    const [revoking, setRevoking] = useState(false);
+    const [revokeError, setRevokeError] = useState("");
+    const revokeInFlight = useRef(false);
+
+    useEffect(() => { setRevokeTarget(undefined); setRevokeError(""); }, [workspaceId]);
 
     const refresh = useCallback(() => {
         if (!workspaceId) return;
@@ -109,6 +118,24 @@ export function WorkspaceAdminPanel({
             refresh();
         } catch (err) {
             message.error(err instanceof Error ? err.message : String(err));
+        }
+    };
+    const revoke = async () => {
+        if (!revokeTarget || revokeTarget.workspaceId !== workspaceId || !canManage || revokeTarget.member.role === "owner" || revokeInFlight.current) return;
+        revokeInFlight.current = true;
+        setRevoking(true);
+        setRevokeError("");
+        try {
+            await removeMember(revokeTarget.workspaceId, revokeTarget.member.userId);
+            setRevokeTarget(undefined);
+            message.success("成员已从该组织撤销");
+            refresh();
+            onWorkspacesChanged?.();
+        } catch (err) {
+            setRevokeError(err instanceof Error ? err.message : String(err));
+        } finally {
+            revokeInFlight.current = false;
+            setRevoking(false);
         }
     };
     if (!workspaceId) return null;
@@ -237,19 +264,43 @@ export function WorkspaceAdminPanel({
                                         size="small"
                                         style={{ width: 150 }}
                                         value={normalizeEditableRole(m.role)}
-                                        onChange={(role: "admin" | "editor" | "viewer") => void run(() => setMemberRole(workspaceId!, m.userId, role), "成员角色已更新")}
+                                        onChange={(role: "admin" | "editor" | "analyst" | "viewer") => void run(() => setMemberRole(workspaceId!, m.userId, role), "成员角色已更新")}
                                         options={[
                                             { value: "admin", label: "管理员 (admin)" },
                                             { value: "editor", label: "编辑者 (editor)" },
+                                            { value: "analyst", label: "分析员 (analyst)" },
                                             { value: "viewer", label: "只读 (viewer)" },
                                         ]}
                                     />
+                                )}
+                                {canManage && m.role !== "owner" && (
+                                    <Button danger size="small" disabled={revoking} onClick={() => { setRevokeError(""); setRevokeTarget({ member: m, workspaceId }); }}>
+                                        撤销成员
+                                    </Button>
                                 )}
                             </Space>
                         </List.Item>
                     )}
                 />
             </Card>
+            <AppModal
+                open={!!revokeTarget}
+                title="撤销组织成员"
+                okText="确认撤销"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+                confirmLoading={revoking}
+                cancelButtonProps={{ disabled: revoking }}
+                closable={!revoking}
+                keyboard={!revoking}
+                mask={{ closable: !revoking }}
+                onOk={() => void revoke()}
+                onCancel={() => { if (!revokeInFlight.current) { setRevokeTarget(undefined); setRevokeError(""); } }}
+            >
+                <p>确认撤销 {revokeTarget?.member.name || revokeTarget?.member.email || revokeTarget?.member.userId}？该成员将失去该组织所有工作区的访问权限，个人工作区及其他组织不受影响。</p>
+                <p>所有者不可撤销；最后一位有效管理员不可撤销。</p>
+                {revokeError && <Typography.Text type="danger" role="alert">{revokeError}</Typography.Text>}
+            </AppModal>
             <Card size="small" title="组织与成员邀请">
                 <Space direction="vertical" style={{ width: "100%" }}>
                     <Space.Compact style={{ width: "100%" }}>
@@ -276,6 +327,7 @@ export function WorkspaceAdminPanel({
                             options={[
                                 { value: "viewer", label: "只读 (viewer)" },
                                 { value: "editor", label: "编辑者 (editor)" },
+                                { value: "analyst", label: "分析员 (analyst)" },
                                 { value: "admin", label: "管理员 (admin)" },
                             ]}
                         />
