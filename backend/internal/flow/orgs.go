@@ -11,6 +11,7 @@ import (
 	"yingce/backend/internal/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrInviteInvalid = errors.New("flow: invite invalid, expired or already used")
@@ -81,33 +82,65 @@ func CreateInvite(db *gorm.DB, scope Scope, inviterID, email, role string, ttl t
 
 // AcceptInvite joins the user to the tenant and workspace. Single use.
 func AcceptInvite(db *gorm.DB, userID, token string) (Scope, error) {
+	if userID == "" || token == "" {
+		return Scope{}, ErrInviteInvalid
+	}
 	var out Scope
 	err := db.Transaction(func(tx *gorm.DB) error {
+		var previousScope string
+		if tx.Dialector.Name() == "postgres" {
+			if err := tx.Raw("SELECT coalesce(current_setting('app.tenant_ids', true), '')").Scan(&previousScope).Error; err != nil {
+				return err
+			}
+		}
 		var inv model.FlowInvite
-		if err := tx.First(&inv, "token_hash = ?", hashToken(token)).Error; err != nil {
-			return ErrInviteInvalid
+		// The bearer token permits exactly one cross-tenant lookup, never member writes.
+		if err := withSystemContext(tx, func(lookup *gorm.DB) error {
+			return lookup.Clauses(clause.Locking{Strength: "UPDATE"}).First(&inv, "token_hash = ?", hashToken(token)).Error
+		}); err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInviteInvalid
+			}
+			return err
 		}
 		now := time.Now().UTC()
 		if inv.AcceptedAt != nil || inv.RevokedAt != nil || now.After(inv.ExpiresAt) {
 			return ErrInviteInvalid
 		}
+		if tx.Dialector.Name() == "postgres" {
+			if err := tx.Exec("SELECT set_config('app.tenant_ids', ?, true)", inv.TenantID).Error; err != nil {
+				return err
+			}
+		}
 		res := tx.Model(&model.FlowInvite{}).Where("id = ? AND accepted_at IS NULL", inv.ID).Updates(map[string]any{"accepted_by": userID, "accepted_at": now})
-		if res.Error != nil || res.RowsAffected == 0 {
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
 			return ErrInviteInvalid
 		}
 		var m model.Membership
-		if tx.First(&m, "tenant_id = ? AND user_id = ?", inv.TenantID, userID).Error != nil {
+		if err := tx.First(&m, "tenant_id = ? AND user_id = ?", inv.TenantID, userID).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 			if err := tx.Create(&model.Membership{ID: NewID("mb_"), TenantID: inv.TenantID, UserID: userID, Role: "member", Status: "active"}).Error; err != nil {
 				return err
 			}
 		}
 		var wm model.WorkspaceMembership
-		if tx.First(&wm, "workspace_id = ? AND user_id = ?", inv.WorkspaceID, userID).Error != nil {
+		if err := tx.First(&wm, "workspace_id = ? AND user_id = ?", inv.WorkspaceID, userID).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 			if err := tx.Create(&model.WorkspaceMembership{ID: NewID("wm_"), WorkspaceID: inv.WorkspaceID, UserID: userID, Role: inv.Role}).Error; err != nil {
 				return err
 			}
 		}
 		out = Scope{TenantID: inv.TenantID, WorkspaceID: inv.WorkspaceID, Role: inv.Role}
+		if tx.Dialector.Name() == "postgres" {
+			return tx.Exec("SELECT set_config('app.tenant_ids', ?, true)", previousScope).Error
+		}
 		return nil
 	})
 	return out, err
