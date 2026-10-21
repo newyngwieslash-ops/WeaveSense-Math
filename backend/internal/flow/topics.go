@@ -101,7 +101,7 @@ func applyTopicInput(t *model.FlowTopic, in TopicInput) error {
 	return nil
 }
 
-func canWriteTopics(s Scope) bool { return s.Role == "admin" || s.Role == "editor" }
+func canWriteTopics(s Scope) bool { return hasScope(s.Role, "intel.reports.write") }
 
 func CreateTopic(db *gorm.DB, s Scope, userID string, in TopicInput, now time.Time) (TopicView, error) {
 	if !canWriteTopics(s) {
