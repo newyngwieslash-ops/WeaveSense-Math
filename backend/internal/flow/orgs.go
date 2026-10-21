@@ -25,14 +25,29 @@ func CreateOrganization(db *gorm.DB, ownerID, name string) (model.Tenant, model.
 	t := model.Tenant{ID: NewID("tn_"), Kind: "organization", Name: name, OwnerUserID: ownerID, Status: "active"}
 	w := model.Workspace{ID: NewID("ws_"), TenantID: t.ID, Slug: "default", Name: name}
 	err := db.Transaction(func(tx *gorm.DB) error {
+		var previousScope string
+		if tx.Dialector.Name() == "postgres" {
+			if err := tx.Raw("SELECT coalesce(current_setting('app.tenant_ids', true), '')").Scan(&previousScope).Error; err != nil {
+				return err
+			}
+			// Bootstrap only this server-generated tenant; never enter system scope.
+			if err := tx.Exec("SELECT set_config('app.tenant_ids', ?, true)", t.ID).Error; err != nil {
+				return err
+			}
+		}
 		for _, r := range []any{&t, &model.Membership{ID: NewID("mb_"), TenantID: t.ID, UserID: ownerID, Role: "owner", Status: "active"}, &w,
 			&model.WorkspaceMembership{ID: NewID("wm_"), WorkspaceID: w.ID, UserID: ownerID, Role: "admin"}} {
 			if err := tx.Create(r).Error; err != nil {
 				return err
 			}
 		}
-		_, err := Billing{DB: tx}.Account(tx, t.ID)
-		return err
+		if _, err := (Billing{DB: tx}).Account(tx, t.ID); err != nil {
+			return err
+		}
+		if tx.Dialector.Name() == "postgres" {
+			return tx.Exec("SELECT set_config('app.tenant_ids', ?, true)", previousScope).Error
+		}
+		return nil
 	})
 	return t, w, err
 }
