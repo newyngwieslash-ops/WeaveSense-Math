@@ -25,6 +25,8 @@ TenantMiddleware按请求开始时的已有租户设置app.tenant_ids，routes_p
 
 ## 轻量验证与边界
 
+Comet build guard14/14、verify guard5/5实际通过，verify_result=pass、phase=archive、archive_confirmation=pending。自动scale因10文件（含工件）选full，核对只有1个生产文件/1个测试文件及配套文档后按技能显式override light，无规格或跨模块变化，不豁免实际安全专项。
+
 任务3/3；实现聚焦1个生产文件+1个PG回归文件，工件/文档配套。无密钥、RLS策略或权限弱化。review_mode=off，不自动子代理审查；主会话检查了全部调用方和事务边界。若scale因文档/工件文件数选full，按技能允许覆盖为light，理由是无跨模块协调/规格变化且真实PG安全专项已执行。
 
 未执行：产品全量Go/前端构建、18088镜像重建/替换、真实登录HTTP部署后重验、模型和外发。已有18088仍旧镜像；此前组织创建500保留历史证据，源码PG集成通过不等于18088部署通过。完整角色矩阵、邀请/同租户多workspace、缓存竞态、迁移/恢复/SSE/未知ACK与G01发布门槛仍待验。
