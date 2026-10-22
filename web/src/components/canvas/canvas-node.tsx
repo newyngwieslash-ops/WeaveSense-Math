@@ -285,7 +285,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 }}
             >
                 <div
-                    className={`relative flex h-full w-full items-center justify-center rounded-[inherit] ${isBatchRoot || data.type === CanvasNodeType.Script || data.type === CanvasNodeType.BatchTable || isComposerNode ? "overflow-visible" : "overflow-hidden"}`}
+                    className={`relative flex h-full w-full items-center justify-center rounded-[inherit] ${showChrome && showStatusTrack && (data.type === CanvasNodeType.DataSource || data.type === CanvasNodeType.Logic) ? "pt-8" : ""} ${isBatchRoot || data.type === CanvasNodeType.Script || data.type === CanvasNodeType.BatchTable || isComposerNode ? "overflow-visible" : "overflow-hidden"}`}
                     style={
                         {
                             background: hasImageContent || hasVideoContent || hasAudioContent ? "transparent" : theme.node.fill,
@@ -354,7 +354,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 ) : null}
 
                 {showChrome && showStatusTrack ? (
-                    <div className="absolute right-3 top-3 z-[var(--node-z-overlay)] flex min-w-0 items-center justify-end gap-1 max-w-[calc(100%-24px)]">
+                    <div className="pointer-events-none absolute right-3 top-3 z-[var(--node-z-overlay)] flex min-w-0 items-center justify-end gap-1 max-w-[calc(100%-24px)]">
                         {resourceLabel && data.type !== CanvasNodeType.Image ? <ResourceLabelBadge reference={resourceLabel} theme={theme} /> : null}
                         {hasMediaContent && !readOnly ? <ResourceStorageBadge storageKey={data.metadata?.storageKey} active={isActive} theme={theme} /> : null}
                         {isBatchRoot ? <BatchToggleBadge count={batchCount} expanded={batchExpanded} theme={theme} onToggle={() => onToggleBatch?.(data.id)} /> : null}
@@ -564,7 +564,7 @@ function BatchToggleBadge({ count, expanded, theme, onToggle }: { count: number;
     return (
         <button
             type="button"
-            className="canvas-node-tool-button inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[var(--fs-tiny)] font-semibold backdrop-blur-md"
+            className="canvas-node-tool-button pointer-events-auto inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[var(--fs-tiny)] font-semibold backdrop-blur-md"
             style={{ background: `${theme.toolbar.panel}d9`, borderColor: `${theme.toolbar.border}cc`, color: theme.node.text }}
             aria-expanded={expanded}
             aria-label={expanded ? "收起图片组" : "展开图片组"}
@@ -587,7 +587,7 @@ function BatchPrimaryBadge({ visible, selected, theme, onSelect }: { visible: bo
     return (
         <button
             type="button"
-            className={`canvas-node-tool-button inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[var(--fs-tiny)] font-medium backdrop-blur-md transition-opacity ${visible ? "opacity-100" : "pointer-events-none opacity-0"}`}
+            className={`canvas-node-tool-button inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[var(--fs-tiny)] font-medium backdrop-blur-md transition-opacity ${visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
             style={{ background: theme.toolbar.panel, borderColor: selected ? theme.accent.primary : theme.toolbar.border, color: selected ? theme.accent.primary : theme.node.text }}
             aria-label={selected ? "当前主图" : "设置为主图"}
             aria-pressed={selected}

@@ -1,5 +1,9 @@
 # Flow 待验收：真实环境、依赖与发布门槛
 
+2026-10-22 22:47补记：用户先明确接受预览覆盖修复没有独立Verifier的本次结果，再单独确认本地归档；预检ready=true、无阻塞、无需重验，实际archive退出0，Native六项通过、status=done、archived=true、当前工作区kept，新主规格canvas-node-overlay-hit-targets已创建，工件在docs/superpowers/comet/archive/2026-10-22-fix-canvas-preview-overlay-hit-target。下段待接受为此前阶段记录；全Web旧失败及发布门槛保持，没有推送合并发布。
+
+2026-10-22 预览编号遮挡修复增量：用户确认完整Shape后正式RED 4失败→共享GREEN 4通过/43断言，Runtime专项/构建/lint通过；18088只更新web，两张新合成图完成中心双向点击/键盘/缩放、编号可读、图片组/主图/图层入口、重开/PG。首图无效媒体样本不计媒体通过，第二张有效PNG和完整batch关系补验。原十一图/10文档/1报告/零模型预算及非web容器保持。全Web2218通过/原40失败/2错误，失败名称无增减；无独立Verifier，Native六项pending，尚待本次明确接受，未归档或提交。见[本次证据](../superpowers/reports/2026-10-22-fix-canvas-preview-overlay-hit-target-verify.md)。下方首次失败作为历史保留，不称完整U03或发布通过。
+
 2026-10-22 TSV修复增量：完整Shape确认后正式RED→GREEN，复用CSV扫描器按csv/.tsv选择tab；16项/73断言、Runtime构建/lint及18088真实正常/空列TSV、下游、刷新/PG通过。原七图/10文档/1报告/零模型预算和非web容器保持，仅新增一张专项图。全Web40失败/2错误，与上轮失败名称一致；用户先接受本轮无独立Verifier结果，后单独确认本地归档，实际archive退出0，Native六项通过、status=done、archived=true、工作区kept，新主规格已创建。不称全量或发布通过。详见[修复证据](../superpowers/reports/2026-10-22-fix-canvas-tsv-import-verify.md)。下方首次失败保留历史，完整U03、浏览器后置项及其他发布门槛不据此通过。
 
 2026-10-22 19:44补记：用户先明确接受JSONL变更没有独立Verifier的结果，随后另行确认本地归档；Native已归档到docs/superpowers/comet/archive/2026-10-22-fix-canvas-jsonl-import，6/6通过、status=done、archived=true、当前分支kept，无推送/合并/发布。全Web旧失败、完整U03及发布门槛保持。下方“等待限制接受”是此前阶段记录。

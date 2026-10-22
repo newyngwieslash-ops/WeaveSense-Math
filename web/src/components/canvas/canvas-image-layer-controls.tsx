@@ -91,7 +91,7 @@ export function CanvasImageLayerControls({ node }: { node: CanvasNodeData }) {
                 type="button"
                 title="管理图层"
                 aria-label="管理图层"
-                className="grid size-6 place-items-center rounded bg-black/60 text-white"
+                className="pointer-events-auto grid size-6 place-items-center rounded bg-black/60 text-white"
                 onPointerDown={(event) => event.stopPropagation()}
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
