@@ -1,8 +1,8 @@
-import { getFeatureAvailability, type AuthSessionPayload } from "@/services/api/auth";
+import { assertAuthSessionPayloadCurrent, getFeatureAvailability, type AuthSessionPayload } from "@/services/api/auth";
 import { getModelCatalog, type CapabilitySpec, type ModelCatalogResponse, type OptionConstraint, type PublicChannelCatalog } from "@/services/api/logical-models";
 import { localForageStorage } from "@/lib/localforage-storage";
 import { appQueryClient } from "@/lib/query-client";
-import { scopedLocalStorage, setActiveUserScope, withUserScopedPersistenceSuppressed } from "@/lib/user-scope";
+import { readAuthSessionRevision, scopedLocalStorage, setActiveUserScope, withUserScopedPersistenceSuppressed } from "@/lib/user-scope";
 import { CANVAS_STORE_KEY, flushCanvasStorePersistence, useCanvasStore, withCanvasStorePersistenceSuppressed } from "@/stores/canvas/use-canvas-store";
 import { CANVAS_HISTORY_STORE_KEY, useCanvasHistoryStore } from "@/stores/canvas/use-canvas-history-store";
 import { ASSET_STORE_KEY, flushAssetStorePersistence, useAssetStore, withAssetStorePersistenceSuppressed } from "@/stores/use-asset-store";
@@ -18,10 +18,11 @@ import { clearResourceBlobCache } from "@/services/resource-blob-cache";
 import { withGenerationConsumersPaused } from "@/services/generation-consumer-lifecycle";
 import { recordDiagnosticEvent } from "@/services/diagnostics/client-diagnostics";
 
-export async function switchUserStorageScope(userId?: string | null) {
+export async function switchUserStorageScope(userId?: string | null, revision = readAuthSessionRevision()) {
     await withGenerationConsumersPaused(async () => {
         await withRemoteUserDataSyncExclusive(async () => {
             await Promise.all([flushCanvasStorePersistence(), flushAssetStorePersistence()]);
+            if (revision !== readAuthSessionRevision()) throw new DOMException("账号会话已变化", "AbortError");
             resetRemoteUserDataSync();
             clearResourceAccessCache();
             clearResourceBlobCache();
@@ -33,15 +34,17 @@ export async function switchUserStorageScope(userId?: string | null) {
 let sessionGeneration = 0;
 
 export async function applyUserSession(payload: AuthSessionPayload) {
+    assertAuthSessionPayloadCurrent(payload);
+    const revision = readAuthSessionRevision();
     const generation = ++sessionGeneration;
     const previousUserId = useUserStore.getState().user?.id || "";
     const nextUserId = payload.user?.id || "";
     useUserStore.getState().setHydrated(false);
     // Query key 不携带用户 ID；身份变化时必须取消并清空旧账号请求，避免跨账号复用内存数据。
     if (previousUserId !== nextUserId) appQueryClient.clear();
-    await switchUserStorageScope(payload.user?.id);
+    await switchUserStorageScope(payload.user?.id, revision);
     // 切换存储 scope 时 user store 仍保留旧身份；此处只能先检查 generation。
-    if (!isCurrentGeneration(generation)) return;
+    if (!isCurrentGeneration(generation) || revision !== readAuthSessionRevision()) return;
     withCanvasStorePersistenceSuppressed(() =>
         withAssetStorePersistenceSuppressed(() =>
             withUserScopedPersistenceSuppressed(() => {

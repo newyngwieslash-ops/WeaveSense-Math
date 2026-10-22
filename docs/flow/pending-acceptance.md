@@ -1,5 +1,7 @@
 # Flow 待验收：真实环境、依赖与发布门槛
 
+2026-10-22 修复增量：Native `fix-cross-tab-session-cache-isolation`已实现共享身份失效、scope固定和迟到响应保护；正式专项45项/221断言、构建与lint通过，18088双标签/503阻断及恢复/同账号缓存回退已实测。真实503发现的portal逃逸已修并重验。用户先接受没有独立Verifier的结果、后另行明确确认本地归档；archive退出0、archived=true、status=done、当前分支保留。没有推送/合并/发布，也不代表独立语义审查完成；真正离线、冷启动及其余U/A/G门槛保持。见[修复证据](../superpowers/reports/2026-10-22-cross-tab-session-cache-isolation-verify.md)。下方首次失败保留历史。
+
 本地实现状态见[实现状态](../implementation-status.md)，本轮当前基线的实际检查见[证据账](2026-10-20-current-baseline-evidence.md)。本文件区分“已有实现待验收”和“未开发”，不因 fixture、归档或测试进程退出 0 自动解除真实环境门槛。下方按 Round 分组保留历史登记时间，其“CI 已跑”是历史引用。
 
 当前仍需：真实 PG17 非超级用户 RLS、多实例/租约/提交不确定、实际 REST/Agent 受理→后台→操作卡/重启链路、真实 UI、整套 Compose profiles（含 subtitles/asr/backup）、私有存储/媒体/raw-response、旧库与 PG16→17 隔离副本迁移、备份恢复、监控告警、实际价目表/预算。外层租户中间件 Commit 与 HTTP 回执的关系仍待独立复现，不能因 Outbox 共享入口修复而声称全部解决。

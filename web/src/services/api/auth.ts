@@ -6,12 +6,24 @@ import type { FeatureAvailability } from "@/stores/use-user-store";
 import { http, apiBaseURL } from "@/services/api/request";
 import type { OSSConnectionTestInput, OSSConnectionTestResult, OSSProvider, S3Preset } from "@/lib/oss-settings";
 import type { VerificationPolicy } from "./verification";
+import { publishAuthSessionChange, readAuthSessionRevision } from "@/lib/user-scope";
 
 let authSessionRequest: Promise<AuthSessionPayload> | null = null;
+let authSessionGeneration = 0;
+let authSessionRequestRevision = "";
+const authPayloadRevisions = new WeakMap<AuthSessionPayload, string>();
 let authSessionCache: { payload: AuthSessionPayload; expiresAt: number } | null = null;
 
-export function invalidateAuthSessionCache() {
+export function invalidateAuthSessionCache(broadcast = true) {
+    authSessionGeneration += 1;
     authSessionCache = null;
+    authSessionRequest = null;
+    if (broadcast) publishAuthSessionChange();
+}
+
+export function assertAuthSessionPayloadCurrent(payload: AuthSessionPayload) {
+    const revision = authPayloadRevisions.get(payload);
+    if (revision !== undefined && revision !== readAuthSessionRevision()) throw new DOMException("认证会话已失效", "AbortError");
 }
 
 export type LocalUser = {
@@ -413,19 +425,25 @@ export function linuxDOLoginURL(next: string, acceptedTerms?: boolean) {
 }
 
 export function getAuthSession() {
+    const revision = readAuthSessionRevision();
     const now = Date.now();
-    if (authSessionCache && authSessionCache.expiresAt > now) return Promise.resolve(authSessionCache.payload);
-    if (authSessionRequest) return authSessionRequest;
-    authSessionRequest = http
+    if (authSessionCache && authSessionCache.expiresAt > now && authPayloadRevisions.get(authSessionCache.payload) === revision) return Promise.resolve(authSessionCache.payload);
+    if (authSessionRequest && authSessionRequestRevision === revision) return authSessionRequest;
+    const generation = authSessionGeneration;
+    const pending = http
         .get<AuthSessionPayload>("/auth/session")
         .then((payload) => {
+            if (generation !== authSessionGeneration || revision !== readAuthSessionRevision()) throw new DOMException("认证会话已失效", "AbortError");
+            authPayloadRevisions.set(payload, revision);
             authSessionCache = { payload, expiresAt: Date.now() + 5_000 };
             return payload;
         })
         .finally(() => {
-            authSessionRequest = null;
+            if (authSessionRequest === pending) authSessionRequest = null;
         });
-    return authSessionRequest;
+    authSessionRequest = pending;
+    authSessionRequestRevision = revision;
+    return pending;
 }
 
 export function getSystemChannels() {

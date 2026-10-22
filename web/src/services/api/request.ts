@@ -1,4 +1,5 @@
 import axios, { type AxiosRequestConfig, type AxiosResponse } from "axios";
+import { assertUserSessionCurrent, captureUserSession } from "@/lib/user-scope";
 
 export type ApiParams = Record<string, string | string[] | number | number[] | undefined>;
 
@@ -129,7 +130,14 @@ export type HttpRequestConfig = Omit<AxiosRequestConfig, "method" | "url" | "dat
 
 async function send<T>(method: string, url: string, data?: unknown, config?: HttpRequestConfig) {
     const { allowNotModified, ...axiosConfig } = config || {};
-    return request<T>(apiClient.request<BackendEnvelope<T>>({ method, url, data, ...axiosConfig }), { allowNotModified });
+    const session = captureUserSession();
+    // Authentication must remain available while the protected workspace is gated.
+    const protectedRequest = !url.startsWith("/auth/");
+    if (protectedRequest) assertUserSessionCurrent(session);
+    const signal = protectedRequest ? (axiosConfig.signal ? AbortSignal.any([session.signal, axiosConfig.signal as AbortSignal]) : session.signal) : axiosConfig.signal;
+    const result = await request<T>(apiClient.request<BackendEnvelope<T>>({ method, url, data, ...axiosConfig, signal }), { allowNotModified });
+    if (protectedRequest) assertUserSessionCurrent(session);
+    return result;
 }
 
 /**
@@ -143,8 +151,13 @@ export const http = {
     patch: <T>(url: string, data?: unknown, config?: HttpRequestConfig) => send<T>("patch", url, data, config),
     delete: <T>(url: string, config?: HttpRequestConfig) => send<T>("delete", url, undefined, config),
     async raw<T>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> {
+        const session = captureUserSession();
+        assertUserSessionCurrent(session);
         try {
-            return await apiClient.request<T>(config);
+            const signal = config.signal ? AbortSignal.any([session.signal, config.signal as AbortSignal]) : session.signal;
+            const response = await apiClient.request<T>({ ...config, signal });
+            assertUserSessionCurrent(session);
+            return response;
         } catch (error) {
             throw unwrapTransportError(error);
         }

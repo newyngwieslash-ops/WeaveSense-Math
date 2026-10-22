@@ -1,5 +1,6 @@
 import { http, apiBaseURL } from "@/services/api/request";
 import { consumeTaskTextStream, createTaskTextStreamParser } from "@/services/api/task-text-stream";
+import { assertUserSessionCurrent, captureUserSession } from "@/lib/user-scope";
 
 export type AgentPermissionMode = "read_only" | "auto" | "request_approval";
 export type AgentReasoningMode = "off" | "auto" | "deep";
@@ -197,7 +198,11 @@ export function subscribeAgentEvents(
     onEvent: (event: AgentEvent) => void,
     options: { after?: number; onError?: (error: unknown) => void; onConnectionChange?: (status: "connecting" | "connected" | "reconnecting" | "disconnected") => void; timeoutMs?: number } = {},
 ) {
+    const session = captureUserSession();
+    assertUserSessionCurrent(session);
     const controller = new AbortController();
+    const abortSession = () => controller.abort();
+    session.signal.addEventListener("abort", abortSession, { once: true });
     let localSeq = 0;
     let cursor = Number.isSafeInteger(options.after) && (options.after as number) > 0 ? (options.after as number) : 0;
     let lastActiveMessageKey = "";
@@ -222,6 +227,7 @@ export function subscribeAgentEvents(
             touch();
             options.onConnectionChange?.(failures ? "reconnecting" : "connecting");
             try {
+                assertUserSessionCurrent(session);
                 const response = await fetch(`${String(apiBaseURL).replace(/\/+$/, "")}/agent/runs/${encodeURIComponent(runId)}/events?after=${cursor}`, {
                     credentials: "include",
                     signal: attempt.signal,
@@ -263,6 +269,7 @@ export function subscribeAgentEvents(
                             parser,
                             decoder.decode(value, { stream: !done }),
                             (item) => {
+                                assertUserSessionCurrent(session);
                                 if (item.event === "agent_event") {
                                     const event = item.data as AgentEvent;
                                     if (event.runId !== runId || !Number.isSafeInteger(event.seq) || event.seq <= cursor) return;
@@ -319,6 +326,7 @@ export function subscribeAgentEvents(
                 if (terminal) return;
                 throw new Error("Agent 连接已中断，运行仍保留，可重新连接");
             } catch (error) {
+                try { assertUserSessionCurrent(session); } catch { controller.abort(); }
                 if (controller.signal.aborted) return;
                 if (++failures >= 5) {
                     options.onConnectionChange?.("disconnected");
@@ -343,6 +351,6 @@ export function subscribeAgentEvents(
                 if (controller.signal.aborted) finish();
             });
         }
-    })();
+    })().finally(() => session.signal.removeEventListener("abort", abortSession));
     return () => controller.abort();
 }

@@ -1,3 +1,5 @@
+import { assertUserSessionCurrent, captureUserSession } from "@/lib/user-scope";
+
 type ActiveGenerationConsumer = {
     controller: AbortController;
     settled: Promise<unknown>;
@@ -22,6 +24,9 @@ export function activeGenerationConsumerController(controller: AbortController):
 
 export function runGenerationConsumer<T>(signal: AbortSignal | undefined, operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
     if (pausedTransitions > 0) return Promise.reject(abortError());
+    const session = captureUserSession();
+    try { assertUserSessionCurrent(session); } catch (error) { return Promise.reject(error); }
+    signal = signal ? AbortSignal.any([signal, session.signal]) : session.signal;
 
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -44,6 +49,12 @@ export function runGenerationConsumer<T>(signal: AbortSignal | undefined, operat
 
 export function beginGenerationConsumer(signal?: AbortSignal): GenerationConsumerHandle {
     const controller = new AbortController();
+    const session = captureUserSession();
+    try { assertUserSessionCurrent(session); } catch {
+        controller.abort();
+        return { signal: controller.signal, release() {} };
+    }
+    signal = signal ? AbortSignal.any([signal, session.signal]) : session.signal;
     if (pausedTransitions > 0) {
         controller.abort();
         return { signal: controller.signal, release() {} };

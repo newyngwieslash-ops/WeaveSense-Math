@@ -5,6 +5,13 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## Flow 跨标签会话隔离修复（Native）
+
+- [x] 新专项先复现共享scope写入错位、认证在途请求复用和目录迟到响应污染；补充消费者/SSE先RED。当前10项边界检查及相邻HTTP/目录/画布/生成存储回归合计45通过、221断言；正式Runtime三项检查（专项、TypeScript/Vite构建、UI lint）均退出0。
+- [x] 18088仅保卷更新web：真实双标签退出自动失效、owner/member双向切换及无旧标记；session503时发现portal仍可见，修后重验旧目录/Drawer均0，恢复路由后重试回登录页；同一已确认账号接口不可达仅显示自身缓存。原后端/数据库/卷保留，无真实模型调用。
+- 用户已明确接受无独立Verifier的限制，Native六项验收据此通过；随后另行明确确认本地归档，实际archive退出0、archived=true、status=done，保留当前分支。独立语义审查仍未执行，不标注独立审查通过，也不把本地归档当发布。
+- [ ] 真正浏览器离线、冷启动、全部IndexedDB及完整U/A/G门槛仍待；详见 `docs/superpowers/reports/2026-10-22-cross-tab-session-cache-isolation-verify.md`。
+
 ## Flow 成员撤销与分析员权限修复（当前开发分支）
 
 - [x] 最小RED复现owner撤销返回成功且丢工作区、最后管理员可被撤销、重复/跨租户未命中假成功；修复后共享入口保护、计数错误传播、双工作区撤销及个人scope保持专项通过。

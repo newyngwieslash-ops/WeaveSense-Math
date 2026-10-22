@@ -49,6 +49,9 @@ import { createAgentRun, decideAgentApproval, getAgentRun, subscribeAgentEvents,
 const TERMINAL = new Set(["completed", "failed", "cancelled", "rejected"]);
 
 const newCallId = () => `ui_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const reportRequestError = (error: unknown) => {
+    if (!(error instanceof DOMException && error.name === "AbortError")) void message.error(error instanceof Error ? error.message : "操作失败");
+};
 
 /** P2 intelligence workspace: scoped chat (server conversation directory), tool actions, approvals, monitors. */
 export default function IntelligencePage() {
@@ -73,14 +76,20 @@ export default function IntelligencePage() {
     useEffect(() => () => unsubscribe.current?.(), []);
 
     useEffect(() => {
+        let cancelled = false;
         setConversations(cachedConversations());
         setActive(undefined);
         setMessages([]);
+        const onError = (error: unknown) => {
+            if (!cancelled && !(error instanceof DOMException && error.name === "AbortError")) void message.error("读取情报目录失败，已保留当前账号缓存");
+        };
         void listIntelWorkspaces().then((list) => {
+            if (cancelled) return;
             setWorkspaces(list);
             setWorkspaceId((current) => current ?? list[0]?.id);
-        });
-        void listConversations().then(setConversations);
+        }).catch(onError);
+        void listConversations(userId).then((list) => { if (!cancelled) setConversations(list); }).catch(onError);
+        return () => { cancelled = true; };
     }, [userId]);
 
     const refreshMonitors = useCallback(() => {
@@ -103,7 +112,7 @@ export default function IntelligencePage() {
             const status = (e as { status?: number }).status;
             void message.error(status === 409 ? "该消息已在其他位置更新，已重新加载" : "更新失败");
         }
-        if (active) await refreshMessages(active);
+        if (active) await refreshMessages(active).catch(reportRequestError);
     };
 
     const ensureConversation = async () => {
@@ -119,10 +128,10 @@ export default function IntelligencePage() {
     const send = async () => {
         const prompt = text.trim();
         if (!prompt || runId) return;
-        const conv = await ensureConversation();
-        setText("");
-        setStreaming("");
         try {
+            const conv = await ensureConversation();
+            setText("");
+            setStreaming("");
             const { run } = await createAgentRun({
                 subject: { kind: conv.subjectKind as "intelligence_workspace" | "topic" | "canvas", id: conv.subjectId },
                 conversationId: conv.id,
@@ -139,7 +148,7 @@ export default function IntelligencePage() {
                 const p = event.payload as { text?: string; replace?: boolean; status?: string };
                 if (event.type === "assistant_delta") setStreaming((cur) => (p.replace ? p.text || "" : cur + (p.text || "")));
                 else if (event.type === "assistant_message") setStreaming(p.text || "");
-                else if (event.type === "approval_requested") void getAgentRun(run.id).then((r) => setApproval(r.run.approval));
+                else if (event.type === "approval_requested") void getAgentRun(run.id).then((r) => setApproval(r.run.approval)).catch(reportRequestError);
                 // run_terminal is the server's explicit end marker; the status checks are a fallback for older servers.
                 if (event.type === "run_terminal" || (event.type === "run_status" && p.status && TERMINAL.has(p.status))) {
                     unsubscribe.current?.();
@@ -147,12 +156,12 @@ export default function IntelligencePage() {
                     setApproval(undefined);
                     setStreaming("");
                     refreshMonitors();
-                    void refreshMessages(conv);
+                    void refreshMessages(conv).catch(reportRequestError);
                 }
             });
         } catch (err) {
             setRunId(undefined);
-            void message.error(err instanceof Error ? err.message : "智能体运行失败");
+            reportRequestError(err);
         }
     };
 
@@ -198,7 +207,7 @@ export default function IntelligencePage() {
                         style={{ cursor: "pointer", fontWeight: c.id === active?.id ? 600 : 400 }}
                         onClick={() => {
                             setActive(c);
-                            void refreshMessages(c);
+                            void refreshMessages(c).catch(reportRequestError);
                         }}
                         actions={
                             c.subjectKind === "canvas" && c.subjectId
@@ -270,7 +279,7 @@ export default function IntelligencePage() {
                 <Button type="primary" loading={!!runId} onClick={() => void send()}>
                     发送
                 </Button>
-                <Button onClick={() => void runTool("intel_search_documents", { query: text })} disabled={!text.trim()}>
+                <Button onClick={() => void runTool("intel_search_documents", { query: text }).catch(reportRequestError)} disabled={!text.trim()}>
                     检索
                 </Button>
             </Space.Compact>
@@ -397,7 +406,7 @@ export default function IntelligencePage() {
                                 setActive(conv);
                                 setConversations(await listConversations());
                                 await refreshMessages(conv);
-                            })
+                            }).catch(reportRequestError)
                         }
                     />
                 </Space>

@@ -1,5 +1,6 @@
 import { useUserStore } from "@/stores/use-user-store";
 import { http } from "./request";
+import { assertUserSessionCurrent, captureUserSession } from "@/lib/user-scope";
 
 export type AgentSubject = { kind: "canvas" | "intelligence_workspace" | "topic"; id: string };
 export type IntelWorkspace = { id: string; tenantId: string; slug: string; name: string };
@@ -40,8 +41,13 @@ export function writeCachedConversations(list: FlowConversation[], userId?: stri
 export const listIntelWorkspaces = () => http.get<IntelWorkspace[]>("/intelligence/workspaces");
 
 /** Server directory is authoritative; localStorage is only a user-scoped warm-start cache. */
-export async function listConversations(userId?: string | null): Promise<FlowConversation[]> {
+export async function listConversations(userId: string | null | undefined = useUserStore.getState().user?.id): Promise<FlowConversation[]> {
+    const session = captureUserSession();
+    assertUserSessionCurrent(session);
+    if (!userId || userId !== useUserStore.getState().user?.id) throw new DOMException("请重新确认会话身份", "AbortError");
     const list = await http.get<FlowConversation[]>("/agent/conversations");
+    assertUserSessionCurrent(session);
+    if (userId !== useUserStore.getState().user?.id) throw new DOMException("账号会话已变化", "AbortError");
     writeCachedConversations(list, userId);
     return list;
 }
