@@ -1,5 +1,9 @@
 # Flow 待验收：真实环境、依赖与发布门槛
 
+2026-10-22 19:44补记：用户先明确接受JSONL变更没有独立Verifier的结果，随后另行确认本地归档；Native已归档到docs/superpowers/comet/archive/2026-10-22-fix-canvas-jsonl-import，6/6通过、status=done、archived=true、当前分支kept，无推送/合并/发布。全Web旧失败、完整U03及发布门槛保持。下方“等待限制接受”是此前阶段记录。
+
+2026-10-22 JSONL修复增量：用户确认Shape后实际RED→GREEN；共享数据源入口最小修复，专项11项/58断言、Runtime构建/lint及18088真实合法/坏行文件、下游、刷新与PG核对通过。原五张画布/10文档/1报告指纹与非web容器保持，模型/预算0，新增1张专项图保留。全Web40失败/2错误与撤回本补丁对照的旧失败一致；本变更无独立Verifier，Native六项仍pending，等待本轮限制接受，尚未归档或提交。详见[修复证据](../superpowers/reports/2026-10-22-fix-canvas-jsonl-import-verify.md)。下方首次失败保留历史；TSV、手工连线及完整U03不据此通过。
+
 2026-10-22 修复增量：Native `fix-cross-tab-session-cache-isolation`已实现共享身份失效、scope固定和迟到响应保护；正式专项45项/221断言、构建与lint通过，18088双标签/503阻断及恢复/同账号缓存回退已实测。真实503发现的portal逃逸已修并重验。用户先接受没有独立Verifier的结果、后另行明确确认本地归档；archive退出0、archived=true、status=done、当前分支保留。没有推送/合并/发布，也不代表独立语义审查完成；真正离线、冷启动及其余U/A/G门槛保持。见[修复证据](../superpowers/reports/2026-10-22-cross-tab-session-cache-isolation-verify.md)。下方首次失败保留历史。
 
 本地实现状态见[实现状态](../implementation-status.md)，本轮当前基线的实际检查见[证据账](2026-10-20-current-baseline-evidence.md)。本文件区分“已有实现待验收”和“未开发”，不因 fixture、归档或测试进程退出 0 自动解除真实环境门槛。下方按 Round 分组保留历史登记时间，其“CI 已跑”是历史引用。

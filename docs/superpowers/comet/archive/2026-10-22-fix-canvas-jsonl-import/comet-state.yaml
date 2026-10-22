@@ -1,0 +1,258 @@
+schema: comet.native.v4
+name: fix-canvas-jsonl-import
+language: en
+phase: archive
+status: done
+state_version: 9
+brief: brief.md
+document_constraints_version: 1
+shape_confirmation_hash: 888c33f7ca3f30c165ae411a96b04e338ea7d2bbce9a1d4188e1eab46f8f0b87
+spec_changes:
+  - capability: canvas-jsonl-data-source-import
+    operation: create
+    source: specs/canvas-jsonl-data-source-import/spec.md
+workspace:
+  isolation: current
+  change_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  target_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "`.jsonl`（含大小写扩展）通过现有文件入口进入共享求值器时，两个中文对象按行和原顺序得到2条，字段原样；LF、CRLF、首尾空白/空白行及\
+      UTF-8 BOM不产生伪记录，空文件为0条。"
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受本变更没有独立Verifier的结果：专项11项/58断言、构建lint及18088真实合法坏行导入/下游/reload/PG已验\
+        证；全量旧40失败2错误仍保留；此次不含归档授权，保留当前分支和数据。"
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 每个非空JSONL行独立使用标准JSON解析，单行对象/标量/数组/null复用既有CanvasDataItem转换且一行一条，不将对象的items/rows/data等包装字段或数组展开成跨行记录。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受本变更没有独立Verifier的结果：专项11项/58断言、构建lint及18088真实合法坏行导入/下游/reload/PG已验\
+        证；全量旧40失败2错误仍保留；此次不含归档授权，保留当前分支和数据。"
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: 任一非空行非法时整份返回0条和包含原物理行号的中文JSONL错误；前面已解析行不得作为部分成功结果流入下游，不静默跳坏行、回退TXT或执行内容。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受本变更没有独立Verifier的结果：专项11项/58断言、构建lint及18088真实合法坏行导入/下游/reload/PG已验\
+        证；全量旧40失败2错误仍保留；此次不含归档授权，保留当前分支和数据。"
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: 只有format=json且文件名明确为.jsonl的持久数据源使用JSONL规则；普通.json与无JSONL标识的JSON保持整份严格解析，原TXT/intel/CSV/Markdown及手工切换CSV但仍保留.jsonl文件名的节点不被强制改回JSONL。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受本变更没有独立Verifier的结果：专项11项/58断言、构建lint及18088真实合法坏行导入/下游/reload/PG已验\
+        证；全量旧40失败2错误仍保留；此次不含归档授权，保留当前分支和数据。"
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: 先补最小失败测试实际RED，后修共享入口GREEN；JSONL专项、现有数据流6项相邻回归、TypeScript/Vite构建和UI
+      lint通过，保留真实失败和未执行边界，不调用模型或子代理。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受本变更没有独立Verifier的结果：专项11项/58断言、构建lint及18088真实合法坏行导入/下游/reload/PG已验\
+        证；全量旧40失败2错误仍保留；此次不含归档授权，保留当前分支和数据。"
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: 18088只保卷更新必要web后，通过真实文件选择器导入合法/坏行JSONL，核对2条/行号错误、下游与刷新重开、PG持久结果及原画布/文档/报告指纹；保留所有现有数据/缓存。若镜像包含其他dirty明确记录，不称纯HEAD；部署/浏览器受阻则如实列未通过，不能用源码单测代替。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受本变更没有独立Verifier的结果：专项11项/58断言、构建lint及18088真实合法坏行导入/下游/reload/PG已验\
+        证；全量旧40失败2错误仍保留；此次不含归档授权，保留当前分支和数据。"
+      truncated: false
+builder_handoff:
+  candidate_id: 2591353c-209b-4087-8f06-f83b0a4b201e
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:e19cc0c7-50dd-45ee-8865-d9ff8d404577
+  iteration: 1
+  summary:
+    text: 用户确认后先实际RED：2条中文JSONL实际0；扩展边界4 fail/1
+      pass。仅parseDataSourceNode增加显式format=json/fileName=.jsonl逐物理行标准JSON分支，保留通用JSON与其他格式；坏行整份0及原行号，复用既有标准化，无新依赖。开发专项11
+      pass/58断言。全Web同命令对照：修复2209 pass/40 fail/2 errors，临时撤回仅本轮补丁2205 pass/44
+      fail/2
+      errors，差异仅4个新JSONL检查、修复无独有失败；已恢复相同补丁。旧失败不掩盖、不扩修。正式构建后待18088保卷web部署和真实文件旅程，代码与数据保留边界不变。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+  checks:
+    - name:
+        text: jsonl-red-green
+        truncated: false
+      result: passed
+      note:
+        text: 先0 pass/1 fail，再1 pass/4 fail；修复后5项新专项与6项既有数据流合计11 pass/58断言。
+        truncated: false
+    - name:
+        text: full-web-suite
+        truncated: false
+      result: failed
+      note:
+        text: bun run test：2209 pass/40 fail/2
+          errors。撤回本轮解析器补丁同命令为2205/44/2，差异仅4项JSONL，固定版无独有失败。所有原失败名称及日志保留。
+        truncated: false
+    - name:
+        text: 18088-jsonl
+        truncated: false
+      result: not-run
+      note:
+        text: 需本次正式构建产物后仅更新web，再真实文件选择器/刷新/下游/PG保留；不称已通过。
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 全Web40失败/2错误未解决，基线对照证明无新增失败名称；本聚焦验证不代表全量测试或发布通过。
+      truncated: false
+    - text: 18088真实JSONL复验待正式构建后执行，外部验收不得由源码检查替代。
+      truncated: false
+    - text: 用户禁止子代理/新聊天，独立Verifier没有获授权执行方式，不启动，不沿用旧变更限制接受。
+      truncated: false
+    - text: 当前工作区包含保留的其他修改，构建与镜像如包含须标注非纯HEAD；无模型、TSV/拖接修复、API/数据库/RLS更改或推送合并发布。
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-22T10:17:11.189Z
+blockers: []
+verification:
+  candidate_id: 2591353c-209b-4087-8f06-f83b0a4b201e
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:f9d3157d-ba6a-4116-9dcd-31c4640b32bc
+  iteration: 1
+  attempt: 1
+  assurance: user-confirmed-degraded
+  verdict: pass
+  checks:
+    - id: jsonl-and-dataflow
+      name:
+        text: jsonl-and-dataflow
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: web/test/canvas-jsonl-import.test.ts
+          truncated: false
+        - text: web/test/canvas-dataflow.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2302
+    - id: frontend-build
+      name:
+        text: frontend-build
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 16888
+    - id: frontend-lint
+      name:
+        text: frontend-lint
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 25366
+  summary:
+    text: 用户明确接受本变更没有独立Verifier的结果：专项11项/58断言、构建lint及18088真实合法坏行导入/下游/reload/PG已验证；全量旧40失败2错误仍保留；此次不含归档授权，保留当前分支和数据。
+    truncated: false
+  risks:
+    - text: No independent semantic Verifier execution was available; Runtime checks
+        alone do not cover acceptance semantics.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-10-22T11:34:58.448Z
+history:
+  - goal_cycle: 1
+    iteration: 0
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Capability association revoked through comet native spec disassociate
+      truncated: false
+    completed_at: 2026-10-22T09:25:37.943Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: blocked
+    unresolved_ids:
+      - A1
+      - A2
+      - A3
+      - A4
+      - A5
+      - A6
+    summary:
+      text: 平台有子代理工具，但用户本轮明确禁止启动子代理或新聊天，因此没有获授权的独立Verifier执行路径；未启动任务，不伪称平台故障。三项Runtime检查通过；主会话将完成18088真实复验并如实报告全量旧失败，随后请求本变更无独立Verifier结果的明确接受。
+      truncated: false
+    completed_at: 2026-10-22T10:22:13.422Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 用户明确接受本变更没有独立Verifier的结果：专项11项/58断言、构建lint及18088真实合法坏行导入/下游/reload/PG已验证；全量旧40失败2错误仍保留；此次不含归档授权，保留当前分支和数据。
+      truncated: false
+    completed_at: 2026-10-22T11:34:58.448Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-22T09:24:08.319Z

@@ -5,6 +5,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## Flow JSONL 导入聚焦变更（已本地归档）
+
+- [x] 用户确认完整Shape后实际最小RED（预期2条/实际0条），再补边界RED；仅共享parseDataSourceNode增加显式json/.jsonl分支，复用原标准化。JSONL5项与相邻数据流6项合计11通过/58断言，Runtime正式构建及lint退出0。
+- [x] 18088仅替换web并保卷；真实文件选择器合法JSONL为2条、下游title为逐行甲/乙；坏行文件原物理第5行报错、源和下游均0条。UI恢复合法正文后reload仍2条，PG revision7/2节点/1连线及正文配置一致；文件名保留bad-lines.jsonl，不声称再次上传原文件。
+- [x] 原五张画布逐行指纹、10文档/1报告、模型任务/预算和非web容器身份均不变，仅新增1张专项画布保留；没有清缓存或模型调用。
+- [ ] 全Web仍2209通过/40失败/2错误；仅撤回本轮补丁对照为2205/44/2，差异恰为4项新JSONL检查，修复无独有失败。既有失败尚未解决，不称全量通过。
+- 用户已明确接受本次没有独立Verifier的结果，随后另行确认本地归档；Native六项通过、status=done、archived=true、当前分支kept。不代表独立审查、全量测试或发布通过。详见 `docs/superpowers/reports/2026-10-22-fix-canvas-jsonl-import-verify.md`。TSV、拖接及浏览器后置项不纳入。
+
 ## Flow 跨标签会话隔离修复（Native）
 
 - [x] 新专项先复现共享scope写入错位、认证在途请求复用和目录迟到响应污染；补充消费者/SSE先RED。当前10项边界检查及相邻HTTP/目录/画布/生成存储回归合计45通过、221断言；正式Runtime三项检查（专项、TypeScript/Vite构建、UI lint）均退出0。

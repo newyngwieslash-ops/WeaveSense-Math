@@ -287,9 +287,23 @@ function toCanvasDataItem(value: unknown): CanvasDataItem {
 
 export function parseDataSourceNode(node: CanvasNodeData): { items: CanvasDataItem[]; format: CanvasDataSourceFormat; error?: string } {
     const ds = node.metadata?.dataSource;
-    const raw = (ds?.rawText ?? node.metadata?.content ?? node.metadata?.prompt ?? "").trim();
+    const sourceText = ds?.rawText ?? node.metadata?.content ?? node.metadata?.prompt ?? "";
+    const raw = sourceText.trim();
     const format: CanvasDataSourceFormat = ds?.format || detectDataSourceFormatFromFilename(ds?.fileName || "", raw);
     if (!raw) return { items: [], format };
+
+    if (format === "json" && ds?.fileName?.trim().toLowerCase().endsWith(".jsonl")) {
+        const items: CanvasDataItem[] = [];
+        for (const [index, line] of sourceText.split(/\r?\n/).entries()) {
+            if (!line.trim()) continue;
+            try {
+                items.push(toCanvasDataItem(JSON.parse(line.trim())));
+            } catch {
+                return { items: [], format, error: `JSONL 解析失败：第 ${index + 1} 行不是有效 JSON` };
+            }
+        }
+        return { items, format };
+    }
 
     if (format === "json" || format === "intel") {
         const res = parseJsonItems(raw);
