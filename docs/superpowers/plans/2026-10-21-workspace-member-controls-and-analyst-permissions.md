@@ -2,6 +2,7 @@
 change: fix-workspace-member-controls-and-analyst-permissions
 design-doc: docs/superpowers/specs/2026-10-21-workspace-member-controls-and-analyst-permissions-design.md
 base-ref: 2b47d1438f6574f8c6c717cb182c0b83e9460d17
+archived-with: 2026-10-22-fix-workspace-member-controls-and-analyst-permissions
 ---
 
 # 成员撤销与 analyst 权限实施计划

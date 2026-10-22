@@ -2,6 +2,8 @@
 comet_change: fix-workspace-member-controls-and-analyst-permissions
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-10-22-fix-workspace-member-controls-and-analyst-permissions
+status: final
 ---
 
 # 成员撤销与 analyst 合同技术设计
