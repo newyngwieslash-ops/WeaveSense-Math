@@ -160,7 +160,7 @@ function normalizeScalarValue(raw: string): string | number | boolean {
     return trimmed;
 }
 
-function splitCsvLine(line: string): string[] {
+function splitCsvLine(line: string, delimiter: "," | "\t"): string[] {
     const cells: string[] = [];
     let current = "";
     let inQuotes = false;
@@ -175,7 +175,7 @@ function splitCsvLine(line: string): string[] {
             }
             continue;
         }
-        if (ch === "," && !inQuotes) {
+        if (ch === delimiter && !inQuotes) {
             cells.push(current.trim());
             current = "";
             continue;
@@ -186,18 +186,18 @@ function splitCsvLine(line: string): string[] {
     return cells;
 }
 
-export function parseCsvItems(text: string): CanvasDataItem[] {
-    const lines = text
+export function parseCsvItems(text: string, delimiter: "," | "\t" = ","): CanvasDataItem[] {
+    const lines = (delimiter === "\t" ? text.replace(/^\uFEFF/, "") : text)
         .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
+        .map((line) => delimiter === "\t" ? line : line.trim())
+        .filter((line) => line.trim());
     if (!lines.length) return [];
     if (lines.length === 1) {
-        return splitCsvLine(lines[0]).filter(Boolean);
+        return splitCsvLine(lines[0], delimiter).filter(Boolean);
     }
-    const headers = splitCsvLine(lines[0]).map((h, idx) => h || `col_${idx + 1}`);
+    const headers = splitCsvLine(lines[0], delimiter).map((h, idx) => h || `col_${idx + 1}`);
     return lines.slice(1).map((line) => {
-        const cells = splitCsvLine(line);
+        const cells = splitCsvLine(line, delimiter);
         const row: Record<string, unknown> = {};
         headers.forEach((header, idx) => {
             row[header] = normalizeScalarValue(cells[idx] ?? "");
@@ -321,7 +321,8 @@ export function parseDataSourceNode(node: CanvasNodeData): { items: CanvasDataIt
         };
     }
     if (format === "csv") {
-        return { items: parseCsvItems(raw), format };
+        const delimiter = ds?.fileName?.trim().toLowerCase().endsWith(".tsv") ? "\t" : ",";
+        return { items: parseCsvItems(delimiter === "\t" ? sourceText : raw, delimiter), format };
     }
     if (format === "markdown") {
         return { items: parseMarkdownItems(raw), format };

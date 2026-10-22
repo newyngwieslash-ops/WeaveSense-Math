@@ -1,0 +1,250 @@
+schema: comet.native.v4
+name: fix-canvas-tsv-import
+language: en
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+document_constraints_version: 1
+shape_confirmation_hash: 01f03102fd310c6116d5b9c7bb4283d63cacc5916c3cb38c5f983b2229fefec6
+spec_changes:
+  - capability: canvas-tsv-data-source-import
+    operation: create
+    source: specs/canvas-tsv-data-source-import/spec.md
+workspace:
+  isolation: current
+  change_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  target_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: 实际格式为csv且文件名trim后不区分大小写以.tsv结尾时，合法两条三列中文TSV得到两条独立id/title/score对象，顺序和中文正确，数字/布尔等沿用既有标量转换；LF与CRLF均通过，不再把制表符粘进列名。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受fix-canvas-tsv-import本次没有独立Verifier的验证结果；保持不启动子代理或新聊天，保留完整Web原40失\
+        败/2错误及未完成U/A限制。接受仅推进Native后续，不授权本地归档、推送、合并或发布。"
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: TSV保留首尾空列的位置，空表头沿现有规则命名col_N，缺失/空值沿现有规则为空字符串，UTF-8起始BOM和空白行不产生伪记录；空文件0条。只有一个非空物理行时沿用当前CSV单行行为，得到非空单元格列表，不另行引入表头模式。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受fix-canvas-tsv-import本次没有独立Verifier的验证结果；保持不启动子代理或新聊天，保留完整Web原40失\
+        败/2错误及未完成U/A限制。接受仅推进Native后续，不授权本地归档、推送、合并或发布。"
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: 复用既有引号扫描：引号内制表符不作为列分隔、双引号转义保持，逗号在TSV单元格内是普通数据；不新增跨物理行字段能力，也不改变当前trim/标量转换和宽松引号边界。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受fix-canvas-tsv-import本次没有独立Verifier的验证结果；保持不启动子代理或新聊天，保留完整Web原40失\
+        败/2错误及未完成U/A限制。接受仅推进Native后续，不授权本地归档、推送、合并或发布。"
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: 只有csv/.tsv组合走制表符；普通.csv、无文件标识CSV及parseCsvItems默认调用仍按逗号，不启发式识别tab。残留.tsv名称但用户明确切到JSON/JSONL、TXT、Markdown或intel时尊重实际格式，JSONL现有显式规则不变。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受fix-canvas-tsv-import本次没有独立Verifier的验证结果；保持不启动子代理或新聊天，保留完整Web原40失\
+        败/2错误及未完成U/A限制。接受仅推进Native后续，不授权本地归档、推送、合并或发布。"
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: 本轮Shape确认后先新增最小正式失败测试并实际RED，再修共享入口GREEN；TSV专项、现有dataflow与JSONL回归、正式TypeScript/Vite构建及UI
+      lint通过。前轮诊断RED不代替本轮TDD；旧全Web40失败/2错误及未执行项如实保留，不宣称全量通过。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受fix-canvas-tsv-import本次没有独立Verifier的验证结果；保持不启动子代理或新聊天，保留完整Web原40失\
+        败/2错误及未完成U/A限制。接受仅推进Native后续，不授权本地归档、推送、合并或发布。"
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: 18088仅保卷更新必要web后，使用真实选择器导入正常/空列等TSV样本，核对结构化三列、下游提取及刷新/重开、PG正文/格式/连线；原七张画布、10文档/1报告、模型/预算和非web容器指纹保持，测试另建专项图不覆盖已有编辑。构建含其他dirty明确标注，不称纯HEAD；无模型或清缓存。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户明确接受fix-canvas-tsv-import本次没有独立Verifier的验证结果；保持不启动子代理或新聊天，保留完整Web原40失\
+        败/2错误及未完成U/A限制。接受仅推进Native后续，不授权本地归档、推送、合并或发布。"
+      truncated: false
+builder_handoff:
+  candidate_id: f71ecb3b-273c-4df0-8603-a06774396781
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:f0c74d49-b46a-49f7-9086-ced87ff81312
+  iteration: 1
+  summary:
+    text: 正式最小RED→共享分隔符修复→16项GREEN/73断言；仅csv/.tsv选tab并保留空列。18088保卷UI/PG将在构建后执行。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+  checks:
+    - name:
+        text: formal-red
+        truncated: false
+      result: passed
+      note:
+        text: 最小0pass1fail，再扩展1pass4fail
+        truncated: false
+    - name:
+        text: focused-green
+        truncated: false
+      result: passed
+      note:
+        text: 16pass/73assertions
+        truncated: false
+    - name:
+        text: full-web
+        truncated: false
+      result: failed
+      note:
+        text: 2214pass/40fail/2errors，旧失败未修
+        truncated: false
+    - name:
+        text: 18088-ui-pg
+        truncated: false
+      result: not-run
+      note:
+        text: 待本次构建
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 用户禁止子代理，无独立Verifier；本轮单独接受
+      truncated: false
+    - text: 完整Web旧40失败2错误，不称全量通过
+      truncated: false
+    - text: 18088外部验收尚未完成；镜像含旧Agent面板dirty
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-22T12:53:48.329Z
+blockers: []
+verification:
+  candidate_id: f71ecb3b-273c-4df0-8603-a06774396781
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:93b547bc-712b-413a-8824-0ff45588b001
+  iteration: 1
+  attempt: 1
+  assurance: user-confirmed-degraded
+  verdict: pass
+  checks:
+    - id: tsv-regression
+      name:
+        text: TSV/JSONL/dataflow
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: web/test/canvas-tsv-import.test.ts
+          truncated: false
+        - text: web/test/canvas-dataflow.test.ts
+          truncated: false
+        - text: web/test/canvas-jsonl-import.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2727
+    - id: web-build
+      name:
+        text: TypeScript/Vite
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 20647
+    - id: ui-lint
+      name:
+        text: UI lint
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 27739
+  summary:
+    text: 用户明确接受fix-canvas-tsv-import本次没有独立Verifier的验证结果；保持不启动子代理或新聊天，保留完整Web原40失败/2错误及未完成U/A限制。接受仅推进Native后续，不授权本地归档、推送、合并或发布。
+    truncated: false
+  risks:
+    - text: No independent semantic Verifier execution was available; Runtime checks
+        alone do not cover acceptance semantics.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-10-22T13:11:51.871Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: blocked
+    unresolved_ids:
+      - A1
+      - A2
+      - A3
+      - A4
+      - A5
+      - A6
+    summary:
+      text: 用户明确禁止启动子代理或新聊天，因此本轮没有获授权的独立Verifier执行能力；未启动Verifier、未伪造独立结果。Runtime三项正式检查已通过并复用，主会话继续18088外部验收，最终结果需本次明确接受。
+      truncated: false
+    completed_at: 2026-10-22T12:57:49.600Z
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 用户明确接受fix-canvas-tsv-import本次没有独立Verifier的验证结果；保持不启动子代理或新聊天，保留完整Web原40失败/2错误及未完成U/A限制。接受仅推进Native后续，不授权本地归档、推送、合并或发布。
+      truncated: false
+    completed_at: 2026-10-22T13:11:51.871Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-22T12:39:13.033Z

@@ -5,6 +5,13 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## Flow TSV 导入聚焦变更（已本地归档）
+
+- [x] 用户确认完整Shape后实际最小RED0通过/1失败，扩展RED1通过/4失败，再修共享CSV扫描器；仅csv/.tsv选择tab并保留原正文空列，GREEN16项/73断言，Runtime正式构建/lint退出0。
+- [x] 18088仅替换web并保卷，真实选择器rows.tsv为2条独立id/title/score，下游制表甲/乙；空列BOM/CRLF样本为col_1/title/flag/col_4，flag提取true/false。恢复正常文件后刷新与PG revision6/2节点/1连线一致；原七图、10文档/1报告、模型/预算0及非web容器指纹保持，仅新增一张图。
+- [ ] 全Web2214通过/40失败/2错误；与上轮JSONL日志逐名比较38个失败名称完全一致，无新增，不能称全量通过。用户先接受本次无独立Verifier结果，后另行确认本地归档；Native六项通过、status=done、archived=true、当前工作区kept，新主规格已创建，不代表独立审查或发布通过。
+- 证据见 `docs/superpowers/reports/2026-10-22-fix-canvas-tsv-import-verify.md`，设计任务见 `docs/superpowers/plans/2026-10-22-fix-canvas-tsv-import.md`。下方首次TSV失败保留历史，不清缓存、模型、子代理或推送/合并/发布，不修重连。
+
 ## Flow JSONL 导入聚焦变更（已本地归档）
 
 - [x] 用户确认完整Shape后实际最小RED（预期2条/实际0条），再补边界RED；仅共享parseDataSourceNode增加显式json/.jsonl分支，复用原标准化。JSONL5项与相邻数据流6项合计11通过/58断言，Runtime正式构建及lint退出0。
