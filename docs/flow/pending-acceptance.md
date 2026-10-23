@@ -1,5 +1,13 @@
 # Flow 待验收：真实环境、依赖与发布门槛
 
+2026-10-23 18:32 +08:00：用户另行确认F04本地归档并保留分支，实际archive退出0、stateVersion8、done/archived=true、工作区kept，七项按本次无独立Verifier限制通过；新主规格test-session-windows-execution已创建。归档仅本次测试/工件与文档增量，其他修改和数据保留；无部署、模型、子代理或推送合并发布。本轮引用有效检查，不重复重跑；全Web8项旧失败、Linux真实CI及原F03恢复阻塞仍在。下方待归档为历史记录。
+
+2026-10-23 18:08 +08:00：用户明确接受F04本次无独立Verifier有限结果，Runtime Archive v7、七验收按限制通过；实际归档预检ready=true、无阻塞、无需重验。尚未归档或提交，结果接受不含交付授权。本轮只记录决定与预检，未重跑产品测试或部署；全Web2300通过/8失败/0错误、Linux真实CI未执行和原F03阻塞继续保持。见[最新交接](2026-10-23-180815-f04-result-accepted-handoff.md)。下方待接受为此前阶段记录。
+
+2026-10-23 17:22 +08:00：F04完整Shape确认后正式RED→GREEN，只修测试边界；Runtime100项/367断言与build/lint通过。实际全Web2300通过/8失败/0错误，旧38个去重失败消除30个、无新增，8项静态UI债务继续待验。Native Verify v6七项pending，因禁止子代理而无独立Verifier，需本次明确接受有限结果；未提交、归档或部署。Linux真实CI未运行，原F03恢复及其他U/A/G门槛保持。见[验证报告](../superpowers/reports/2026-10-23-fix-test-session-isolation-and-windows-execution-verify.md)和[新交接](2026-10-23-172209-f04-tests-verified-handoff.md)。下方Shape待确认为此前记录。
+
+2026-10-23 16:59 +08:00：F04聚焦变更 `fix-test-session-isolation-and-windows-execution`已建立Native Shape，当前目录/分支保留；七验收、完整规格与四任务等待本次最终确认。尚未正式RED或修改测试/产品代码；不沿用旧Verifier接受或交付授权。原F03恢复、全Web旧债及其他U/A/G门槛保持。见[工件交接](2026-10-23-165940-f04-shape-ready-handoff.md)。
+
 2026-10-23 13:01 +08:00：用户另行确认本地归档 `fix-canvas-pending-edit-sync` 并保留分支；实际archive退出0、stateVersion12、done/archived=true、工作区kept，新主规格已创建，工件移到2026-10-23归档目录。原F03恢复继续阻塞、T4不全勾选，全Web原40失败/2错误及其他发布门槛保持；本轮只归档收尾，无产品重验、模型、清缓存、子代理或推送合并发布。后续相关精确提交与最终核对见[归档交接](2026-10-23-130151-f03-local-archive-handoff.md)。
 
 2026-10-23 12:56 +08:00：用户明确接受F03本次无独立Verifier的有限结果，**原F03恢复继续登记阻塞**。Runtime进入Archive，六项按该限制通过；实际归档预检退出0、ready=true、无阻塞、无需重验。只记录决定及更新文档，未重跑产品测试、未归档/提交，未覆盖恢复或清缓存；全Web旧40失败/2错误及其他发布门槛保持。见[最新交接](2026-10-23-125613-f03-limited-result-accepted-handoff.md)。

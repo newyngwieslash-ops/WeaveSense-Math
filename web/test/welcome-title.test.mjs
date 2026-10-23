@@ -5,17 +5,17 @@ import vm from "node:vm";
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("welcome entry loads configured appearance", async () => {
+async function checkEntry(mainSource) {
     let calls = 0;
     const imports = [];
-    const main = source("../src/main.tsx")
-        .replace(/^import .*;\n/gm, "")
+    const main = mainSource
+        .replace(/^import .*;\r?\n/gm, "")
         .replace(/import\.meta\.env\.DEV/g, "false")
         .replace(/import\(/g, "loadModule(");
     vm.runInNewContext(main, {
         window: { location: { pathname: "/welcome" } },
         installChunkRecovery() {},
-        isIsolatedDirectorRepro: () => false,
+        isIsolatedPrevisRepro: () => false,
         bootstrapAppearance: async () => {
             calls++;
         },
@@ -26,6 +26,14 @@ test("welcome entry loads configured appearance", async () => {
     await Promise.resolve();
     assert.equal(calls, 1, "welcome entry must bootstrap appearance");
     assert.deepEqual(imports, ["./welcome-application"]);
+}
+
+test("welcome entry loads configured appearance", () => checkEntry(source("../src/main.tsx")));
+
+test("welcome entry keeps the same contract for LF and CRLF", async () => {
+    const main = source("../src/main.tsx").replace(/\r\n/g, "\n");
+    await checkEntry(main);
+    await checkEntry(main.replace(/\n/g, "\r\n"));
 });
 
 test("welcome effects preserve configured SEO title", () => {

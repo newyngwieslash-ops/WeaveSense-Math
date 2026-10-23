@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentEvent, CreateAgentRunInput } from "../src/services/api/agent";
 
@@ -10,33 +10,44 @@ import type { AgentEvent, CreateAgentRunInput } from "../src/services/api/agent"
 const dir = mkdtempSync(join(tmpdir(), "agent-reliability-"));
 const root = new URL("../src/", import.meta.url);
 const requestPath = join(dir, "request.ts");
+const scopePath = join(dir, "scope.ts");
+// Copy the real session guard into the isolated dependency graph, never a bypass.
+writeFileSync(scopePath, readFileSync(new URL("lib/user-scope.ts", root), "utf8"));
+const scope: typeof import("../src/lib/user-scope") = await import(scopePath);
 writeFileSync(requestPath, 'export const apiBaseURL = "https://agent.invalid/api"; export const http = { post: async () => { throw new Error("unexpected POST"); } };');
 writeFileSync(
     join(dir, "agent.ts"),
     readFileSync(new URL("services/api/agent.ts", root), "utf8")
         .replace('"@/services/api/request"', JSON.stringify(requestPath))
+        .replace('"@/lib/user-scope"', JSON.stringify(scopePath))
         .replace('"@/services/api/task-text-stream"', JSON.stringify(fileURLToPath(new URL("services/api/task-text-stream.ts", root)))),
 );
 const api: typeof import("../src/services/api/agent") = await import(join(dir, "agent.ts"));
 const transport = await import(requestPath);
 const storagePath = join(dir, "storage.ts");
 writeFileSync(storagePath, "export const data = new Map(); export const localForageStorageForScope = () => ({ getItem: async (k) => data.get(k) ?? null, setItem: async (k,v) => {data.set(k,v);}, removeItem: async (k) => {data.delete(k);} });");
-writeFileSync(join(dir, "scope.ts"), 'export const getActiveUserScope = () => "test-user";');
 writeFileSync(
     join(dir, "conversations.ts"),
     readFileSync(new URL("services/cloud-agent-conversations.ts", root), "utf8")
         .replace('"@/services/api/request"', JSON.stringify(requestPath))
         .replace('"@/lib/localforage-storage"', JSON.stringify(storagePath))
-        .replace('"@/lib/user-scope"', JSON.stringify(join(dir, "scope.ts")))
+        .replace('"@/lib/user-scope"', JSON.stringify(scopePath))
         .replace('"@/lib/markdown-plain-text"', JSON.stringify(fileURLToPath(new URL("lib/markdown-plain-text.ts", root)))),
 );
 const conversations: typeof import("../src/services/cloud-agent-conversations") = await import(join(dir, "conversations.ts"));
 const storage = await import(storagePath);
 const nativeFetch = globalThis.fetch;
 const nativeTimer = globalThis.setTimeout;
+const nativeWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
 let delays: number[] = [];
 let stops: Array<() => void> = [];
 beforeEach(() => {
+    const values = new Map<string, string>();
+    Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => { values.set(key, value); },
+    } } });
+    scope.setActiveUserScope("test-user");
     delays = [];
     storage.data.clear();
     // Retain watchdog semantics; accelerate only retry waits, recording real delays.
@@ -50,8 +61,15 @@ afterEach(() => {
     stops = [];
     globalThis.fetch = nativeFetch;
     globalThis.setTimeout = nativeTimer;
+    scope.beginUserSessionCheck();
+    if (nativeWindow) Object.defineProperty(globalThis, "window", nativeWindow);
+    else Reflect.deleteProperty(globalThis, "window");
 });
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => {
+    expect(dirname(dir)).toBe(resolve(tmpdir()));
+    expect(basename(dir)).toStartWith("agent-reliability-");
+    rmSync(dir, { recursive: true, force: true });
+});
 const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 const snapshot = (status: string, extra = {}) => frame("run_snapshot", { id: "run", status, ...extra });
 const event = (seq: number) => frame("agent_event", { runId: "run", eventId: `run:${seq}`, seq, type: "tool_completed", payload: { nodeId: "node" } });
@@ -80,6 +98,13 @@ function observe(options: { timeoutMs?: number; after?: number } = {}) {
 }
 
 describe("Agent SSE recovery", () => {
+    it("keeps the real session guard before starting a transport", () => {
+        let requests = 0;
+        globalThis.fetch = (() => { requests++; throw new Error("must not reach transport"); }) as typeof fetch;
+        scope.beginUserSessionCheck();
+        expect(() => api.subscribeAgentEvents("run", () => {})).toThrow("账号会话已变化");
+        expect(requests).toBe(0);
+    });
     it("sends the user's final image settings with the approval and keeps cancellation", async () => {
         const requests: unknown[][] = [];
         transport.http.post = async (...args: unknown[]) => {

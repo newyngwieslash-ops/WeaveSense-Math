@@ -1,0 +1,290 @@
+schema: comet.native.v4
+name: fix-test-session-isolation-and-windows-execution
+language: zh-CN
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+document_constraints_version: 1
+shape_confirmation_hash: 2445482e30dcbc9f870293ff86af12dfd3d1a09f8c02af4d3dc04d7fc9953214
+spec_changes:
+  - capability: test-session-windows-execution
+    operation: create
+    source: specs/test-session-windows-execution/spec.md
+workspace:
+  isolation: current
+  change_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  target_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：完整Shape确认后先补最小可运行回归检查，实际观测RED后再修复；至少覆盖会话专项后正常受保护请求/顺序运行、Windows本机文件入口和CI
+      fixture启动/调用命中。已有加载失败和旧日志只作参考，不冒充本轮新增RED；反证成立时记录并不为猜测改代码。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受无独立Verifier的有限结果：正式RED→GREEN，Runtime100项367断言及构建lint通过；全Web2300\
+        通过8失败0错误，范围外8项静态UI旧债、Linux真实CI未执行、原F03恢复阻塞继续保留。未启动子代理或新聊天；此次接受不含提交、归档、部\
+        署、推送、合并、发布授权。"
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：同一Bun进程中，会话专项及后续成员、报价、资源上传边界/进度、Skills的既有断言通过；appearance经正式scope切换仍按账号隔离。旧身份失效、scope漂移、在途请求取消、迟到响应拒绝和跨账号持久化保护的负向断言保留并通过，测试退出恢复全局环境且不留下会话状态影响。不得只靠全量改为逐文件独立进程规避污染。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受无独立Verifier的有限结果：正式RED→GREEN，Runtime100项367断言及构建lint通过；全Web2300\
+        通过8失败0错误，范围外8项静态UI旧债、Linux真实CI未执行、原F03恢复阻塞继续保留。未启动子代理或新聊天；此次接受不含提交、归档、部\
+        署、推送、合并、发布授权。"
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：bootstrap和launcher真实入口能在Windows驱动器、含空格/中文路径的必要检查中正常构建执行；HTTP所有权允许名单在Windows/POSIX分隔符下语义相同，仍能发现非允许调用者。用标准库路径转换，不删生产守卫或扩大允许名单；实际平台和合成路径样本明确区分。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受无独立Verifier的有限结果：正式RED→GREEN，Runtime100项367断言及构建lint通过；全Web2300\
+        通过8失败0错误，范围外8项静态UI旧债、Linux真实CI未执行、原F03恢复阻塞继续保留。未启动子代理或新聊天；此次接受不含提交、归档、部\
+        署、推送、合并、发布授权。"
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：临时Agent模块能解析当前真实依赖，原SSE/审批/重连/游标检查实际执行，真实会话保护不得改为恒成功替身；welcome入口的LF/CRLF检查保持同一业务断言，不出现残留import或未绑定依赖导致的VM异常。测试仅替换既有边界副作用，未知模块加载失败仍可见。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受无独立Verifier的有限结果：正式RED→GREEN，Runtime100项367断言及构建lint通过；全Web2300\
+        通过8失败0错误，范围外8项静态UI旧债、Linux真实CI未执行、原F03恢复阻塞继续保留。未启动子代理或新聊天；此次接受不含提交、归档、部\
+        署、推送、合并、发布授权。"
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：CI镜像测试选择可执行本地Bash并正确传递fixture路径/环境，原成功、缺manifest、错误拒绝、stale
+      main、tag及缺架构等断言全部实际执行；有可审阅调用证据证明mock
+      docker/gh被使用，真实程序不得回退执行。shell或fixture依赖坏掉应报测试环境失败，不能当业务拒绝通过，不跳过或删除用例、不下载安装新软件。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受无独立Verifier的有限结果：正式RED→GREEN，Runtime100项367断言及构建lint通过；全Web2300\
+        通过8失败0错误，范围外8项静态UI旧债、Linux真实CI未执行、原F03恢复阻塞继续保留。未启动子代理或新聊天；此次接受不含提交、归档、部\
+        署、推送、合并、发布授权。"
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：上述相关测试单独和组合运行均GREEN；正式必要TypeScript/Vite构建与lint通过。最终全Web实际运行一次，原始退出码/通过失败错误数与逐名差异留证；本范围失败必须消除，其他旧债如仍在则逐项保留，不冒称全量GREEN或发布通过。新增或暴露的失败先分类，范围外产品问题另记，不用删改断言抵消。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受无独立Verifier的有限结果：正式RED→GREEN，Runtime100项367断言及构建lint通过；全Web2300\
+        通过8失败0错误，范围外8项静态UI旧债、Linux真实CI未执行、原F03恢复阻塞继续保留。未启动子代理或新聊天；此次接受不含提交、归档、部\
+        署、推送、合并、发布授权。"
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：只改证实的测试边界与相关文档，所有触及入口及其测试调用方追踪记录可审阅，优先复用既有helper；无新增依赖/生产测试后门、缓存清理或真实业务请求。更新任务、pending-test、报告和时间戳交接，保留当前分支、所有旧修改与数据；无子代理独立Verifier时如实记录，结果接受和归档分别另按本次流程确认。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受无独立Verifier的有限结果：正式RED→GREEN，Runtime100项367断言及构建lint通过；全Web2300\
+        通过8失败0错误，范围外8项静态UI旧债、Linux真实CI未执行、原F03恢复阻塞继续保留。未启动子代理或新聊天；此次接受不含提交、归档、部\
+        署、推送、合并、发布授权。"
+      truncated: false
+builder_handoff:
+  candidate_id: 8f1010d9-614f-41b9-b88f-74ff05a4696c
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:fb4265cd-3634-461f-a2f5-3ab910d40508
+  iteration: 1
+  summary:
+    text: 仅修web/test：先新增组合/路径/Agent模块回归与CI
+      mock命中检查，实际RED7pass9fail；测试清理解除遗留nonce与auth缓存，appearance经正式scope切换，文件入口用fileURLToPath、HTTP名单规范分隔符、welcome兼容LF/CRLF与当前入口依赖；临时Agent模块使用真实scope副本及负向守卫；CI用本地Git
+      Bash及绝对fixture函数，无真实CLI回退，所有拒绝分支留mock/错误证据。新增空格中文路径、缺shell、真实守卫检查。开发组合100pass367断言；最终全Web2300pass8fail0errors，剩余8静态UI旧债、无新失败。生产鉴权/发布脚本和原F03不动。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+  checks:
+    - name:
+        text: 正式最小RED
+        truncated: false
+      result: failed
+      note:
+        text: 新增检查与CI旧用例共7pass9fail，修复前实际记录.local/f04-test-boundaries/red.log
+        truncated: false
+    - name:
+        text: 开发组合GREEN
+        truncated: false
+      result: passed
+      note:
+        text: 100pass/0fail/367断言，14文件同进程及子进程回归；不是用逐文件隔离替换全量
+        truncated: false
+    - name:
+        text: 全Web广域
+        truncated: false
+      result: failed
+      note:
+        text: 原始退出1，2300pass8fail0errors/17575断言/40.13秒；38→8去重名称，新增0，剩余8为Shape明确排除的静态UI合同，逐名保留
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 全Web仍8个静态UI合同失败，不称全量通过；Linux真实CI未执行，Windows/Git Bash与合成路径已按范围验证
+      truncated: false
+    - text: 用户明确禁止子代理及新聊天，无获授权可用的独立Verifier；不得伪造独立审查，后续单独请求本次结果接受
+      truncated: false
+    - text: 原F03仍缺可信本地基线，恢复阻塞，本轮未操作18088、数据库或浏览器缓存
+      truncated: false
+    - text: 无提交/归档/部署/模型/外发或推送合并发布授权，旧修改均保留
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-23T09:15:41.235Z
+blockers: []
+verification:
+  candidate_id: 8f1010d9-614f-41b9-b88f-74ff05a4696c
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:1b4b278b-86e2-4138-ae7c-138157e172e5
+  iteration: 1
+  attempt: 1
+  assurance: user-confirmed-degraded
+  verdict: pass
+  checks:
+    - id: f04-related
+      name:
+        text: 会话与Windows执行边界正式组合
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: test/test-execution-boundaries.test.ts
+          truncated: false
+        - text: test/cross-tab-session-cache.test.ts
+          truncated: false
+        - text: test/intelligence-member-api.test.ts
+          truncated: false
+        - text: test/model-quote.test.ts
+          truncated: false
+        - text: test/resource-upload-boundary.test.ts
+          truncated: false
+        - text: test/resource-upload-progress.test.ts
+          truncated: false
+        - text: test/skills-api.test.ts
+          truncated: false
+        - text: test/canvas-appearance.test.ts
+          truncated: false
+        - text: test/application-bootstrap.test.mjs
+          truncated: false
+        - text: test/agent-launcher-position.test.mjs
+          truncated: false
+        - text: test/agent-api-reliability.test.ts
+          truncated: false
+        - text: test/http-ownership.test.ts
+          truncated: false
+        - text: test/welcome-title.test.mjs
+          truncated: false
+        - text: test/ci-image-release.test.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 13339
+    - id: f04-build
+      name:
+        text: TypeScript与Vite正式构建
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 12503
+    - id: f04-lint
+      name:
+        text: UI lint
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 23118
+  summary:
+    text: 用户本轮明确接受无独立Verifier的有限结果：正式RED→GREEN，Runtime100项367断言及构建lint通过；全Web2300通过8失败0错误，范围外8项静态UI旧债、Linux真实CI未执行、原F03恢复阻塞继续保留。未启动子代理或新聊天；此次接受不含提交、归档、部署、推送、合并、发布授权。
+    truncated: false
+  risks:
+    - text: No independent semantic Verifier execution was available; Runtime checks
+        alone do not cover acceptance semantics.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-10-23T10:05:39.784Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: blocked
+    unresolved_ids:
+      - A1
+      - A2
+      - A3
+      - A4
+      - A5
+      - A6
+      - A7
+    summary:
+      text: 平台提供子代理工具，但用户本轮明确禁止子代理与新聊天，本任务没有获授权可用的独立语义Verifier执行；未启动Verifier，dispatch仅登记、未伪造独立结果。主会话先RED→GREEN，Runtime100项367断言、构建/lint均通过，最终全Web2300pass8fail0errors，无新增失败；剩余8项为Shape排除的静态UI旧债，Linux真实CI未执行。仅测试和文档，生产鉴权/发布脚本未改，原F03恢复仍阻塞；需用户本次明确接受有限结果，不沿用旧接受。
+      truncated: false
+    completed_at: 2026-10-23T09:19:07.373Z
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 用户本轮明确接受无独立Verifier的有限结果：正式RED→GREEN，Runtime100项367断言及构建lint通过；全Web2300通过8失败0错误，范围外8项静态UI旧债、Linux真实CI未执行、原F03恢复阻塞继续保留。未启动子代理或新聊天；此次接受不含提交、归档、部署、推送、合并、发布授权。
+      truncated: false
+    completed_at: 2026-10-23T10:05:39.784Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-23T08:54:10.057Z

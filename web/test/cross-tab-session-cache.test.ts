@@ -9,6 +9,8 @@ import { useUserStore } from "../src/stores/use-user-store";
 
 const originalWindow = globalThis.window;
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+const originalScope = originalWindow ? getActiveUserScope() : null;
+const originalUserState = useUserStore.getState();
 let values: Map<string, string>;
 const user = (id: string) => ({ id, username: id, displayName: id, role: "user" as const, status: "active" as const });
 function deferred<T>() {
@@ -27,8 +29,14 @@ beforeEach(() => {
 });
 afterEach(() => {
     useUserStore.getState().clearSession();
+    invalidateAuthSessionCache(false);
+    // Do not bind the guest scope to this test's invalidation nonce, then
+    // restore a window where that nonce does not exist.
+    values.delete(AUTH_SESSION_CHANGE_KEY);
     setActiveUserScope(null);
     globalThis.window = originalWindow;
+    if (originalWindow) setActiveUserScope(originalScope);
+    useUserStore.setState(originalUserState);
     if (originalStorage) Object.defineProperty(globalThis, "localStorage", originalStorage);
     else Reflect.deleteProperty(globalThis, "localStorage");
 });

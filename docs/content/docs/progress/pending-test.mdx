@@ -5,6 +5,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## F04测试会话与Windows边界已本地归档
+
+2026-10-23 18:32 +08:00：用户另行确认本地归档并保留当前分支，实际archive退出0、Native七项按无独立Verifier限制通过、stateVersion8、done/archived=true、工作区kept；已创建test-session-windows-execution主规格，工件移入2026-10-23归档目录。只提交本次测试/工件及相关文档，混合文档仅本次段落；其余修改和数据保留，不部署或推送合并发布。全Web仍8项静态UI旧失败，Linux真实CI和原F03恢复等门槛保持。以下待授权/待接受为阶段记录。
+
+2026-10-23 18:08 +08:00：用户明确接受本次无独立Verifier的有限结果，Runtime进入Archive v7、七项据该限制通过；归档预检退出0、ready=true、无阻塞、无需重验。未归档或提交，保留当前分支/全部旧修改。全Web8项静态UI旧债、Linux真实CI及原F03恢复等发布门槛保持；下段待接受为17:22的此前状态。见 `docs/flow/2026-10-23-180815-f04-result-accepted-handoff.md`。
+
+`fix-test-session-isolation-and-windows-execution`完整Shape获确认后，正式RED为7通过/9失败/19断言，再只修8份既有测试并新增1份组合回归。Runtime专项100通过/367断言、构建/lint退出0；实际全Web2300通过/8失败/0错误，与前轮38个去重失败名称对照无新增、消除30个。剩余8项为范围外静态UI旧债，不称全量通过。测试会话/真实guard、Windows路径/换行和CI mock执行边界已验证；生产鉴权/业务断言未放宽，未删跳过测试。用户禁止子代理，独立Verifier未执行，Native Verify v6七项pending，等待本次有限结果接受；尚未提交或归档。Linux真实CI、浏览器/PG本轮未执行，原F03恢复继续阻塞。见 `docs/superpowers/reports/2026-10-23-fix-test-session-isolation-and-windows-execution-verify.md` 及 `docs/flow/2026-10-23-172209-f04-tests-verified-handoff.md`。
+
 ## F03共享保存边界修复：原现场未收口
 
 - [x] 本轮正式加载RED两例、Agent刷新RED及直存RED后修复；新增16项79断言GREEN，Runtime相关64项221断言、构建/lint通过。新专项图坏值到合法值自动保存、重开、普通节点名称及PG一致，16原图/实采数据/非web容器保持。

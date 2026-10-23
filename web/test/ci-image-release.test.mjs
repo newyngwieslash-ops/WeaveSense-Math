@@ -9,50 +9,81 @@ const scripts = fileURLToPath(new URL("../../.github/scripts/", import.meta.url)
 const temporaryDirectories = [];
 const sha = "a".repeat(40);
 const digest = "b".repeat(64);
+const bash = process.env.TEST_BASH || (process.platform === "win32" ? path.join(process.env.ProgramFiles || "C:/Program Files", "Git/bin/bash.exe") : "bash");
+const shellPath = (value) => value.replace(/\\/g, "/");
 afterEach(() => {
-    for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
+    for (const directory of temporaryDirectories.splice(0)) {
+        expect(path.dirname(directory)).toBe(path.resolve(os.tmpdir()));
+        expect(path.basename(directory)).toStartWith("canvas-ci-image-");
+        rmSync(directory, { recursive: true, force: true });
+    }
 });
 
-function fixture(overrides = {}) {
-    const root = mkdtempSync(path.join(os.tmpdir(), "canvas-ci-image-"));
+function fixture(overrides = {}, shell = bash) {
+    const root = mkdtempSync(path.join(os.tmpdir(), "canvas-ci-image-空格 test-"));
     temporaryDirectories.push(root);
     const bin = path.join(root, "bin");
     const digests = path.join(root, "digests");
     mkdirSync(bin);
     mkdirSync(digests);
     writeFileSync(path.join(digests, digest), "");
-    writeFileSync(path.join(bin, "docker"), '#!/bin/sh\nif [ "$3" = inspect ]; then\n  if [ -n "$MOCK_ERROR" ]; then printf "%s\\n" "$MOCK_ERROR" >&2; exit 1; fi\n  printf "%s\\n" "$MOCK_DIGEST"\nelse\n  printf "%s\\n" "$@" > "$MOCK_CALL"\nfi\n', {
+    writeFileSync(path.join(bin, "docker"), '#!/bin/sh\nprintf "docker\\n" >> "$MOCK_TRACE"\nif [ "$3" = inspect ]; then\n  if [ -n "$MOCK_ERROR" ]; then printf "%s\\n" "$MOCK_ERROR" >&2; exit 1; fi\n  printf "%s\\n" "$MOCK_DIGEST"\nelse\n  printf "%s\\n" "$@" > "$MOCK_CALL"\nfi\n', {
         mode: 0o755,
     });
-    writeFileSync(path.join(bin, "gh"), '#!/bin/sh\nif [ -n "$MOCK_GH_ERROR" ]; then exit 1; fi\nprintf "%s\\n" "$MOCK_MAIN"\n', { mode: 0o755 });
+    writeFileSync(path.join(bin, "gh"), '#!/bin/sh\nprintf "gh\\n" >> "$MOCK_TRACE"\nif [ -n "$MOCK_GH_ERROR" ]; then exit 1; fi\nprintf "%s\\n" "$MOCK_MAIN"\n', { mode: 0o755 });
     const output = path.join(root, "output");
     writeFileSync(output, "");
     const env = {
         ...process.env,
-        PATH: `${bin}:${process.env.PATH}`,
-        GITHUB_OUTPUT: output,
+        GITHUB_OUTPUT: shellPath(output),
         GITHUB_SHA: sha,
         GITHUB_REF: "refs/heads/main",
         GITHUB_REPOSITORY: "fixture/repo",
         IMAGE: "ghcr.io/fixture/image",
         VERSION_TAG: "1.5.5",
         EXPECTED_DIGESTS: "1",
-        DIGEST_DIR: digests,
+        DIGEST_DIR: shellPath(digests),
         MOCK_DIGEST: `sha256:${digest}`,
         MOCK_ERROR: "",
         MOCK_GH_ERROR: "",
         MOCK_MAIN: sha,
-        MOCK_CALL: path.join(root, "docker-call"),
+        MOCK_CALL: shellPath(path.join(root, "docker-call")),
+        MOCK_TRACE: shellPath(path.join(root, "tool-trace")),
+        MOCK_READY: shellPath(path.join(root, "shell-ready")),
+        MOCK_BIN: shellPath(bin),
         ...overrides,
     };
     return {
-        run: (script, ...args) => spawnSync("bash", [path.join(scripts, script), ...args], { env, encoding: "utf8" }),
+        run: (script, ...args) => {
+            const copy = path.join(root, script);
+            writeFileSync(copy, readFileSync(path.join(scripts, script), "utf8").replace(/\r\n/g, "\n"));
+            // Functions bind every tool invocation to our fixture, with no real CLI fallback.
+            const result = spawnSync(shell, ["--noprofile", "--norc", "-c", 'export PATH=/usr/bin:/bin; docker() { "$MOCK_BIN/docker" "$@"; }; gh() { "$MOCK_BIN/gh" "$@"; }; printf ready > "$MOCK_READY"; source "$1" "${@:2}"', "fixture", shellPath(copy), ...args], { env, encoding: "utf8" });
+            if (result.error) throw result.error;
+            expect(existsSync(env.MOCK_READY)).toBe(true);
+            expect(readFileSync(env.MOCK_READY, "utf8")).toBe("ready");
+            if (script === "resolve-image.sh") expect(readFileSync(env.MOCK_TRACE, "utf8")).toContain("docker\n");
+            return result;
+        },
         output: () => readFileSync(output, "utf8"),
         call: () => (existsSync(env.MOCK_CALL) ? readFileSync(env.MOCK_CALL, "utf8") : ""),
+        trace: () => (existsSync(path.join(root, "tool-trace")) ? readFileSync(path.join(root, "tool-trace"), "utf8") : ""),
     };
 }
 
 describe("commit image reuse", () => {
+    test("a missing shell is an environment error rather than an image rejection", () => {
+        const repo = fixture({}, path.join(os.tmpdir(), "canvas-fixture-missing-shell"));
+        expect(() => repo.run("resolve-image.sh", "ghcr.io/fixture/image:sha-test")).toThrow();
+        expect(repo.trace()).toBe("");
+    });
+    test("a rejected image lookup actually invokes the mock tool", () => {
+        const repo = fixture({ MOCK_ERROR: "ERROR: unauthorized" });
+        const result = repo.run("resolve-image.sh", "ghcr.io/fixture/image:sha-test");
+        expect(repo.trace()).toContain("docker");
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("ERROR: unauthorized");
+    });
     test("reuses the exact existing digest", () => {
         const repo = fixture();
         expect(repo.run("resolve-image.sh", "ghcr.io/fixture/image:sha-test").status).toBe(0);
@@ -66,7 +97,9 @@ describe("commit image reuse", () => {
     for (const error of ["ERROR: unauthorized", "ERROR: 429 Too Many Requests", "ERROR: dial tcp: i/o timeout", "ERROR: certificate file: not found: authentication failed"]) {
         test(`fails closed on ${error}`, () => {
             const repo = fixture({ MOCK_ERROR: error });
-            expect(repo.run("resolve-image.sh", "ghcr.io/fixture/image:sha-test").status).not.toBe(0);
+            const result = repo.run("resolve-image.sh", "ghcr.io/fixture/image:sha-test");
+            expect(result.status).not.toBe(0);
+            expect(result.stderr).toContain(error);
             expect(repo.output()).toBe("");
         });
     }
@@ -98,12 +131,15 @@ describe("digest promotion", () => {
     });
     test("missing architecture blocks every tag update", () => {
         const repo = fixture({ EXPECTED_DIGESTS: "2" });
-        expect(repo.run("promote-image.sh").status).not.toBe(0);
+        const result = repo.run("promote-image.sh");
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("Incomplete image digest set");
         expect(repo.call()).toBe("");
     });
     test("failure to resolve main blocks promotion", () => {
         const repo = fixture({ MOCK_GH_ERROR: "1" });
         expect(repo.run("promote-image.sh").status).not.toBe(0);
+        expect(repo.trace()).toBe("gh\n");
         expect(repo.call()).toBe("");
     });
 });
