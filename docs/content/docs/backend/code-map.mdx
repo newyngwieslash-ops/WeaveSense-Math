@@ -5,6 +5,10 @@ description: 从产品功能快速定位主要代码入口
 
 # 代码功能地图
 
+## 画布待同步编辑与可信基线
+
+共享实现 `web/src/services/user-data-sync.ts`：`initializeRemoteUserDataSession`不将脏缓存当已确认；`loadCanvasProjectWithinSync`由公开加载和已有画布直存共同复用，避免重入串行锁；正常加载和`refreshCanvasAfterAgent`只在远端正文哈希匹配上次确认哈希时恢复旧基线。HTTP、表结构及RLS无变化。回归检查：`web/test/canvas-pending-edit-sync.test.ts`。原F03历史图缺基线仍受保护，不是强制恢复路径。
+
 ## 画布节点覆盖层命中
 
 - 唯一渲染调用方：`web/src/pages/canvas/canvas-project-world-layers.tsx`；共享轨道、装饰、条件顶栏留位和图片组/主图控件：`web/src/components/canvas/canvas-node.tsx`。

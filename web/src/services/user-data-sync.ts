@@ -150,6 +150,9 @@ export async function initializeRemoteUserDataSession(userId: string) {
         await loadPendingCanvasMutationJournal();
         incrementalSession = true;
         acknowledgedProjects = new Map(useCanvasStore.getState().projects.map((project) => [project.id, project]));
+        for (const project of useCanvasStore.getState().projects) {
+            if ((project.revision ?? 0) > 0 && project.remoteContentHash !== (await canvasContentHash(project))) acknowledgedProjects.delete(project.id);
+        }
         for (const pending of pendingCanvasMutations.values()) {
             if (pending.baseline) acknowledgedProjects.set(pending.projectId, pending.baseline);
         }
@@ -177,7 +180,19 @@ export async function loadCanvasProjectForEditing(id: string, options: { onLoad?
         });
     }
     const epoch = sessionEpoch;
-    const request = withRemoteUserDataSyncExclusive(async () => {
+    const request = withRemoteUserDataSyncExclusive(() => loadCanvasProjectWithinSync(id, options, epoch));
+    const pending = { mode, promise: request } as RemoteProjectLoad;
+    remoteProjectLoadPromises.set(id, pending);
+    const clearPending = () => {
+        if (remoteProjectLoadPromises.get(id) === pending) remoteProjectLoadPromises.delete(id);
+    };
+    void request.then(clearPending, clearPending);
+    return request;
+}
+
+// The caller already owns remoteOperationTail; saving must verify the same
+// baseline as opening without re-entering the serial queue and deadlocking.
+async function loadCanvasProjectWithinSync(id: string, options: { onLoad?: (project: CanvasProject) => void }, epoch: number) {
         if (epoch !== sessionEpoch) throw new Error("账号已切换，请重新打开画布");
         requireRemoteUserDataBaseline();
         const scope = getActiveUserScope();
@@ -209,8 +224,11 @@ export async function loadCanvasProjectForEditing(id: string, options: { onLoad?
         const dirty = local && (!verifiedProjects.has(id) && incrementalSession ? !cachedClean : !sameCanvasContent(acknowledgedProjects.get(id), local));
         let projected = remote;
         if (dirty && !sameCanvasContent(local, remote)) {
-            const baseline = acknowledgedProjects.get(id);
-            if (!baseline || (!verifiedProjects.has(id) && baseline.remoteContentHash !== (await canvasContentHash(baseline)))) throw new Error("缺少可信画布合并基线，已保留本地编辑");
+            // A reloaded dirty cache is not its own baseline. The fetched document
+            // is safe only when its exact content matches the last confirmed hash.
+            const remoteIsBaseline = local.remoteContentHash === hash;
+            const baseline = remoteIsBaseline ? remote : acknowledgedProjects.get(id);
+            if (!baseline || (!remoteIsBaseline && !verifiedProjects.has(id) && baseline.remoteContentHash !== (await canvasContentHash(baseline)))) throw new Error("缺少可信画布合并基线，已保留本地编辑");
             // Rebase only actual local edits; keeping the stale document against
             // a new baseline would turn cloud-only nodes into remove_node writes.
             projected = mergeAgentCanvasEditor(baseline, remote, local.nodes, local.connections, local);
@@ -230,14 +248,6 @@ export async function loadCanvasProjectForEditing(id: string, options: { onLoad?
         useSyncProgressStore.getState().setProjectProgress(id, { phase: pending ? "pending" : "done", cloudRevision: remote.revision, pendingChanges: pending ? 1 : 0, message: pending ? "已合并云端画布，本地修改等待保存" : "已确认云端画布基线" });
         if (pending) scheduleRemoteUserDataSync();
         return project;
-    });
-    const pending = { mode, promise: request } as RemoteProjectLoad;
-    remoteProjectLoadPromises.set(id, pending);
-    const clearPending = () => {
-        if (remoteProjectLoadPromises.get(id) === pending) remoteProjectLoadPromises.delete(id);
-    };
-    void request.then(clearPending, clearPending);
-    return request;
 }
 
 // Never replace edits made while the Agent was running. Leave the acknowledged
@@ -259,7 +269,9 @@ export async function refreshCanvasAfterAgent(id: string) {
         const project = await restoreRemoteTextNodeContents((await getRemoteCanvasProject(id, knownRemote)).project);
         if (epoch !== sessionEpoch) throw new Error("账号已切换");
         const current = useCanvasStore.getState().projects.find((candidate) => candidate.id === id);
-        const baseline = acknowledgedProjects.get(id);
+        const hash = await canvasContentHash(project);
+        const remoteIsBaseline = current?.remoteContentHash === hash;
+        const baseline = remoteIsBaseline ? { ...project, remoteContentHash: hash } : acknowledgedProjects.get(id);
         const cachedDirty = current && incrementalSession && !verifiedProjects.has(id) && current.remoteContentHash !== (await canvasContentHash(current));
         const baselineClean = baseline && baseline.remoteContentHash === (await canvasContentHash(baseline));
         if (epoch !== sessionEpoch) throw new Error("账号已切换");
@@ -283,7 +295,6 @@ export async function refreshCanvasAfterAgent(id: string) {
             }
         }
 
-        const hash = await canvasContentHash(project);
         projected = { ...projected, viewport: current?.viewport || project.viewport, remoteContentHash: hash };
         if (epoch !== sessionEpoch || useCanvasStore.getState().openProject(id) !== (current || null)) throw new Error("画布仍在更新，请重新同步 Agent 结果");
         try {
@@ -1126,6 +1137,9 @@ async function saveRemoteUserDataBatch(uploaded: Map<string, string>, options: {
             }
         };
         try {
+            if (incrementalSession && (source.revision ?? 0) > 0 && !verifiedProjects.has(source.id) && !pendingCanvasMutations.has(source.id)) {
+                await loadCanvasProjectWithinSync(source.id, {}, sessionEpoch);
+            }
             const current = useCanvasStore.getState().openProject(source.id);
             if (!current) throw new Error("画布已关闭，停止提交操作");
             const base = acknowledgedProjects.get(source.id);
