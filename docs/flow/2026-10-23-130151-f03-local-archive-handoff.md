@@ -14,6 +14,8 @@ Continues from：[有限结果已接受交接](2026-10-23-125613-f03-limited-res
 
 current模式没有自动Git提交，随后精确暂存本次实现、测试、四份相关专题文档及七份工件/计划/报告，形成13文件提交 `cff7babc`。混合pending-test和pending-acceptance仅提交F03段落，其他修改留在工作区。没有把本地归档当作发布。
 
+收尾文档提交 `066cb304`；随后最终git核对暂存区为空、当前分支保留、旧修改仍在，openspec list --json为0活跃，交接校验100/100。本段辅助记录补记单独提交，最终HEAD以git rev-parse HEAD为准。
+
 **原F03图仍缺可信基线，本地合法正则保留、PG revision5/`*`，恢复继续阻塞。** T4保持部分通过；全Web旧40失败/2错误及其余U/A/G门槛没有解除。无独立审查的事实保持。
 
 ## Important Context
@@ -88,6 +90,8 @@ current模式没有自动Git提交，随后精确暂存本次实现、测试、�
 归档后 `comet native doctor fix-canvas-pending-edit-sync --json` 退出65，提示active change需迁移；原活动目录已不存在，而全局status正确使用archiveRef并显示done/archived/stateVersion12。未执行repair或修改归档状态，不能声称doctor通过。正式归档返回、文件及全局status交叉确认完成；若未来要修CLI诊断，另开工具范围调查。
 
 Runtime六项通过来自用户接受的有限结果，不等于原F03恢复通过。current模式workspaceFinishResult最初commit仍是旧HEAD，实际相关Git提交需以git日志核对。旧交接中的“未归档/未接受”为历史状态，不应再次触发同一流程。
+
+Comet辅助记忆/任务完成记录限制：本轮task上下文检索与原F03 session的task --complete（learning-check=no-observation）均长期无输出，已分别中断，退出1；未确认任务完成记录写入，不冒称成功。项目已验证模式此前已存Project Memory（memo-b18b06d8），本轮无新增个人偏好观察。此辅助失败不回滚已成功的Archive、Git提交和文件核对，也不据此重复运行归档或产品测试。
 
 ## Related Resources
 
