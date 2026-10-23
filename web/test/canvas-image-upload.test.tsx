@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { readFileSync } from "node:fs";
+import { readSourceText } from "./helpers/module-group-source";
 import { resolve } from "node:path";
 import { createImageUploadPlaceholder, createFileUploadPlaceholder, interruptFileUpload, readUploadImageSize, uploadNodeType, uploadPercent, uploadVeilOpacity } from "../src/lib/canvas/canvas-file-upload";
 import { CanvasNodeType } from "../src/types/canvas";
@@ -11,7 +11,7 @@ import { canvasThemes } from "../src/lib/canvas-theme";
 
 const file = { name: "photo.png", size: 1234, type: "image/png" };
 const placeholder = () => createImageUploadPlaceholder("upload", file, { x: 100, y: 200 }, { width: 1920, height: 1080 });
-const read = (path: string) => readFileSync(resolve(import.meta.dir, "../src", path), "utf8");
+const read = (path: string) => readSourceText(resolve(import.meta.dir, "../src", path));
 
 describe("图片上传占位", () => {
     for (const [width, height] of [

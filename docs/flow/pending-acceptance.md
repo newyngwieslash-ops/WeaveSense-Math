@@ -1,5 +1,13 @@
 # Flow 待验收：真实环境、依赖与发布门槛
 
+2026-10-23 19:16 +08:00：用户另行确认F05本地归档并保留当前分支，实际archive退出0、stateVersion8、done/archived=true、工作区kept，六项按无独立Verifier限制通过；新增canvas-source-contract-portability主规格。仅本次8份测试/helper、工件与相关文档精确提交，混合文档只F05段落，其他修改/数据保留，无部署/模型/缓存清理/子代理或推送合并发布。本轮引用有效检查，完整Web2320/0/0通过；原F03恢复、Linux真实CI及其他U/A/G门槛保持。下方待授权为阶段记录。
+
+2026-10-23 19:13 +08:00：用户明确接受F05本次无独立Verifier有限结果，Runtime进入Archive v7、六验收按限制通过；实际归档预检ready=true/无阻塞/无需重验。尚未归档或提交，结果接受不含交付权限；本轮仅记录决定/预检，未重跑测试。全Web2320通过/0失败/0错误、原8失败消除为有效结果，Linux真实CI/浏览器实机/原F03恢复等门槛保持。下方待接受为此前记录。
+
+2026-10-23 19:08 +08:00：F05完整Shape确认后最小RED→GREEN，Runtime369项/2286断言及构建/lint通过；全Web2320通过/0失败/0错误，原8失败消除，无新增或删跳过测试。仅修测试合同，不改生产实现；真实SSR及12种语义负向控制通过。缺少本次独立Verifier，Native六项pending、等待明确接受；结果接受不含提交/归档/部署。Linux真实CI、浏览器/媒体实机、原F03恢复及其余U/A/G门槛保持。见[验证报告](../superpowers/reports/2026-10-23-fix-canvas-source-contract-portability-verify.md)和[新交接](2026-10-23-190755-f05-tests-verified-handoff.md)。
+
+2026-10-23 18:51 +08:00：F05剩余八失败只读调查为7项CRLF读取假失败、1项菜单9→11计数过时；原六测试实际60通过/8失败，未改正式测试或生产源码，未确认新正式RED。Native fix-canvas-source-contract-portability完整Shape已准备待确认；精确11映射、LF/CRLF同语义和负向检测力将共同验收，不把内存探针当完整测试GREEN。保留当前分支/旧修改和数据，无模型/缓存清理/子代理/部署/提交或推送合并发布。见[调查报告](2026-10-23-web-eight-failures-investigation.md)及[最新交接](2026-10-23-185115-f05-shape-ready-handoff.md)。
+
 2026-10-23 18:32 +08:00：用户另行确认F04本地归档并保留分支，实际archive退出0、stateVersion8、done/archived=true、工作区kept，七项按本次无独立Verifier限制通过；新主规格test-session-windows-execution已创建。归档仅本次测试/工件与文档增量，其他修改和数据保留；无部署、模型、子代理或推送合并发布。本轮引用有效检查，不重复重跑；全Web8项旧失败、Linux真实CI及原F03恢复阻塞仍在。下方待归档为历史记录。
 
 2026-10-23 18:08 +08:00：用户明确接受F04本次无独立Verifier有限结果，Runtime Archive v7、七验收按限制通过；实际归档预检ready=true、无阻塞、无需重验。尚未归档或提交，结果接受不含交付授权。本轮只记录决定与预检，未重跑产品测试或部署；全Web2300通过/8失败/0错误、Linux真实CI未执行和原F03阻塞继续保持。见[最新交接](2026-10-23-180815-f04-result-accepted-handoff.md)。下方待接受为此前阶段记录。

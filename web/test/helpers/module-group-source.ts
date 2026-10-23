@@ -31,9 +31,14 @@ export const SPLIT_MODULE_GROUPS: Record<string, readonly string[]> = {
 
 const srcRoot = resolve(import.meta.dir, "../../src");
 
+/** Source contracts ignore checkout line endings, never other semantic bytes. */
+export function readSourceText(path: string | URL): string {
+    return readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+}
+
 /** 读取 src 下的文件；若它被拆分过，一并读取同组模块。 */
 export function moduleGroupSource(relativePath: string): string {
     const normalized = relativePath.replace(/^(\.\.\/)*src\//, "").replace(/^\.\//, "");
     const files = [normalized, ...(SPLIT_MODULE_GROUPS[normalized] ?? [])];
-    return files.map((file) => readFileSync(resolve(srcRoot, file), "utf8")).join("\n");
+    return files.map((file) => readSourceText(resolve(srcRoot, file))).join("\n");
 }

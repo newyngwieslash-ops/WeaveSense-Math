@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { moduleGroupSource } from "./helpers/module-group-source";
+import { moduleGroupSource, readSourceText } from "./helpers/module-group-source";
 
 function source(path: string) {
-    return readFileSync(resolve(import.meta.dir, path), "utf8");
+    return readSourceText(resolve(import.meta.dir, path));
 }
 
 describe("canvas resource mention editor", () => {

@@ -1,0 +1,312 @@
+schema: comet.native.v4
+name: fix-canvas-source-contract-portability
+language: en
+phase: archive
+status: done
+state_version: 8
+brief: brief.md
+document_constraints_version: 1
+shape_confirmation_hash: 3ed750c72ff4fb10e267d2a944519e7f61e8751aa8713bdaa49498a47fc8b604
+spec_changes:
+  - capability: canvas-source-contract-portability
+    operation: create
+    source: specs/canvas-source-contract-portability/spec.md
+workspace:
+  isolation: current
+  change_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  target_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：确认完整Shape后先补最小可运行RED，覆盖真实读取的LF/CRLF及带中文/空格路径、现行菜单精确集合；在修复前实际失败并保留日志。Shape阶段原6文件60通过/8失败/419断言和只读内存对照是诊断，不代替确认后的新RED。若新证据不成立，记录反证不改生产代码。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受没有独立Verifier的有限结果：正式RED→GREEN，Runtime369项2286断言及构建lint通过，完整Web2\
+        320通过0失败0错误，原8失败消除；保留原断言、12种语义负向控制和真实SSR11/10。因禁止子代理/新聊天未独立审查，Linux真实CI\
+        /浏览器媒体实机/原F03恢复及其余U/A/G门槛保留。仅测试与文档，不改生产；本次接受不含提交、归档、部署、推送、合并或发布授权。"
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：键盘、上传、图片解码、视频首帧、异步引用、collection焦点和scoped菜单这7项原业务断言在LF/CRLF输入下语义相同并全部通过；共享读取只规范CRLF为LF，不删空白、中文、引号、标识符、选择器、属性或操作顺序，不用宽泛匹配掩盖缺失。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受没有独立Verifier的有限结果：正式RED→GREEN，Runtime369项2286断言及构建lint通过，完整Web2\
+        320通过0失败0错误，原8失败消除；保留原断言、12种语义负向控制和真实SSR11/10。因禁止子代理/新聊天未独立审查，Linux真实CI\
+        /浏览器媒体实机/原F03恢复及其余U/A/G门槛保留。仅测试与文档，不改生产；本次接受不含提交、归档、部署、推送、合并或发布授权。"
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：连接菜单严格覆盖当前11个唯一条目及其非空描述和对应CanvasNodeType，保留原无多余header/箭头和BatchTable要求；实际组件SSR在canCreateDrawing=true/false分别11/10项，并保留禁用说明/aria及创建守卫。新增DataSource/Logic是已实现范围，不退回9项、不放宽为大于等于计数。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受没有独立Verifier的有限结果：正式RED→GREEN，Runtime369项2286断言及构建lint通过，完整Web2\
+        320通过0失败0错误，原8失败消除；保留原断言、12种语义负向控制和真实SSR11/10。因禁止子代理/新聊天未独立审查，Linux真实CI\
+        /浏览器媒体实机/原F03恢复及其余U/A/G门槛保留。仅测试与文档，不改生产；本次接受不含提交、归档、部署、推送、合并或发布授权。"
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：负向控制证明检测力：改错复制/上传顺序、sync解码、视频视口门控、引用刷新、CSS焦点/边框或删改菜单项/描述/类型时，对应合同必须实际拒绝；只用自有内存或临时源副本，不改生产文件。异常路径不能被归一化吞掉，真实缺陷若暴露先记录并重新确认产品范围。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受没有独立Verifier的有限结果：正式RED→GREEN，Runtime369项2286断言及构建lint通过，完整Web2\
+        320通过0失败0错误，原8失败消除；保留原断言、12种语义负向控制和真实SSR11/10。因禁止子代理/新聊天未独立审查，Linux真实CI\
+        /浏览器媒体实机/原F03恢复及其余U/A/G门槛保留。仅测试与文档，不改生产；本次接受不含提交、归档、部署、推送、合并或发布授权。"
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：原6文件、共享helper所有直接测试调用方及新增回归单独/组合GREEN；Runtime构建/lint通过，全Web实际运行一次留退出码/通过失败错误数和逐名差异。原8失败必须按本范围处理，新增/仍在失败不能删跳过或冒称全量通过；无实际运行的平台/浏览器不算通过。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受没有独立Verifier的有限结果：正式RED→GREEN，Runtime369项2286断言及构建lint通过，完整Web2\
+        320通过0失败0错误，原8失败消除；保留原断言、12种语义负向控制和真实SSR11/10。因禁止子代理/新聊天未独立审查，Linux真实CI\
+        /浏览器媒体实机/原F03恢复及其余U/A/G门槛保留。仅测试与文档，不改生产；本次接受不含提交、归档、部署、推送、合并或发布授权。"
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：仅测试及相关文档，优先复用已有读取helper，无新依赖；精确记录修改文件/调用方、实际/引用/未执行结果，旧tracked/untracked和数据保持。当前分支不变，未提交/归档/部署；不清缓存、模型、子代理或推送合并发布。无独立Verifier如实登记，结果接受、归档分别另行授权。
+    result: passed
+    reason:
+      text: "User confirmed degraded completion without independent semantic
+        verification:
+        用户本轮明确接受没有独立Verifier的有限结果：正式RED→GREEN，Runtime369项2286断言及构建lint通过，完整Web2\
+        320通过0失败0错误，原8失败消除；保留原断言、12种语义负向控制和真实SSR11/10。因禁止子代理/新聊天未独立审查，Linux真实CI\
+        /浏览器媒体实机/原F03恢复及其余U/A/G门槛保留。仅测试与文档，不改生产；本次接受不含提交、归档、部署、推送、合并或发布授权。"
+      truncated: false
+builder_handoff:
+  candidate_id: 6ec9dc80-a708-436a-ba1a-f6f40713f6d1
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:f95194fe-df71-4501-9810-38a1b15c0b96
+  iteration: 1
+  summary:
+    text: 仅测试/文档：正式新增RED2通过12失败后，在现有module-group-source增加只规范CRLF的共享读取并接入六测试；全部原业务断言保留，菜单9→11有历史实现依据并强化精确标题/描述/创建和禁用类型映射、真实SSR有无绘图11/10、原禁用守卫。新增回归实际读取中文空格路径/BOM/孤立CR/异常路径及混合分组；重跑原8断言LF/CRLF，并以12个语义变异证明仍拒绝错误，不改生产文件。开发35文件369通过2286断言；全Web2320通过0失败0错误/17993断言，原8名称消除且无新增。用户禁止子代理/新聊天，无获授权可用独立Verifier，后续如实登记并请求本次接受。没有提交/归档/部署或模型。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+  checks:
+    - name:
+        text: 正式最小RED
+        truncated: false
+      result: failed
+      note:
+        text: 确认后新增回归与既有菜单检查实际2pass12fail/30断言，.local/f05-ui-contracts/red.log；不是Shape旧诊断
+        truncated: false
+    - name:
+        text: 开发相关组合
+        truncated: false
+      result: passed
+      note:
+        text: 35文件369pass0fail/2286断言，含共享helper全体消费者及F04相邻；.local/f05-ui-contracts/related-dev.log
+        truncated: false
+    - name:
+        text: 完整Web
+        truncated: false
+      result: passed
+      note:
+        text: 实际exit0，2320pass0fail0errors/17993断言/320文件/48.21秒；原8失败名称消除、新增0，.local/f05-ui-contracts/full-web.log
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 用户禁止子代理与新聊天，未执行独立Verifier；不能将主会话及Runtime检查称独立语义审查，需本次单独接受。
+      truncated: false
+    - text: 本次仅测试合同，真实SSR不等于浏览器UI、媒体实机或Linux真实CI；未部署18088，原F03缺可信基线的恢复仍阻塞。
+      truncated: false
+    - text: 无提交/归档/部署/清缓存/模型/外发或推送合并发布授权，全部旧修改和数据保持。
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-23T11:05:40.616Z
+blockers: []
+verification:
+  candidate_id: 6ec9dc80-a708-436a-ba1a-f6f40713f6d1
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:8804fdf7-c172-486a-9401-1e90f9f15483
+  iteration: 1
+  attempt: 1
+  assurance: user-confirmed-degraded
+  verdict: pass
+  checks:
+    - id: f05-related
+      name:
+        text: 源码合同全部消费者及F04相关组合
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: test/admin-ui-regressions.test.ts
+          truncated: false
+        - text: test/agent-api-reliability.test.ts
+          truncated: false
+        - text: test/agent-launcher-position.test.mjs
+          truncated: false
+        - text: test/appearance-bootstrap.test.ts
+          truncated: false
+        - text: test/application-bootstrap.test.mjs
+          truncated: false
+        - text: test/assets-collection-layout.test.ts
+          truncated: false
+        - text: test/canvas-appearance.test.ts
+          truncated: false
+        - text: test/canvas-connection-create-menu.test.ts
+          truncated: false
+        - text: test/canvas-image-source.test.ts
+          truncated: false
+        - text: test/canvas-image-upload.test.tsx
+          truncated: false
+        - text: test/canvas-keyboard.test.ts
+          truncated: false
+        - text: test/canvas-media-performance.test.ts
+          truncated: false
+        - text: test/canvas-node-drag-overlays.test.ts
+          truncated: false
+        - text: test/canvas-node-stack-order.test.ts
+          truncated: false
+        - text: test/canvas-resource-mention-editor.test.ts
+          truncated: false
+        - text: test/canvas-selection.test.ts
+          truncated: false
+        - text: test/ci-image-release.test.mjs
+          truncated: false
+        - text: test/create-canvas-handoff.test.ts
+          truncated: false
+        - text: test/create-library-button.test.ts
+          truncated: false
+        - text: test/cross-tab-session-cache.test.ts
+          truncated: false
+        - text: test/director-keyframe-delete-wiring.test.ts
+          truncated: false
+        - text: test/director-onboarding.test.ts
+          truncated: false
+        - text: test/director-template-mode-wiring.test.ts
+          truncated: false
+        - text: test/http-ownership.test.ts
+          truncated: false
+        - text: test/intelligence-member-api.test.ts
+          truncated: false
+        - text: test/model-quote.test.ts
+          truncated: false
+        - text: test/resource-upload-boundary.test.ts
+          truncated: false
+        - text: test/resource-upload-progress.test.ts
+          truncated: false
+        - text: test/scrollbar-style-source.test.ts
+          truncated: false
+        - text: test/site-appearance-and-skins.test.ts
+          truncated: false
+        - text: test/skills-api.test.ts
+          truncated: false
+        - text: test/source-contract-portability.test.ts
+          truncated: false
+        - text: test/test-execution-boundaries.test.ts
+          truncated: false
+        - text: test/welcome-title.test.mjs
+          truncated: false
+        - text: test/workspace-menu-density.test.tsx
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 16570
+    - id: f05-build
+      name:
+        text: TypeScript与Vite正式构建
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 11399
+    - id: f05-lint
+      name:
+        text: UI lint
+        truncated: false
+      argv_display:
+        - text: run
+          truncated: false
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: web
+      status: passed
+      exit_code: 0
+      duration_ms: 21993
+  summary:
+    text: 用户本轮明确接受没有独立Verifier的有限结果：正式RED→GREEN，Runtime369项2286断言及构建lint通过，完整Web2320通过0失败0错误，原8失败消除；保留原断言、12种语义负向控制和真实SSR11/10。因禁止子代理/新聊天未独立审查，Linux真实CI/浏览器媒体实机/原F03恢复及其余U/A/G门槛保留。仅测试与文档，不改生产；本次接受不含提交、归档、部署、推送、合并或发布授权。
+    truncated: false
+  risks:
+    - text: No independent semantic Verifier execution was available; Runtime checks
+        alone do not cover acceptance semantics.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-10-23T11:12:40.477Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: blocked
+    unresolved_ids:
+      - A1
+      - A2
+      - A3
+      - A4
+      - A5
+      - A6
+    summary:
+      text: 平台提供子代理工具，但用户本轮明确禁止子代理与新聊天，没有获授权可用的独立Verifier执行方式；dispatch仅登记，未启动或冒称独立审查。正式RED→GREEN、12语义变异负向控制、真实菜单SSR11/10通过；Runtime369项2286断言及build/lint通过，全Web实际2320pass0fail0errors/17993断言。仅测试文档，原8失败消除；Linux真实CI/浏览器媒体实机/原F03恢复与U/A/G仍未通过，未部署/提交/归档。需本次明确接受无独立Verifier的有限结果，不能沿用F04接受。
+      truncated: false
+    completed_at: 2026-10-23T11:08:19.349Z
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 用户本轮明确接受没有独立Verifier的有限结果：正式RED→GREEN，Runtime369项2286断言及构建lint通过，完整Web2320通过0失败0错误，原8失败消除；保留原断言、12种语义负向控制和真实SSR11/10。因禁止子代理/新聊天未独立审查，Linux真实CI/浏览器媒体实机/原F03恢复及其余U/A/G门槛保留。仅测试与文档，不改生产；本次接受不含提交、归档、部署、推送、合并或发布授权。
+      truncated: false
+    completed_at: 2026-10-23T11:12:40.477Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-23T10:45:09.475Z
