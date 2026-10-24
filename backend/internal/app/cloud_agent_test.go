@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -620,8 +621,11 @@ func TestCloudAgentToolLoopPersistsApprovalAndAppliesCanvasWrite(t *testing.T) {
 func TestCloudAgentNodeTypesExposeExecutableAllowList(t *testing.T) {
 	result := cloudAgentNodeTypes()
 	nodes, ok := result["nodes"].([]map[string]any)
-	if !ok || len(nodes) != 10 {
+	if !ok {
 		t.Fatalf("unexpected node registry: %#v", result)
+	}
+	if err := checkCloudAgentNodeTypeSet(nodes, cloudAgentExpectedNodeTypes); err != nil {
+		t.Fatalf("node registry does not match the current product: %v", err)
 	}
 	var character map[string]any
 	for _, node := range nodes {
@@ -643,6 +647,56 @@ func TestCloudAgentNodeTypesExposeExecutableAllowList(t *testing.T) {
 	}
 }
 
+// cloudAgentExpectedNodeTypes 是 Agent 可发现的现行节点类型全集（含不可创建的 character 变体）。
+// 新增或移除产品节点类型时必须同步更新这里，而不是放宽数量断言。
+var cloudAgentExpectedNodeTypes = []string{
+	"audio", "batch-table", "character", "data-source", "file", "frame",
+	"image", "logic", "markdown", "script", "skill", "text", "video",
+}
+
+// checkCloudAgentNodeTypeSet 逐类型核对注册表：缺失、多出或重复都返回错误。
+func checkCloudAgentNodeTypeSet(nodes []map[string]any, want []string) error {
+	wanted := make(map[string]struct{}, len(want))
+	for _, nodeType := range want {
+		wanted[nodeType] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		nodeType, _ := node["type"].(string)
+		if _, duplicate := seen[nodeType]; duplicate {
+			return fmt.Errorf("duplicate node type %q", nodeType)
+		}
+		seen[nodeType] = struct{}{}
+		if _, ok := wanted[nodeType]; !ok {
+			return fmt.Errorf("unexpected node type %q", nodeType)
+		}
+	}
+	for nodeType := range wanted {
+		if _, ok := seen[nodeType]; !ok {
+			return fmt.Errorf("missing node type %q", nodeType)
+		}
+	}
+	return nil
+}
+
+// 负向控制：检查器必须真的能发现缺失、多出和重复的类型，否则上面的集合断言没有检测力。
+func TestCloudAgentNodeTypeSetCheckDetectsDrift(t *testing.T) {
+	registry := cloudAgentNodeTypes()["nodes"].([]map[string]any)
+	if err := checkCloudAgentNodeTypeSet(registry, cloudAgentExpectedNodeTypes); err != nil {
+		t.Fatalf("current registry must match the expected set: %v", err)
+	}
+	extra := append(append([]map[string]any{}, registry...), map[string]any{"type": "panorama"})
+	duplicate := append(append([]map[string]any{}, registry...), registry[0])
+	for name, mutated := range map[string][]map[string]any{
+		"missing":   registry[1:],
+		"extra":     extra,
+		"duplicate": duplicate,
+	} {
+		if err := checkCloudAgentNodeTypeSet(mutated, cloudAgentExpectedNodeTypes); err == nil {
+			t.Fatalf("%s node type drift was not detected", name)
+		}
+	}
+}
 func TestCloudAgentCanvasApprovalAdmissionFailureTerminatesRun(t *testing.T) {
 	s, db, _, _ := creationTestService(t)
 	canvas := model.CanvasProject{ID: "agent-canvas", UserID: "user", Title: "test", PayloadJSON: `{"nodes":[]}`}

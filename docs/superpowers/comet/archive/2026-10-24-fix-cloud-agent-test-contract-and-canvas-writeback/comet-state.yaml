@@ -1,0 +1,272 @@
+schema: comet.native.v4
+name: fix-cloud-agent-test-contract-and-canvas-writeback
+language: zh-CN
+phase: archive
+status: done
+state_version: 11
+brief: brief.md
+document_constraints_version: 1
+shape_confirmation_hash: 7015f6e3ccd96dee062b7cf9eb6dce6835711202244431200e55ed7acc1db8c7
+spec_changes:
+  - capability: cloud-agent-test-contract
+    operation: create
+    source: specs/cloud-agent-test-contract/spec.md
+workspace:
+  isolation: current
+  change_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  target_branch: codex/fix-workspace-member-controls-and-analyst-permissions
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 2
+  retry_epoch: 1
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：节点注册表断言列出现行完整类型集合并逐项检查，类型缺失、多出或重复时测试失败；原有 panorama/character 断言保持。
+    result: passed
+    reason:
+      text: 新断言用硬编码的13类型期望集合对 cloudAgentNodeTypes() 做精确集合校验；该注册表来自
+        canvasCapabilityRegistry，期望集合独立而非动态抄写。负向控制对缺失、多出、重复三类漂移都有检测。原 panorama
+        外露、character 不可创建/可发现/不进 add_node 枚举的断言在 diff 中未删除。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：已用文件/行号与命令输出记录 `ErrCreationConflict` 在 CanvasPatches、MediaCompletion
+      两个测试中的触发点和根因分类（测试造数/时序、Windows 环境、真实产品缺陷之一），MissingCanvas
+      的整包与单独结果差异也有解释或明确记为未解释。
+    result: passed
+    reason:
+      text: 根因归类为测试夹具时序竞争，有代码支持：startApprovedCloudAgentMediaWaiter 只检查
+        approvedMediaClosed，不检查 disablePiRuntime；creationTestService 设了
+        disablePiRuntime:true，所以后台等待器仍会运行，与测试直接调用 advanceCloudAgentByID
+        或改写画布产生竞争，触发 saveCreationCanvasWithHistory 的
+        ErrCreationConflict。MissingCanvas 单独通过而整包失败，与随机时序竞争一致。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：若根因是测试或环境，修复后这三个测试在 `go test ./internal/app -run <三个测试> -count=3`
+      下稳定通过；若是产品缺陷，保留失败证据并停在向用户重新确认，不得改产品代码后宣称通过。
+    result: passed
+    reason:
+      text: agentMediaFixture 中设 approvedMediaClosed=true
+        使等待器直接返回，只关闭了竞争源。产品代码确实未改：git status 显示 backend 下只有两个测试文件被修改。Runtime
+        回执显示五个目标测试 -count=3 通过；Builder 报告称 10
+        轮全过。风险：若有测试依赖该夹具并需要等待器运行，会失去这部分覆盖，但 TestCloudAgent 全组仍全部通过。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：`go test ./internal/app -run TestCloudAgent -count=1` 在已安装
+      agent-runtime 依赖的当前环境下，除登记在 C02 文档的环境类失败外，不再有本变更范围内的失败，且未删除或跳过任何测试。
+    result: passed
+    reason:
+      text: 日志 .local/fix-agent-group.log 显示 ok 且无 FAIL，约 536 行 PASS 以及 1 个 SKIP。diff
+        只有 58 行新增、1 行删除（旧的 len==10 断言），没有删除或新增 skip。被跳过的
+        TestCloudAgentVideoFramesPostgres 是预先存在的跳过，原因是 CANVAS_TEST_POSTGRES_DSN
+        未配置。Runtime 回执 TestCloudAgent 全组 passed。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：`docs/flow/pending-acceptance.md` 之外的新证据文档记录本次实际命令、结果、未执行项和剩余环境类失败，C02
+      基线文档对应项得到状态更新。
+    result: passed
+    reason:
+      text: 验证报告和 C02 文档末尾更新段如实记录了命令和结果，包括基线 8/10 失败、修复后 10/10 通过。它们列出了未执行项：未在
+        Linux/Docker 运行、PG 用例跳过、非 CloudAgent 用例未重跑、fsync/Redis/权限位/Gmail
+        等环境类失败仍待 F09，并说明已撤回此前对 runtime 两项为真实回归的初判。未发现夸大。
+      truncated: false
+builder_handoff:
+  candidate_id: 890a2192-85fe-44c5-b33f-7491873be396
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:b39a91a4-aff5-4722-9198-94e90781251f
+  iteration: 1
+  summary:
+    text: 只改测试，未改产品代码。(1)
+      cloud_agent_test.go：节点注册表断言由固定10改为对13个现行类型的精确集合校验(cloudAgentExpectedNodeTypes/checkCloudAgentNodeTypeSet)，原panorama/character断言保留，新增TestCloudAgentNodeTypeSetCheckDetectsDrift对缺失/多出/重复做负向控制。(2)
+      cloud_agent_media_test.go：agentMediaFixture设s.approvedMediaClosed=true，关闭不遵守disablePiRuntime的已批准媒体后台等待器，消除其与测试直接advance/改写画布的乐观锁竞争。根因证据与改动见docs/superpowers/reports/2026-10-24-fix-cloud-agent-test-contract-and-canvas-writeback-verify.md。缺agent-runtime依赖属环境问题，已npm
+      ci，不属本变更代码。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+  checks:
+    - name:
+        text: 基线：三测试组合x10(修改前)
+        truncated: false
+      result: failed
+      note:
+        text: 8失败/2通过，证明随机冲突
+        truncated: false
+    - name:
+        text: 三测试组合x10(夹具修改后)
+        truncated: false
+      result: passed
+      note:
+        text: 10/10 ok
+        truncated: false
+    - name:
+        text: go vet ./internal/app
+        truncated: false
+      result: passed
+      note:
+        text: 无输出
+        truncated: false
+    - name:
+        text: TestCloudAgent全组 -count=1 -v
+        truncated: false
+      result: passed
+      note:
+        text: 347通过/0失败/1跳过(TestCloudAgentVideoFramesPostgres需要真实PG)；.local/fix-agent-group.log
+        truncated: false
+    - name:
+        text: Linux/Docker运行
+        truncated: false
+      result: not-run
+      note:
+        text: 未执行，fsync/Redis/权限位类环境失败仍待F09
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 仅Windows本地执行，未在Linux/Docker验证；fsync、缺Redis、权限位、Gmail临时文件占用及其他约10个internal/app用例不在本变更范围，仍待F09
+      truncated: false
+    - text: TestCloudAgentVideoFramesPostgres跳过，需要真实PG，不算通过
+      truncated: false
+    - text: 产品代码startApprovedCloudAgentMediaWaiter不遵守disablePiRuntime，生产不设该标志故无用户可见影响，未修改，如需改须另行确认范围
+      truncated: false
+    - text: 无独立Verifier时结果需用户明确接受
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-24T11:36:45.423Z
+blockers: []
+verification:
+  candidate_id: 890a2192-85fe-44c5-b33f-7491873be396
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:38a449d0-ed27-47ce-b2e2-99bffd2a9e2a
+  iteration: 1
+  attempt: 2
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: go-vet-app
+      name:
+        text: go vet ./internal/app
+        truncated: false
+      argv_display:
+        - text: vet
+          truncated: false
+        - text: ./internal/app
+          truncated: false
+      argv_truncated: false
+      cwd_ref: backend
+      status: passed
+      exit_code: 0
+      duration_ms: 5817
+    - id: targets-x3
+      name:
+        text: 五个目标测试 -count=3
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: ./internal/app
+          truncated: false
+        - text: -run
+          truncated: false
+        - text: ^(TestCloudAgentCanvasPatchesPersistDraftSubmissionAndAllTerminalStates|TestCloudAgentMediaCompletionKeepsGenerationAndWritebackFailures|TestCloudAgentMissingCanvasStillCheckpointsMediaFailure|TestCloudAgentNodeTypesExposeExecutableAllowList|TestCloudAgentNodeTypeSetCheckDetectsDrift)$
+          truncated: false
+        - text: -count=3
+          truncated: false
+      argv_truncated: false
+      cwd_ref: backend
+      status: passed
+      exit_code: 0
+      duration_ms: 23432
+    - id: cloudagent-group
+      name:
+        text: TestCloudAgent 全组
+        truncated: false
+      argv_display:
+        - text: test
+          truncated: false
+        - text: ./internal/app
+          truncated: false
+        - text: -run
+          truncated: false
+        - text: TestCloudAgent
+          truncated: false
+        - text: -count=1
+          truncated: false
+      argv_truncated: false
+      cwd_ref: backend
+      status: passed
+      exit_code: 0
+      duration_ms: 144982
+  summary:
+    text: 只改了测试：A1 改为精确集合校验并加负向控制；A2/A3 通过夹具关闭已批准媒体等待器消除了 ErrCreationConflict
+      竞争。没有改动产品代码，没有删除或跳过测试，文档如实。
+    truncated: false
+  risks:
+    - text: 仅在 Windows 验证，未在 Linux/Docker 验证
+      truncated: false
+    - text: 真实 Postgres 用例跳过，不算通过
+      truncated: false
+    - text: 产品侧等待器不遵守 disablePiRuntime，按约束未修改，只在夹具中规避
+      truncated: false
+    - text: 夹具关闭等待器，可能削弱依赖该夹具的测试对等待器行为的覆盖
+      truncated: false
+    - text: 347 通过/1 跳过 等具体数字我只通过日志部分佐证，没有重跑全组
+      truncated: false
+    - text: fsync/Redis 等环境类失败不在本次范围内，仍然存在
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-10-24T12:05:53.766Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 1
+    outcome: blocked
+    unresolved_ids:
+      - A1
+      - A2
+      - A3
+      - A4
+      - A5
+    summary:
+      text: 用户本次明确禁止启动子代理和新聊天，因此没有可用的独立 Verifier 执行；Runtime 的 3 项命令检查已通过（复用），未做独立语义复核。
+      truncated: false
+    completed_at: 2026-10-24T11:41:18.834Z
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 2
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 只改了测试：A1 改为精确集合校验并加负向控制；A2/A3 通过夹具关闭已批准媒体等待器消除了 ErrCreationConflict
+        竞争。没有改动产品代码，没有删除或跳过测试，文档如实。
+      truncated: false
+    completed_at: 2026-10-24T12:05:53.766Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-24T11:05:45.787Z

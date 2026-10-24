@@ -15,6 +15,9 @@ import (
 func agentMediaFixture(t *testing.T) (*Service, *gorm.DB, cloudAgentMediaArgs) {
 	t.Helper()
 	s, db, _, _ := creationTestService(t)
+	// 已批准媒体的后台等待器不受 disablePiRuntime 约束；本夹具的测试会直接调用
+	// advanceCloudAgentByID 并改写画布，等待器同时推进同一运行会随机触发乐观锁冲突。
+	s.approvedMediaClosed = true
 	capability := DefaultModelCapabilityConfigForModel(string(model.ChannelInterfaceVolcengineArkVideo), "seedance-test")
 	capability.Video.References.PromptMaxChars = 16000
 	for _, row := range []any{
