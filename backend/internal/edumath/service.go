@@ -693,7 +693,7 @@ func (s *Service) policy(tx *gorm.DB, tenantID string) string {
 }
 
 // Review binds the decision to the exact lesson revision and hash (constraint 3, FR-I04).
-func (s *Service) Review(tx *gorm.DB, a Actor, lessonID, lessonHash, decision, comment string) (model.EduReviewRecord, error) {
+func (s *Service) Review(tx *gorm.DB, a Actor, lessonID, lessonHash, decision, comment string, rv ReviewInput) (model.EduReviewRecord, error) {
 	var l model.EduLessonRevision
 	if err := tx.First(&l, "id = ? AND tenant_id = ?", lessonID, a.TenantID).Error; err != nil {
 		return model.EduReviewRecord{}, ErrNotFound
@@ -714,8 +714,12 @@ func (s *Service) Review(tx *gorm.DB, a Actor, lessonID, lessonHash, decision, c
 	if decision == "approved" && l.BlockingErrors != "" {
 		return model.EduReviewRecord{}, appErr(409, "VALIDATION_FAILED", "lesson has blocking errors", "teacher_fix")
 	}
+	checklist, findings, err := rv.check(decision, comment)
+	if err != nil {
+		return model.EduReviewRecord{}, err
+	}
 	rec := model.EduReviewRecord{ID: flow.NewID("err_"), TenantID: a.TenantID, LessonRevisionID: l.ID, LessonHash: l.LessonHash, ReviewerID: a.UserID,
-		SelfReview: self, Decision: decision, Comment: comment, CreatedAt: s.now()}
+		SelfReview: self, Decision: decision, Comment: comment, CreatedAt: s.now(), Checklist: checklist, Findings: findings}
 	newState := "approved"
 	if decision == "rejected" {
 		newState = "rejected"

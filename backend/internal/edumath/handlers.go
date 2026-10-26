@@ -384,9 +384,17 @@ func (h *API) review(c *gin.Context) {
 		LessonHash string `json:"lessonHash"`
 		Decision   string `json:"decision"`
 		Comment    string `json:"comment"`
+		ReviewInput
 	}
-	_ = c.ShouldBindJSON(&in)
-	r, err := h.Svc.Review(tx, a, c.Param("id"), in.LessonHash, in.Decision, in.Comment)
+	if c.ShouldBindJSON(&in) != nil {
+		reply(c, 400, nil, "invalid review body")
+		return
+	}
+	if err := h.checkFindingTargets(c, tx, a, c.Param("id"), in.Findings); err != nil {
+		h.fail(c, err)
+		return
+	}
+	r, err := h.Svc.Review(tx, a, c.Param("id"), in.LessonHash, in.Decision, in.Comment, in.ReviewInput)
 	if err != nil {
 		h.fail(c, err)
 		return

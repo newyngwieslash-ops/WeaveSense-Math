@@ -291,6 +291,10 @@ type EduReviewRecord struct {
 	// InheritedFrom is set only when an edit inherited the parent's approval under the explicit
 	// institution rule (pronunciation_only); it names the parent review record and is never a new review.
 	InheritedFrom string `json:"inheritedFrom,omitempty" gorm:"size:40"`
+	// Checklist (DEV-076) is the reviewer's per-item verdict {item: pass|issue|na} as JSON;
+	// Findings locate what a rejection is about [{target, item, note}] as JSON. Both optional.
+	Checklist string `json:"checklist,omitempty" gorm:"type:text"`
+	Findings  string `json:"findings,omitempty" gorm:"type:text"`
 }
 
 func (EduReviewRecord) TableName() string { return "edu_review_records" }

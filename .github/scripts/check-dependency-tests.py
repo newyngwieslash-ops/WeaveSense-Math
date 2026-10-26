@@ -60,6 +60,8 @@ REQUIRED = {
     ("edumath", "TestPGRosterImport"),
     ("edumath", "TestAuthzSweep"),
     ("edumath", "TestPGAuthzSweep"),
+    ("edumath", "TestReviewChecklist"),
+    ("edumath", "TestPGReviewChecklist"),
     ("edumath", "TestPGAgentMathTools"),
 }
 

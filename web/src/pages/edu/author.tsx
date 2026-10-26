@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { LessonEditor } from "@/components/edu/lesson-editor";
+import { ReviewChecklist } from "@/components/edu/review-checklist";
 import { VariantSetPanel } from "@/components/edu/variant-set";
 import { edu, newClientKey, type EduScope } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
@@ -68,7 +69,6 @@ export default function TeacherAuthoring() {
     const [solution, setSolution] = useState<Solution | null>(null);
     const [lesson, setLesson] = useState<Lesson | null>(null);
     const [preview, setPreview] = useState("");
-    const [comment, setComment] = useState("");
     const [publicationId, setPublicationId] = useState("");
     const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
     const [assign, setAssign] = useState({ classId: "", title: "", dueAt: "", answerPolicy: "teacher_release", unitPolicy: "required", approxAllowed: false, allowLate: false });
@@ -156,12 +156,6 @@ export default function TeacherAuthoring() {
         const r = await edu<Job>("post", `/solution-revisions/${solution.id}/lesson`, scope, { idempotencyKey: `${lessonKey}-${solution.id}` });
         if (!r.ok) return setMsg(`${r.code}：${r.message}`);
         setLessonJob(r.data.id);
-    };
-    const review = async (decision: "approved" | "rejected") => {
-        if (!lesson) return;
-        const r = await edu<{ id: string }>("post", `/lesson-revisions/${lesson.id}/review`, scope, { lessonHash: lesson.lessonHash, decision, comment });
-        if (!r.ok) return setMsg(`${r.code}：${r.message}`);
-        setLesson({ ...lesson, state: decision });
     };
     const publish = async () => {
         if (!lesson) return;
@@ -262,14 +256,8 @@ export default function TeacherAuthoring() {
                             {lesson.blockingErrors ? `；阻断错误 ${lesson.blockingErrors}，不可发布` : ""}
                         </p>
                         {preview ? <iframe title="教师预览" src={preview} sandbox="allow-scripts" className="mt-2 h-96 w-full rounded-md border" /> : null}
-                        <textarea className="mt-2 w-full rounded-md border p-2 text-sm" rows={2} placeholder="审核意见" value={comment} onChange={(e) => setComment(e.target.value)} />
+                        <ReviewChecklist key={lesson.id + lesson.state} scope={scope} lesson={lesson} onDone={(decision) => setLesson({ ...lesson, state: decision })} />
                         <div className="mt-2 flex gap-2">
-                            <button className={btn} disabled={!!lesson.blockingErrors} onClick={() => void review("approved")}>
-                                审核通过
-                            </button>
-                            <button className={ghost} onClick={() => void review("rejected")}>
-                                退回
-                            </button>
                             <button className={btn} disabled={lesson.state !== "approved" || !!publicationId} onClick={() => void publish()}>
                                 {publicationId ? "已发布" : "发布"}
                             </button>
