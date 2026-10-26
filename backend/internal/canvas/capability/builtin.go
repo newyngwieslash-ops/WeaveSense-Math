@@ -116,17 +116,32 @@ func BuiltinRegistry() *Registry {
 		},
 		{
 			Type: "data-source", Version: "1", Label: "数据源", DefaultWidth: 420, DefaultHeight: 340,
-			Purpose:     "承载结构化数据源（JSON、CSV、TXT、Markdown、情报条目），供下游逻辑与集合节点运算或驱动媒体生成。",
-			GoodFor:     []string{"结构化 JSON/CSV 数据输入", "情报条目集合输入", "驱动逻辑分支与集合运算"},
-			NotIdealFor: []string{"直接生成图片或视频", "长篇小说排版展示"},
-			Tradeoffs:   []string{"支持按条目解析与字段提取", "不直接发起模型生成任务"},
-			InputKind:   "text",
-			Connection:  ConnectionPolicy{CanSource: true, CanTarget: true, AcceptedInputKinds: []string{"text"}},
-			CanUpdate:   true,
+			Purpose:       "承载结构化数据源（JSON、CSV、TXT、Markdown、情报条目），供下游逻辑与集合节点运算或驱动媒体生成。",
+			GoodFor:       []string{"结构化 JSON/CSV 数据输入", "情报条目集合输入", "驱动逻辑分支与集合运算"},
+			NotIdealFor:   []string{"直接生成图片或视频", "长篇小说排版展示"},
+			Tradeoffs:     []string{"支持按条目解析与字段提取", "不直接发起模型生成任务"},
+			InputKind:     "text",
+			Connection:    ConnectionPolicy{CanSource: true, CanTarget: true, AcceptedInputKinds: []string{"text"}},
+			CanUpdate:     true,
 			SummaryFields: []string{"content", "dataSource"}, DetailFields: []string{"content", "dataSource"},
 			PatchFields: func() map[string]PatchField {
 				fields := editableNodeFields("metadata.content", "数据源内容", "JSON / CSV / Markdown / TXT 原始文本")
 				fields["format"] = PatchField{Path: "metadata.dataSource.format", Kind: patchKindString, Label: "数据格式", Order: 25, Description: "json | csv | txt | markdown | intel", MaxRunes: 32}
+				fields["sourceBindingKind"] = PatchField{Path: "metadata.dataSource.sourceBinding.kind", Kind: patchKindString, Label: "绑定类型", Order: 26, Description: "static | intel_query | topic | monitor | mcp_tool", MaxRunes: 32}
+				fields["sourceBindingRefId"] = PatchField{Path: "metadata.dataSource.sourceBinding.refId", Kind: patchKindString, Label: "绑定ID", Order: 27, Description: "专题/监测/文档ID", MaxRunes: 120}
+				setFieldSchema(fields, "sourceBindingKind", enumSchema("static", "intel_query", "topic", "monitor", "mcp_tool"))
+				fields["sourceBindingQuery"] = structuredField("metadata.dataSource.sourceBinding.query", "绑定查询", 28, map[string]any{"type": "string"})
+				fields["sourceBindingSourceIds"] = structuredField("metadata.dataSource.sourceBinding.sourceIds", "来源ID", 29, stringArraySchema())
+				fields["sourceBindingTimeWindow"] = structuredField("metadata.dataSource.sourceBinding.timeWindow", "时间窗口", 32, objectSchema(map[string]any{
+					"kind": enumSchema("7d", "30d", "custom"), "from": nonemptyStringSchema(), "to": nonemptyStringSchema(), "timezone": nonemptyStringSchema(),
+				}, "kind"))
+				fields["sourceBindingToolName"] = structuredField("metadata.dataSource.sourceBinding.toolName", "工具名", 33, nonemptyStringSchema())
+				// MCP tool arguments have tool-owned keys; the binding envelope remains closed.
+				fields["sourceBindingToolArgs"] = structuredField("metadata.dataSource.sourceBinding.toolArgs", "工具参数", 34, map[string]any{"type": "object", "additionalProperties": true})
+				fields["sourceBindingToolVersion"] = structuredField("metadata.dataSource.sourceBinding.toolVersion", "工具版本", 35, map[string]any{"type": "integer", "minimum": 1})
+				fields["sourceBindingSchemaHash"] = structuredField("metadata.dataSource.sourceBinding.schemaHash", "工具模式哈希", 36, nonemptyStringSchema())
+				fields["sourceBindingOutputSchema"] = structuredField("metadata.dataSource.sourceBinding.outputSchema", "输出模式", 37, map[string]any{"type": "object", "additionalProperties": true})
+				fields["sourceBindingWindowArguments"] = structuredField("metadata.dataSource.sourceBinding.windowArguments", "窗口参数映射", 38, objectSchema(map[string]any{"from": nonemptyStringSchema(), "to": nonemptyStringSchema()}, "from", "to"))
 				return fields
 			}(),
 			CreateMetadata: func(content string) map[string]any {
@@ -134,22 +149,40 @@ func BuiltinRegistry() *Registry {
 			},
 		},
 		{
-			Type: "logic", Version: "1", Label: "逻辑与集合", DefaultWidth: 400, DefaultHeight: 320,
-			Purpose:     "对上游数据源或节点执行 If/Else 条件分支（True/False 双端口输出）、交集（A ∩ B）、并集（A ∪ B）、差集（A − B）、条件过滤或 JSON 字段提取。",
-			GoodFor:     []string{"If/Else 条件分流（fromHandleId 支持 true / false）", "多路数据交集、并集、差集（toHandleId 支持 input_a / input_b）", "按字段条件过滤或提取下游提示词数据"},
-			NotIdealFor: []string{"承载静态长文档", "直接替代模型生成节点"},
-			Tradeoffs:   []string{"纯前端声明式实时求值，不执行任意代码", "当连接至下游生成节点的逻辑分支为空（0 条命中）时，会自动门控拦截下游生成"},
-			InputKind:   "text",
-			Connection:  ConnectionPolicy{CanSource: true, CanTarget: true, AcceptedInputKinds: []string{"audio", "character", "image", "text", "video"}},
-			CanUpdate:   true,
+			Type: "logic", Version: "1", Label: "逻辑与建模算子", DefaultWidth: 400, DefaultHeight: 320,
+			Purpose:       "对上游数据执行 If/Else 分支、集合运算（交/并/差）、过滤、提取，以及指标计算（compute）、分组聚合（aggregate）、多源关联（join）与 Top-N 排序（sort_limit）。",
+			GoodFor:       []string{"If/Else 分流与条件过滤", "多路数据交集、并集、差集与关联拼接（join）", "污水折算千人消费量等指标计算（compute）、区域分组聚合（aggregate）与高危 Top-N（sort_limit）"},
+			NotIdealFor:   []string{"承载静态长文档", "直接替代模型生成节点"},
+			Tradeoffs:     []string{"前后端同构确定性求值，不执行任意非受控代码", "当连接至下游生成节点的逻辑分支为空（0 条命中）时，会自动门控拦截下游生成"},
+			InputKind:     "text",
+			Connection:    ConnectionPolicy{CanSource: true, CanTarget: true, AcceptedInputKinds: []string{"audio", "character", "image", "text", "video"}},
+			CanUpdate:     true,
 			SummaryFields: []string{"content", "logic"}, DetailFields: []string{"content", "logic"},
 			PatchFields: func() map[string]PatchField {
 				fields := titleAndPositionPatchFields()
-				fields["operator"] = PatchField{Path: "metadata.logic.operator", Kind: patchKindString, Label: "运算类型", Order: 20, Description: "if_else | intersect | union | difference | filter | json_extract", MaxRunes: 32}
+				fields["operator"] = PatchField{Path: "metadata.logic.operator", Kind: patchKindString, Label: "运算类型", Order: 20, Description: "if_else | intersect | union | difference | filter | json_extract | compute | aggregate | join | sort_limit", MaxRunes: 32}
 				fields["fieldPath"] = PatchField{Path: "metadata.logic.fieldPath", Kind: patchKindString, Label: "字段路径", Order: 21, Description: "点路径字段名，如 score 或 meta.tag", MaxRunes: 120}
 				fields["comparator"] = PatchField{Path: "metadata.logic.comparator", Kind: patchKindString, Label: "比较符", Order: 22, Description: "contains | not_contains | equals | not_equals | gt | lt | not_empty | is_empty | regex", MaxRunes: 32}
 				fields["compareValue"] = PatchField{Path: "metadata.logic.compareValue", Kind: patchKindString, Label: "比较值", Order: 23, Description: "条件比较目标值", MaxRunes: 500}
-				fields["matchKey"] = PatchField{Path: "metadata.logic.matchKey", Kind: patchKindString, Label: "匹配键", Order: 24, Description: "集合交集/并集/差集的去重匹配字段名，如 id 或 title", MaxRunes: 120}
+				fields["matchKey"] = PatchField{Path: "metadata.logic.matchKey", Kind: patchKindString, Label: "匹配键", Order: 24, Description: "集合运算匹配字段，如 id；Join 使用 joinKeys", MaxRunes: 120}
+				fields["expression"] = PatchField{Path: "metadata.logic.expression", Kind: patchKindString, Label: "计算公式", Order: 25, Description: "如 wbe_consumption_mg_1000p 或四则表达式", MaxRunes: 240}
+				fields["outputField"] = PatchField{Path: "metadata.logic.outputField", Kind: patchKindString, Label: "输出字段", Order: 26, Description: "计算或聚合输出字段名", MaxRunes: 80}
+				fields["groupBy"] = structuredField("metadata.logic.groupBy", "分组字段", 27, stringArraySchema())
+				fields["metrics"] = structuredField("metadata.logic.metrics", "聚合指标", 28, arraySchema(objectSchema(map[string]any{
+					"field": map[string]any{"type": "string"}, "fn": enumSchema("count", "sum", "avg", "max", "min", "p95"), "as": nonemptyStringSchema(),
+				}, "field", "fn", "as")))
+				fields["joinMode"] = PatchField{Path: "metadata.logic.joinMode", Kind: patchKindString, Label: "关联模式", Order: 30, Description: "inner | left", MaxRunes: 16}
+				fields["joinKeys"] = structuredField("metadata.logic.joinKeys", "关联键", 31, arraySchema(objectSchema(map[string]any{"left": nonemptyStringSchema(), "right": nonemptyStringSchema()}, "left", "right")))
+				fields["dedupeKeys"] = structuredField("metadata.logic.dedupeKeys", "去重字段", 34, stringArraySchema())
+				fields["limit"] = structuredField("metadata.logic.limit", "数量上限", 35, map[string]any{"type": "integer", "minimum": 1})
+				fields["periodComparison"] = structuredField("metadata.logic.periodComparison", "周期比较", 36, objectSchema(map[string]any{
+					"regionField": nonemptyStringSchema(), "substanceField": nonemptyStringSchema(), "periodField": nonemptyStringSchema(), "baselinePeriodField": nonemptyStringSchema(), "valueField": nonemptyStringSchema(),
+				}, "regionField", "substanceField", "periodField", "baselinePeriodField", "valueField"))
+				fields["sortField"] = PatchField{Path: "metadata.logic.sortField", Kind: patchKindString, Label: "排序字段", Order: 32, Description: "Top-N 排序字段", MaxRunes: 80}
+				fields["sortOrder"] = PatchField{Path: "metadata.logic.sortOrder", Kind: patchKindString, Label: "排序方向", Order: 33, Description: "desc | asc", MaxRunes: 8}
+				setFieldSchema(fields, "operator", enumSchema("if_else", "intersect", "union", "difference", "filter", "json_extract", "compute", "aggregate", "join", "sort_limit"))
+				setFieldSchema(fields, "joinMode", enumSchema("left", "inner"))
+				setFieldSchema(fields, "sortOrder", enumSchema("desc", "asc"))
 				return fields
 			}(),
 			CreateMetadata: func(content string) map[string]any {
@@ -157,20 +190,44 @@ func BuiltinRegistry() *Registry {
 			},
 		},
 		{
+			Type: "chart", Version: "1", Label: "图表", DefaultWidth: 420, DefaultHeight: 280,
+			Purpose:       "将上游数据源、逻辑聚合或文本节点的 JSON 数组/CSV 渲染为柱状图或折线图，用于区域趋势、排行与量化研判可视化。",
+			GoodFor:       []string{"区域指标排行柱状图", "时间序列趋势折线图", "连接 aggregate / compute / sort_limit 算子直接可视化"},
+			NotIdealFor:   []string{"非结构化散文文本", "驱动下游媒体生成"},
+			Tradeoffs:     []string{"作为可视化终端节点，接收结构化数组或 CSV"},
+			InputKind:     "text",
+			Connection:    ConnectionPolicy{CanSource: false, CanTarget: true, AcceptedInputKinds: []string{"text"}},
+			CanUpdate:     true,
+			SummaryFields: []string{"content", "chartKind", "xKey", "series"}, DetailFields: []string{"content", "chartKind", "xKey", "series"},
+			PatchFields: func() map[string]PatchField {
+				fields := editableNodeFields("metadata.content", "图表数据", "JSON 数组或 CSV 文本（留空则直接读取上游节点输出）")
+				fields["chartKind"] = PatchField{Path: "metadata.chartKind", Kind: patchKindString, Label: "图表类型", Order: 25, Description: "bar | line", MaxRunes: 16}
+				setFieldSchema(fields, "chartKind", enumSchema("bar", "line"))
+				fields["xKey"] = structuredField("metadata.xKey", "横轴字段", 26, nonemptyStringSchema())
+				fields["series"] = structuredField("metadata.series", "数值系列", 27, stringArraySchema())
+				return fields
+			}(),
+			CreateMetadata: func(content string) map[string]any {
+				return map[string]any{"content": content, "status": "idle", "chartKind": "bar"}
+			},
+		},
+		{
 			Type: "skill", Version: "1", Label: "Skill 技能卡", DefaultWidth: 360, DefaultHeight: 280,
-			Purpose:     "承载技能模板与结构化提示词规约，可接收上游数据源或逻辑分支数据，组合输出给下游生成节点。",
-			GoodFor:     []string{"在数据流中挂接特定技能提示词模板", "串联数据源/逻辑节点与下游生成节点"},
-			NotIdealFor: []string{"直接替代图片或视频生成节点"},
-			Tradeoffs:   []string{"作为技能指令与上游数据的汇聚转换节点，本身不产生计费媒体产物"},
-			InputKind:   "text",
-			Connection:  ConnectionPolicy{CanSource: true, CanTarget: true, AcceptedInputKinds: []string{"text"}},
-			CanUpdate:   true,
-			SummaryFields: []string{"content", "skillId", "skillName", "skillDescription"}, DetailFields: []string{"content", "skillId", "skillName", "skillDescription", "skillPrompts"},
+			Purpose:       "承载技能模板与结构化提示词规约，可接收上游数据源或逻辑分支数据，组合输出给下游生成节点。",
+			GoodFor:       []string{"在数据流中挂接特定技能提示词模板", "串联数据源/逻辑节点与下游生成节点"},
+			NotIdealFor:   []string{"直接替代图片或视频生成节点"},
+			Tradeoffs:     []string{"作为技能指令与上游数据的汇聚转换节点，本身不产生计费媒体产物"},
+			InputKind:     "text",
+			Connection:    ConnectionPolicy{CanSource: true, CanTarget: true, AcceptedInputKinds: []string{"text"}},
+			CanUpdate:     true,
+			SummaryFields: []string{"content", "skillId", "skillVersion", "skillHash", "skillName", "skillDescription"}, DetailFields: []string{"content", "skillId", "skillVersion", "skillHash", "skillName", "skillDescription", "skillPrompts"},
 			PatchFields: func() map[string]PatchField {
 				fields := editableNodeFields("metadata.content", "技能指令", "技能核心指令或提示词模板")
 				fields["skillId"] = PatchField{Path: "metadata.skillId", Kind: patchKindString, Label: "技能ID", Order: 25, Description: "关联技能标识", MaxRunes: 120}
 				fields["skillName"] = PatchField{Path: "metadata.skillName", Kind: patchKindString, Label: "技能名称", Order: 26, Description: "技能显示名称", MaxRunes: 120}
 				fields["skillDescription"] = PatchField{Path: "metadata.skillDescription", Kind: patchKindString, Label: "技能说明", Order: 27, Description: "技能用途简述", MaxRunes: 500}
+				fields["skillVersion"] = structuredField("metadata.skillVersion", "技能版本", 28, nonemptyStringSchema())
+				fields["skillHash"] = structuredField("metadata.skillHash", "技能哈希", 29, nonemptyStringSchema())
 				return fields
 			}(),
 			CreateMetadata: func(content string) map[string]any {

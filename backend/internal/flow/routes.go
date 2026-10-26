@@ -267,6 +267,12 @@ func RegisterRoutes(api gin.IRouter, db *gorm.DB, cfg Config, user UserFunc) {
 			reply(c, http.StatusInternalServerError, nil, "consume failed")
 			return
 		}
+		// T22 recurring-canvas intake: separate consumer, own transaction; a
+		// failure fails the delivery so the engine redelivers the cycle event.
+		if _, err := ConsumeMonitorCanvasEvent(db, ev); err != nil {
+			reply(c, http.StatusInternalServerError, nil, "canvas auto run intake failed")
+			return
+		}
 		reply(c, http.StatusOK, gin.H{"applied": applied}, "ok")
 	})
 }

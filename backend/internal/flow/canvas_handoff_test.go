@@ -62,6 +62,7 @@ func TestHandoffToCanvasCreateAndAppendWithProvenance(t *testing.T) {
 			Metadata struct {
 				Content     string         `json:"content"`
 				IntelSource map[string]any `json:"intelSource"`
+				DataSource  map[string]any `json:"dataSource"`
 			} `json:"metadata"`
 		} `json:"nodes"`
 	}
@@ -72,8 +73,17 @@ func TestHandoffToCanvasCreateAndAppendWithProvenance(t *testing.T) {
 		t.Fatalf("want 1 node, got %d", len(payload.Nodes))
 	}
 	n0 := payload.Nodes[0]
-	if n0.ID != res.NodeID || n0.Type != "text" || n0.Title != "AI 短剧出海市场深度报告" {
+	if n0.ID != res.NodeID || n0.Type != "data-source" || n0.Title != "AI 短剧出海市场深度报告" {
 		t.Fatalf("unexpected node: %+v", n0)
+	}
+	if binding, _ := n0.Metadata.DataSource["sourceBinding"].(map[string]any); binding["kind"] != "static" {
+		t.Fatalf("report must be a static snapshot: %+v", binding)
+	}
+	if n0.Metadata.DataSource["rawText"] != "北美与东南亚短剧市场付费率在 Q3 显著上升。" {
+		t.Fatal("raw input must not contain generated provenance footer")
+	}
+	if n0.Metadata.DataSource["format"] != "intel" {
+		t.Fatalf("unexpected dataSource metadata: %+v", n0.Metadata.DataSource)
 	}
 	if !strings.Contains(n0.Metadata.Content, "## 情报来源与证据引用") || !strings.Contains(n0.Metadata.Content, "SensorTower Q3 报告 (`doc_101`)") {
 		t.Fatalf("provenance footer missing in content: %s", n0.Metadata.Content)
@@ -197,6 +207,50 @@ func TestIntelHandoffToCanvasToolInWorkspaceAndTopic(t *testing.T) {
 	_ = json.Unmarshal(replay.Output, &replayOut)
 	if replayOut.CanvasID != out.CanvasID || replayOut.NodeID != out.NodeID {
 		t.Fatalf("replay created different canvas/node: %+v vs %+v", replayOut, out)
+	}
+}
+
+func TestHandoffMachineEvidenceRequiresScopedResolution(t *testing.T) {
+	tools, ss := sourceSetup(t)
+	input := HandoffToCanvasInput{Kind: "analysis", Title: "Analysis", Content: "raw", Citations: []HandoffCitation{{DocumentID: "doc", EvidenceID: "ev", Revision: 4}}}
+	for _, mode := range []string{"foreign", "wrong-revision", "tampered", "valid"} {
+		t.Run(mode, func(t *testing.T) {
+			tools.Engine = sourceEngine(t, ss, func(r *http.Request, b map[string]any) (int, any) {
+				if r.URL.Path != "/v1/evidence/resolve" {
+					t.Errorf("unexpected route: %s", r.URL.Path)
+				}
+				if mode == "foreign" {
+					return 200, []any{}
+				}
+				rev := 4
+				if mode == "wrong-revision" {
+					rev = 5
+				}
+				return 200, []any{map[string]any{"evidence_id": "ev", "document_id": "doc", "revision": rev, "snippet_ok": mode != "tampered", "url_ok": true, "char_start": 0, "char_end": 3, "quote": "raw"}}
+			})
+			out, err := tools.handoffToCanvas(context.Background(), ss.Scope, "u_alice", input, sourceNow)
+			if mode != "valid" {
+				if err == nil {
+					t.Fatal("unverified machine evidence accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			var project model.CanvasProject
+			tools.DB.First(&project, "id = ?", out.CanvasID)
+			var payload map[string]any
+			_ = json.Unmarshal([]byte(project.PayloadJSON), &payload)
+			node := payload["nodes"].([]any)[0].(map[string]any)
+			if sourceBinding(node)["kind"] != "static" || len(sourceDS(node)["evidence"].([]any)) != 1 {
+				t.Fatalf("missing static machine evidence: %+v", node)
+			}
+		})
+	}
+	foreign := HandoffToCanvasInput{Kind: "topic", SourceID: "foreign", Title: "provided", Content: "provided"}
+	if _, err := HandoffToCanvas(tools.DB, ss.Scope, "u_alice", foreign, sourceNow); err == nil {
+		t.Fatal("supplied content bypassed topic ownership")
 	}
 }
 

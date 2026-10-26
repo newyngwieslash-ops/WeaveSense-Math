@@ -1,0 +1,20 @@
+[
+  {
+    "kind": "rss",
+    "note": "联合国毒品和犯罪问题办公室新精神活性物质与前体早期预警源。仅为待核验接入模板，未验证当前可用性；抓取后须保存实际证据及revision，网站首页/摘要不能充当因子或法律状态来源。",
+    "title": "UNODC Early Warning Advisory (NPS & Precursors)",
+    "url": "https://www.unodc.org/LSS/Announcement/Rss"
+  },
+  {
+    "kind": "rss",
+    "note": "欧洲药物监测与污水折算基准参考源。仅为待核验接入模板，未验证当前可用性；抓取后须保存实际证据及revision，网站首页/摘要不能充当因子或法律状态来源。",
+    "title": "EUDA (原 EMCDDA) 污水流行病学与新物质通报",
+    "url": "https://www.euda.europa.eu/rss/news_en"
+  },
+  {
+    "kind": "public-web",
+    "note": "需将域名加入租户白名单或通过受管 RSS 桥接接入。仅为待核验接入模板，未验证当前可用性；抓取后须保存实际证据及revision，网站首页/摘要不能充当因子或法律状态来源。",
+    "title": "国家药监局 (NMPA) / 麻醉药品和精神药品品种目录更新公告",
+    "url": "https://www.nmpa.gov.cn/"
+  }
+]

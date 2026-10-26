@@ -1,0 +1,602 @@
+{
+  "$defs": {
+    "baseline_record": {
+      "properties": {
+        "citations": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "consumption_mg_1000p": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "excretion_factor_source": {
+          "$ref": "#/$defs/versioned_source"
+        },
+        "period": {
+          "$ref": "#/$defs/period"
+        },
+        "region_code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "substance_name": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "region_code",
+        "substance_name",
+        "period",
+        "consumption_mg_1000p",
+        "excretion_factor_source",
+        "citations"
+      ],
+      "type": "object"
+    },
+    "citation": {
+      "description": "必须来自当前租户可见的 intel_search_documents/intel_read_document 实际返回；URL、document_id 或自造 ID 不能代替 evidence_id。revision 必须与解析到的证据版本一致。",
+      "properties": {
+        "chunk_index": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "evidence_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "claim": {
+      "description": "source_statement=单源陈述；cross_source_verified=至少两个独立来源对同一事实的印证；model_inference=模型推断/计算结果，保留输入证据，不升级为实测或因果证明。独立性必须回读原始来源核验。",
+      "properties": {
+        "citations": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "kind": {
+          "enum": [
+            "source_statement",
+            "cross_source_verified",
+            "model_inference"
+          ]
+        },
+        "text": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "kind",
+        "citations"
+      ],
+      "type": "object"
+    },
+    "coverage": {
+      "properties": {
+        "covered_regions": {
+          "$ref": "#/$defs/shared_1"
+        },
+        "failed_sources": {
+          "$ref": "#/$defs/shared_1"
+        },
+        "limitations": {
+          "$ref": "#/$defs/shared_1"
+        },
+        "truncated_evidence_ids": {
+          "$ref": "#/$defs/shared_1"
+        },
+        "uncovered_regions": {
+          "$ref": "#/$defs/shared_1"
+        }
+      },
+      "required": [
+        "covered_regions",
+        "uncovered_regions",
+        "failed_sources",
+        "truncated_evidence_ids",
+        "limitations"
+      ],
+      "type": "object"
+    },
+    "input_requirements": {
+      "properties": {
+        "baseline_records": {
+          "items": {
+            "$ref": "#/$defs/baseline_record"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverage"
+        },
+        "material_scope": {
+          "$ref": "#/$defs/material_scope"
+        },
+        "monitoring_records": {
+          "items": {
+            "$ref": "#/$defs/monitoring_record"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "period": {
+          "$ref": "#/$defs/period"
+        },
+        "threshold_config": {
+          "$ref": "#/$defs/threshold_source"
+        }
+      },
+      "required": [
+        "period",
+        "material_scope",
+        "coverage",
+        "monitoring_records",
+        "baseline_records"
+      ],
+      "type": "object"
+    },
+    "material_scope": {
+      "anyOf": [
+        {
+          "required": [
+            "document_ids"
+          ]
+        },
+        {
+          "required": [
+            "source_ids"
+          ]
+        }
+      ],
+      "properties": {
+        "document_ids": {
+          "$ref": "#/$defs/shared_2"
+        },
+        "from": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_ids": {
+          "$ref": "#/$defs/shared_2"
+        },
+        "to": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "monitoring_record": {
+      "description": "浓度 ng/L；日流量 m³/day；population 单位为人，禁止千人为单位；excretion_factor 是无量纲、有适用母体/代谢物与来源版本的回推校正乘数。缺字段/非有限值/单位不明拒绝计算，不把未检出或低于定量限自动当0。",
+      "properties": {
+        "citations": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "concentration_ng_l": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "excretion_factor": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "excretion_factor_source": {
+          "$ref": "#/$defs/versioned_source"
+        },
+        "flow_m3_day": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "population": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "region_code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sample_end": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sample_start": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "substance_name": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "region_code",
+        "substance_name",
+        "sample_start",
+        "sample_end",
+        "concentration_ng_l",
+        "flow_m3_day",
+        "population",
+        "excretion_factor",
+        "excretion_factor_source",
+        "citations"
+      ],
+      "type": "object"
+    },
+    "period": {
+      "description": "ISO 8601 时间，start<=end；统一时区；跨行/跨来源周期对齐由方法校验，JSON Schema 不验证时间先后或不同对象的相等关系。",
+      "properties": {
+        "end": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "granularity": {
+          "enum": [
+            "day",
+            "week",
+            "month",
+            "custom"
+          ]
+        },
+        "start": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "granularity"
+      ],
+      "type": "object"
+    },
+    "regional_metric": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "risk_level": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ]
+              }
+            },
+            "required": [
+              "risk_level"
+            ]
+          },
+          "then": {
+            "required": [
+              "threshold_source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "comparison_status": {
+                "enum": [
+                  "comparable"
+                ]
+              }
+            },
+            "required": [
+              "comparison_status"
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "mom_pct"
+                ]
+              },
+              {
+                "required": [
+                  "yoy_pct"
+                ]
+              }
+            ],
+            "required": [
+              "baseline_source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "comparison_status": {
+                "enum": [
+                  "missing_baseline",
+                  "zero_baseline",
+                  "incompatible_period",
+                  "incompatible_factor"
+                ]
+              }
+            },
+            "required": [
+              "comparison_status"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "mom_pct"
+                  ]
+                },
+                {
+                  "required": [
+                    "yoy_pct"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "baseline_source": {
+          "$ref": "#/$defs/versioned_source"
+        },
+        "citations": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "comparison_status": {
+          "enum": [
+            "comparable",
+            "missing_baseline",
+            "zero_baseline",
+            "incompatible_period",
+            "incompatible_factor"
+          ]
+        },
+        "consumption_mg_1000p": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "excretion_factor": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "excretion_factor_source": {
+          "$ref": "#/$defs/versioned_source"
+        },
+        "kind": {
+          "enum": [
+            "source_statement",
+            "cross_source_verified",
+            "model_inference"
+          ]
+        },
+        "mom_pct": {
+          "type": "number"
+        },
+        "peak_mg_1000p": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "period": {
+          "$ref": "#/$defs/period"
+        },
+        "region_code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "region_name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "risk_level": {
+          "enum": [
+            "unknown",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "sample_count": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "substance_name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "threshold_source": {
+          "$ref": "#/$defs/threshold_source"
+        },
+        "unit": {
+          "const": "mg/day/1000人"
+        },
+        "yoy_pct": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "region_code",
+        "substance_name",
+        "period",
+        "consumption_mg_1000p",
+        "unit",
+        "excretion_factor",
+        "excretion_factor_source",
+        "risk_level",
+        "comparison_status",
+        "kind",
+        "citations"
+      ],
+      "type": "object"
+    },
+    "shared_1": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "shared_2": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "shared_3": {
+      "items": {
+        "$ref": "#/$defs/citation"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "threshold_source": {
+      "description": "外部配置，必须核实适用区域/物质/周期/单位；规则边界及优先级按来源材料，不内置通用毒情阈值。",
+      "properties": {
+        "citations": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "metric": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "region_scope": {
+          "$ref": "#/$defs/shared_2"
+        },
+        "rules": {
+          "items": {
+            "properties": {
+              "level": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "operator": {
+                "enum": [
+                  "gt",
+                  "gte",
+                  "lt",
+                  "lte"
+                ]
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "level",
+              "operator",
+              "value"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "unit": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "valid_from": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "valid_to": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "citations",
+        "metric",
+        "unit",
+        "region_scope",
+        "valid_from",
+        "valid_to",
+        "rules"
+      ],
+      "type": "object"
+    },
+    "versioned_source": {
+      "description": "明确的外部材料版本与真实证据引用；不得把包版本当作因子、阈值或法律材料版本。",
+      "properties": {
+        "citations": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "citations"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "行业声明合同；schema 验证不替代真实证据解析、跨记录周期/版本一致性和来源独立性校验，受管运行接线另行验收。",
+  "properties": {
+    "claims": {
+      "items": {
+        "$ref": "#/$defs/claim"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "coverage": {
+      "$ref": "#/$defs/coverage"
+    },
+    "gaps": {
+      "$ref": "#/$defs/shared_1"
+    },
+    "material_scope": {
+      "$ref": "#/$defs/material_scope"
+    },
+    "period": {
+      "$ref": "#/$defs/period"
+    },
+    "regional_metrics": {
+      "items": {
+        "$ref": "#/$defs/regional_metric"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "title": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "title",
+    "period",
+    "claims",
+    "material_scope",
+    "coverage",
+    "gaps",
+    "regional_metrics"
+  ],
+  "type": "object"
+}

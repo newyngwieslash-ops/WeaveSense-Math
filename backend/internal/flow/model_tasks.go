@@ -29,12 +29,15 @@ var ErrModelRetryable = errors.New("flow: model gateway asked to retry later")
 // through the gateway status endpoint. Settlement happens exactly once, when a
 // task reaches succeeded (or released on definite failure).
 type ModelTasks struct {
-	DB      *gorm.DB
-	GW      ModelGateway
-	Status  ModelStatus
-	Now     func() time.Time
-	Lease   time.Duration
-	Backoff time.Duration
+	// CanvasExecutions supplies current authority for persisted canvas tasks.
+	// Global workers without it must not dispatch those tasks.
+	CanvasExecutions *CanvasWorkflowExecutions
+	DB               *gorm.DB
+	GW               ModelGateway
+	Status           ModelStatus
+	Now              func() time.Time
+	Lease            time.Duration
+	Backoff          time.Duration
 	// Notify is called once per finished task (succeeded/failed) by the worker:
 	// the push half of completion (engine brief wake-up). Parked agent runs are
 	// released by NotifyDone itself.
@@ -75,6 +78,11 @@ func (m ModelTasks) Enqueue(in ModelTaskInput) (model.FlowModelTask, error) {
 	var t model.FlowModelTask
 	if in.Key == "" {
 		return t, ErrInvalid
+	}
+	if canvasManagedTask(model.FlowModelTask{Purpose: in.Purpose, IdemKey: in.Key, Context: in.Context}) {
+		if err := ValidateCanvasWorkflowPayload(in); err != nil {
+			return t, err
+		}
 	}
 	b := m.billing()
 	var rsv model.FlowBudgetReservation
@@ -120,6 +128,16 @@ func (m ModelTasks) RunTask(ctx context.Context, id string) (bool, error) {
 	if m.GW == nil {
 		return false, errors.New("flow: model gateway not configured")
 	}
+	pending, err := m.Get(id)
+	if err != nil {
+		return false, err
+	}
+	if err := m.checkCanvasDispatch(ctx, pending); err != nil {
+		if closeErr := m.closeCanvasDispatchRejected(ctx, pending, err); closeErr != nil {
+			return false, closeErr
+		}
+		return false, err
+	}
 	lease := m.Lease
 	if lease <= 0 {
 		lease = 3 * time.Minute
@@ -142,35 +160,62 @@ func (m ModelTasks) RunTask(ctx context.Context, id string) (bool, error) {
 	}
 	_ = json.Unmarshal([]byte(t.Request), &rq)
 	var rsv model.FlowBudgetReservation
-	m.DB.Select("price_version").First(&rsv, "id = ?", t.ReservationID)
+	if err := m.DB.First(&rsv, "id = ?", t.ReservationID).Error; err != nil {
+		return true, err
+	}
 	usage := &ModelUsage{}
 	cctx, cancel := context.WithTimeout(WithModelUsage(WithModelCallMeta(context.WithValue(ctx, modelIdemCtx{}, t.IdemKey),
 		ModelCallMeta{ReservationID: t.ReservationID, PriceVersion: rsv.PriceVersion, CallID: t.IdemKey}), usage), lease)
+	if err := m.checkCanvasDispatch(cctx, t); err != nil {
+		cancel()
+		reset := m.DB.Model(&model.FlowModelTask{}).Where("id = ? AND status = ? AND attempts = ? AND lease_until = ?", id, "running", t.Attempts, until).Updates(map[string]any{"status": "queued", "lease_until": nil})
+		if reset.Error != nil {
+			return true, reset.Error
+		}
+		if reset.RowsAffected == 1 {
+			t.Status = "queued"
+			if closeErr := m.closeCanvasDispatchRejected(ctx, t, err); closeErr != nil {
+				return true, closeErr
+			}
+		}
+		return true, err
+	}
 	text, cost, cerr := m.GW.Complete(cctx, rq.System, rq.User, rq.MaxTokens)
 	cancel()
 	b := m.billing()
 	switch {
 	case cerr == nil:
+		if canvasManagedTask(t) && (cost < 0 || cost > rsv.ReservedMicro) {
+			_ = b.MarkUnknown(t.ReservationID, "model:"+t.IdemKey, "gateway cost exceeds admitted budget")
+			m.set(id, map[string]any{"status": StatusReconciliation, "lease_until": nil, "last_error": "gateway cost exceeds admitted budget"})
+			return true, ErrBudgetInsufficient
+		}
 		if _, err := b.Settle(t.ReservationID, cost); err != nil {
 			return true, err
 		}
 		if err := recordModelUsage(m.DB, t, *usage, cost, m.now()); err != nil {
 			return true, err
 		}
+		if canvasManagedTask(t) {
+			if err := ValidateCanvasWorkflowPayload(text); err != nil {
+				m.set(id, map[string]any{"status": "failed", "result": "", "cost_micro": cost, "lease_until": nil, "last_error": "model output rejected by persistence policy"})
+				return true, err
+			}
+		}
 		m.set(id, map[string]any{"status": "succeeded", "result": text, "cost_micro": cost, "lease_until": nil, "last_error": ""})
 	case errors.Is(cerr, ErrModelUnknownOutcome):
-		_ = b.MarkUnknown(t.ReservationID, "model:"+t.IdemKey, truncRunes(cerr.Error(), 280))
-		m.set(id, map[string]any{"status": StatusReconciliation, "lease_until": nil, "last_error": truncRunes(cerr.Error(), 480)})
+		_ = b.MarkUnknown(t.ReservationID, "model:"+t.IdemKey, truncRunes(SanitizeCanvasWorkflowError(cerr.Error()), 280))
+		m.set(id, map[string]any{"status": StatusReconciliation, "lease_until": nil, "last_error": truncRunes(SanitizeCanvasWorkflowError(cerr.Error()), 480)})
 	case errors.Is(cerr, ErrModelRetryable) && t.Attempts < t.MaxAttempts:
 		backoff := m.Backoff
 		if backoff <= 0 {
 			backoff = 2 * time.Second
 		}
 		next := m.now().Add(backoff * time.Duration(1<<(t.Attempts-1)))
-		m.set(id, map[string]any{"status": StatusRetryWait, "next_attempt_at": next, "lease_until": nil, "last_error": truncRunes(cerr.Error(), 480)})
+		m.set(id, map[string]any{"status": StatusRetryWait, "next_attempt_at": next, "lease_until": nil, "last_error": truncRunes(SanitizeCanvasWorkflowError(cerr.Error()), 480)})
 	default:
 		_, _ = b.Release(t.ReservationID)
-		m.set(id, map[string]any{"status": "failed", "lease_until": nil, "last_error": truncRunes(cerr.Error(), 480)})
+		m.set(id, map[string]any{"status": "failed", "lease_until": nil, "last_error": truncRunes(SanitizeCanvasWorkflowError(cerr.Error()), 480)})
 	}
 	return true, nil
 }
@@ -188,14 +233,32 @@ func (m ModelTasks) RunDue(ctx context.Context) (int, error) {
 			_ = m.billing().MarkUnknown(t.ReservationID, "model:"+t.IdemKey, "worker lease expired")
 		}
 	}
-	var ids []string
-	if err := m.DB.Model(&model.FlowModelTask{}).Where("status IN ? AND next_attempt_at <= ?", []string{"queued", StatusRetryWait}, now).Order("next_attempt_at").Limit(20).Pluck("id", &ids).Error; err != nil {
-		return 0, err
-	}
 	n := 0
-	for _, id := range ids {
-		if ok, _ := m.RunTask(ctx, id); ok {
-			n++
+	var cursorTime time.Time
+	cursorID := ""
+	for n < 20 {
+		if err := ctx.Err(); err != nil {
+			return n, err
+		}
+		q := m.DB.Where("status IN ? AND next_attempt_at <= ?", []string{"queued", StatusRetryWait}, now)
+		if cursorID != "" {
+			q = q.Where("next_attempt_at > ? OR (next_attempt_at = ? AND id > ?)", cursorTime, cursorTime, cursorID)
+		}
+		var due []model.FlowModelTask
+		if err := q.Order("next_attempt_at, id").Limit(20).Find(&due).Error; err != nil {
+			return n, err
+		}
+		if len(due) == 0 {
+			break
+		}
+		for _, task := range due {
+			cursorTime, cursorID = task.NextAttemptAt, task.ID
+			if ok, _ := m.RunTask(ctx, task.ID); ok {
+				n++
+			}
+			if n >= 20 {
+				break
+			}
 		}
 	}
 	return n, nil
@@ -215,19 +278,57 @@ func (m ModelTasks) Reconcile(ctx context.Context, minAge time.Duration) (int, e
 	b := m.billing()
 	n := 0
 	for _, t := range rows {
+		rate := m.Status.MicroPer1KTok
+		managed := canvasManagedTask(t)
+		if managed {
+			var err error
+			rate, err = m.canvasReconcileRate(t)
+			if err != nil {
+				continue
+			}
+		}
 		st, err := m.Status.QueryKey(ctx, t.IdemKey)
 		if err != nil {
 			continue
 		}
 		switch st.Status {
 		case "succeeded":
-			cost := st.TotalTokens * m.Status.MicroPer1KTok / 1000
+			cost := st.TotalTokens * rate / 1000
+			if managed {
+				cost, err = canvasTokenCost(st.TotalTokens, rate)
+				if err != nil {
+					continue
+				}
+				var reservation model.FlowBudgetReservation
+				if err = m.DB.First(&reservation, "id = ?", t.ReservationID).Error; err != nil {
+					return n, err
+				}
+				if cost > reservation.ReservedMicro {
+					continue
+				}
+			}
 			if _, err := b.Settle(t.ReservationID, cost); err != nil {
 				return n, err
 			}
-			m.set(t.ID, map[string]any{"status": "succeeded", "result": st.Content, "cost_micro": cost, "last_error": "reconciled"})
+			if managed && ValidateCanvasWorkflowPayload(st.Content) != nil {
+				m.set(t.ID, map[string]any{"status": "failed", "result": "", "cost_micro": cost, "last_error": "model output rejected by persistence policy"})
+			} else {
+				m.set(t.ID, map[string]any{"status": "succeeded", "result": st.Content, "cost_micro": cost, "last_error": "reconciled"})
+			}
 			n++
 		case "not_found", "failed":
+			if managed {
+				// The frozen status endpoint proved this call produced no billable
+				// outcome. Re-dispatch permission is a separate current check: a
+				// revoked or drifted gate must not re-queue the task, while the
+				// never-happened hold is still reconciled (released).
+				if err := m.checkCanvasDispatchState(ctx, t, true); err != nil {
+					_, _ = b.Release(t.ReservationID)
+					m.set(t.ID, map[string]any{"status": "failed", "lease_until": nil, "last_error": truncRunes(SanitizeCanvasWorkflowError(fmt.Sprintf("reconciled: not processed; requeue denied: %v", err)), 480)})
+					n++
+					continue
+				}
+			}
 			if t.Attempts < t.MaxAttempts && b.Reopen(t.ReservationID) == nil {
 				m.set(t.ID, map[string]any{"status": StatusRetryWait, "next_attempt_at": m.now(), "last_error": "reconciled: not processed, retrying"})
 			} else {

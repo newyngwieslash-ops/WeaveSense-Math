@@ -44,6 +44,11 @@ type CommandDispatcher struct {
 	Now     func() time.Time
 	Lease   time.Duration
 	Backoff time.Duration
+	// Local executes platform-owned commands in-process instead of calling the
+	// engine (canvas.run runs the managed canvas workflow locally). The handler
+	// returns (httpStatus, body, err) with engine-call semantics: 2xx marks the
+	// command dispatched, 4xx fails it terminally, 5xx/err retries with backoff.
+	Local map[string]func(ctx context.Context, row model.FlowCommandOutbox) (int, []byte, error)
 }
 
 func (d CommandDispatcher) now() time.Time {
@@ -205,7 +210,8 @@ func (d CommandDispatcher) DispatchOne(ctx context.Context, id string) (model.Fl
 	var body []byte
 	var callErr error
 	if !expired {
-		if d.Engine == nil {
+		local, hasLocal := d.Local[row.Command]
+		if !hasLocal && d.Engine == nil {
 			return row, errors.New("flow: engine caller not configured")
 		}
 		until := now.Add(d.lease())
@@ -225,16 +231,20 @@ func (d CommandDispatcher) DispatchOne(ctx context.Context, id string) (model.Fl
 		if row.CapabilitySnapshot != "" {
 			callCtx = WithCapabilitySnapshot(callCtx, row.CapabilitySnapshot)
 		}
-		scope := Scope{TenantID: row.TenantID, WorkspaceID: row.WorkspaceID, Role: row.ActorRole}
-		if scope.Role == "" {
-			scope.Role = "editor"
+		if hasLocal {
+			status, body, callErr = local(callCtx, row)
+		} else {
+			scope := Scope{TenantID: row.TenantID, WorkspaceID: row.WorkspaceID, Role: row.ActorRole}
+			if scope.Role == "" {
+				scope.Role = "editor"
+			}
+			actor := Actor{Type: row.ActorType, ID: row.ActorID}
+			idem := row.ForwardIdemHeader
+			if idem == "" {
+				idem = row.IdempotencyKey
+			}
+			status, body, callErr = d.Engine.Do(callCtx, scope, actor, row.Method, row.Path, idem, []byte(row.Payload))
 		}
-		actor := Actor{Type: row.ActorType, ID: row.ActorID}
-		idem := row.ForwardIdemHeader
-		if idem == "" {
-			idem = row.IdempotencyKey
-		}
-		status, body, callErr = d.Engine.Do(callCtx, scope, actor, row.Method, row.Path, idem, []byte(row.Payload))
 	}
 	finNow := d.now()
 	expired = expired || row.LeaseUntil == nil || !row.LeaseUntil.After(finNow)
@@ -339,7 +349,7 @@ func (d CommandDispatcher) EnqueueAndDispatch(ctx context.Context, in CommandInp
 // DispatchDue claims and dispatches due pending / retry_wait outbox rows.
 // Expired dispatching leases are moved to reconciliation_required (PRD §11.3 no blind resend after lost ACK).
 func (d CommandDispatcher) DispatchDue(ctx context.Context, limit int) (int, error) {
-	if d.DB == nil || d.Engine == nil {
+	if d.DB == nil || (d.Engine == nil && len(d.Local) == 0) {
 		return 0, nil
 	}
 	if limit <= 0 {

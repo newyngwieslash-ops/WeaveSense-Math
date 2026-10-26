@@ -105,6 +105,9 @@ func (e *cloudAgentReadLoopError) Error() string {
 }
 
 type cloudAgentApproval struct {
+	Workflow *cloudAgentWorkflowBinding `json:"workflow,omitempty"`
+	Purpose string `json:"purpose,omitempty"`
+	ServerPlan json.RawMessage `json:"serverPlan,omitempty"`
 	Prepared  *cloudAgentPreparedMedia  `json:"prepared,omitempty"`
 	ModelName string                    `json:"modelName,omitempty"`
 	ID        string                    `json:"approvalId"`
@@ -116,6 +119,9 @@ type cloudAgentApproval struct {
 }
 
 type cloudAgentRuntime struct {
+	WorkflowApprovals map[string]cloudAgentApproval `json:"workflowApprovals,omitempty"`
+	WorkflowWaitID string `json:"workflowWaitId,omitempty"`
+	ManualApproval bool `json:"manualApproval,omitempty"`
 	RuntimeRunID       string                                `json:"-"`
 	Request            CloudAgentRequest                     `json:"request"`
 	Policy             cloudAgentPolicySnapshot              `json:"policy"`

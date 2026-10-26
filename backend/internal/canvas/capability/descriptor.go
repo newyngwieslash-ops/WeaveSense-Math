@@ -34,6 +34,8 @@ type PatchField struct {
 	Limit       float64
 	Description string
 	MaxRunes    int
+	// Schema supplies recursive constraints shared by tool discovery and writes.
+	Schema map[string]any
 }
 
 // NodeVariant 表示同一底层节点类型按 metadata.workflowKind 标记出的独立能力，
@@ -135,18 +137,31 @@ func (d Descriptor) ValidatePatch(patch map[string]any) error {
 			if _, ok := value.(bool); !ok {
 				return fmt.Errorf("%s 字段 %s 必须是布尔值", d.Label, key)
 			}
+		case "array", "object", "integer":
 		default:
 			return fmt.Errorf("%s 字段 %s 的类型契约无效", d.Label, key)
 		}
+		if err := validateFieldSchema(field, value); err != nil {
+			return fmt.Errorf("%s 字段 %s: %w", d.Label, key, err)
+		}
 	}
-	return nil
+	return validatePatchSemantics(d.Type, patch)
 }
 
 func (d Descriptor) ApplyPatch(node map[string]any, patch map[string]any) error {
 	if err := d.ValidatePatch(patch); err != nil {
 		return err
 	}
-	for key, value := range patch {
+	if node == nil {
+		return fmt.Errorf("canvas node cannot be nil")
+	}
+	normalized, err := normalizeJSONMap(patch)
+	if err != nil {
+		return err
+	}
+	original := node
+	node = cloneJSONValue(node).(map[string]any)
+	for key, value := range normalized {
 		field := d.PatchFields[key]
 		if field.Path == "metadata.generationSpec.prompt" {
 			metadata, ok := node["metadata"].(map[string]any)
@@ -197,6 +212,12 @@ func (d Descriptor) ApplyPatch(node map[string]any, patch map[string]any) error 
 				}
 			}
 		}
+	}
+	if err := validateCandidate(d.Type, node); err != nil {
+		return err
+	}
+	for key, value := range node {
+		original[key] = value
 	}
 	return nil
 }
@@ -328,12 +349,18 @@ func normalizePatchFields(fields map[string]PatchField) (map[string]PatchField, 
 			return nil, fmt.Errorf("canvas patch field %q requires a positive display order", key)
 		}
 		switch field.Kind {
-		case patchKindString, patchKindNumber, patchKindBoolean:
+		case patchKindString, patchKindNumber, patchKindBoolean, "array", "object", "integer":
 		default:
 			return nil, fmt.Errorf("unsupported canvas patch field kind %q", field.Kind)
 		}
 		if field.MaxRunes < 0 {
 			return nil, fmt.Errorf("canvas patch field %q has invalid max runes", key)
+		}
+		if err := checkFieldSchema(field); err != nil {
+			return nil, fmt.Errorf("canvas patch field %q: %w", key, err)
+		}
+		if field.Schema != nil {
+			field.Schema = cloneJSONValue(field.Schema).(map[string]any)
 		}
 		out[key] = field
 	}

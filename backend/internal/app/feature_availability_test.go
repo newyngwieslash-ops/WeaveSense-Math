@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestFeatureAvailabilityDefaultsToDisableFrontendModels(t *testing.T) {
+func TestFeatureAvailabilityDefaultsToDisableShortDramaAndFrontendModels(t *testing.T) {
 	svc, _ := newFeatureAvailabilityTestService(t)
 
 	setting, err := svc.FeatureAvailability()
@@ -23,7 +23,7 @@ func TestFeatureAvailabilityDefaultsToDisableFrontendModels(t *testing.T) {
 	if !setting.WelcomeEnabled {
 		t.Fatal("welcome should be enabled by default")
 	}
-	if setting.Configured || !setting.ShortDramaEnabled || !setting.TaskCenterEnabled || !setting.CreditsEnabled || !setting.CustomChannelsEnabled || setting.FrontendModelsEnabled || !setting.PluginCenterEnabled || !setting.SystemPluginsVisibleToUsers || !setting.InspirationSourcesVisible {
+	if setting.Configured || setting.ShortDramaEnabled || !setting.TaskCenterEnabled || !setting.CreditsEnabled || !setting.CustomChannelsEnabled || setting.FrontendModelsEnabled || !setting.PluginCenterEnabled || !setting.SystemPluginsVisibleToUsers || !setting.InspirationSourcesVisible {
 		t.Fatalf("FeatureAvailability() = %#v", setting)
 	}
 }
@@ -44,6 +44,20 @@ func TestFeatureAvailabilityLegacySettingKeepsCustomChannelsEnabled(t *testing.T
 	}
 	if !setting.WelcomeEnabled {
 		t.Fatal("existing settings without welcomeEnabled should keep welcome enabled")
+	}
+}
+
+func TestFeatureAvailabilityPreservesExplicitShortDramaEnablement(t *testing.T) {
+	svc, db := newFeatureAvailabilityTestService(t)
+	if err := db.Create(&model.SystemSetting{Key: featureAvailabilitySettingKey, ValueJSON: `{"shortDramaEnabled":true}`}).Error; err != nil {
+		t.Fatal(err)
+	}
+	setting, err := svc.FeatureAvailability()
+	if err != nil || !setting.ShortDramaEnabled || !setting.Configured {
+		t.Fatalf("explicit short-drama setting = %#v, %v", setting, err)
+	}
+	if err := svc.RequireFeature(FeatureShortDrama); err != nil {
+		t.Fatal(err)
 	}
 }
 

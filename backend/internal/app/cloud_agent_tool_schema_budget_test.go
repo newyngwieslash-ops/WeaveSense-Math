@@ -60,7 +60,11 @@ func TestCloudAgentToolSchemaStaysCompact(t *testing.T) {
 	// 再显式上调到 36,000；画布低代码数据流（data-source / logic / skill 节点补丁字段）
 	// 合入后约 36,600 字节，显式上调到 37,500，保留约2.4%的余量。新增工具或字段时请重新测量
 	// 并有意识地调整这个数字，而不是让 schema 悄悄膨胀（它每一步都要发、还在前缀最前面）。
-	if len(raw) > 37500 {
-		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 37500：请压缩描述或显式调整预算", len(raw))
+	// T08 adds typed array items, closed nested objects and binding/metric contracts:
+	// measured 39,328 JSON bytes (not tokens); 40,500 is a test budget, not a runtime limit.
+	// T17 adds canvas_run_workflow (ops 复用 canvas_apply_ops 的 opItem，不复制体积；run 参数
+	// 为审批冻结范围的最小集合) for 29 tools measured at 45,793 bytes; budget raised to 46,500.
+	if len(raw) > 46500 {
+		t.Fatalf("平台工具 schema 体积 %d 字节超出预算 46500：请压缩描述或显式调整预算", len(raw))
 	}
 }

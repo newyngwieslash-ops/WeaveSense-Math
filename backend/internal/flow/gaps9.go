@@ -147,6 +147,13 @@ func registerGaps9Routes(g *gin.RouterGroup, db *gorm.DB, client EngineClient, c
 		if !ok {
 			return
 		}
+		if !guardMonitorCanvas(c, m) {
+			return
+		}
+		if _, hasBinding := m["canvas_id"]; hasBinding {
+			monitorReason(c, http.StatusBadRequest, "canvas_binding_requires_monitor")
+			return
+		}
 		m, err := prepareMonitorPlan(reqDB(c, db), s, m)
 		if err != nil {
 			reply(c, http.StatusBadRequest, nil, "notification_target_ids must be active targets of this workspace")
@@ -184,6 +191,12 @@ func registerGaps9Routes(g *gin.RouterGroup, db *gorm.DB, client EngineClient, c
 		}
 		m, ok := readBody(c)
 		if !ok {
+			return
+		}
+		if !validateMonitorCanvas(c, reqDB(c, db), s, u.ID, m) {
+			return
+		}
+		if applyMonitorCanvasApproval(c, reqDB(c, db), client, s, u.ID, m) {
 			return
 		}
 		if err := validateTargets(reqDB(c, db), s, anyStrings(m["notification_target_ids"])); err != nil {

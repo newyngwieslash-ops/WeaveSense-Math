@@ -125,7 +125,7 @@ func validateCloudAgentRuntime(run *model.CloudAgentExecution, state *cloudAgent
 		return errors.New("Agent runtime request is incomplete")
 	}
 	mcpTools, intelTools := state.Request.FlowMCPTools, state.Request.FlowIntelTools
-	if err := validateCloudAgentRequest(&state.Request); err != nil {
+	if err := validateCloudAgentRequestFor(&state.Request, state.ManualApproval); err != nil {
 		return fmt.Errorf("invalid Agent runtime request: %w", err)
 	}
 	state.Request.FlowMCPTools, state.Request.FlowIntelTools = mcpTools, intelTools

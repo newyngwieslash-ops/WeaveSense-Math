@@ -1,0 +1,2908 @@
+{
+ "id": "substance-precursor-intel",
+ "version": "1.1.0",
+ "name": "区域管制药物与易制毒化学品监测研判包",
+ "kind": "industry",
+ "required_tools": [
+  "intel_search_documents",
+  "intel_read_document",
+  "intel_compare_evidence",
+  "intel_save_report",
+  "intel_list_sources",
+  "intel_handoff_to_canvas"
+ ],
+ "optional_connectors": [
+  "rss",
+  "telegram",
+  "wechat",
+  "public-web"
+ ],
+ "mcp_requirements": [],
+ "source_templates": [
+  {
+   "title": "UNODC Early Warning Advisory (NPS & Precursors)",
+   "url": "https://www.unodc.org/LSS/Announcement/Rss",
+   "kind": "rss",
+   "note": "联合国毒品和犯罪问题办公室新精神活性物质与前体早期预警源。仅为待核验接入模板，未验证当前可用性；抓取后须保存实际证据及revision，网站首页/摘要不能充当因子或法律状态来源。"
+  },
+  {
+   "title": "EUDA (原 EMCDDA) 污水流行病学与新物质通报",
+   "url": "https://www.euda.europa.eu/rss/news_en",
+   "kind": "rss",
+   "note": "欧洲药物监测与污水折算基准参考源。仅为待核验接入模板，未验证当前可用性；抓取后须保存实际证据及revision，网站首页/摘要不能充当因子或法律状态来源。"
+  },
+  {
+   "title": "国家药监局 (NMPA) / 麻醉药品和精神药品品种目录更新公告",
+   "url": "https://www.nmpa.gov.cn/",
+   "kind": "public-web",
+   "note": "需将域名加入租户白名单或通过受管 RSS 桥接接入。仅为待核验接入模板，未验证当前可用性；抓取后须保存实际证据及revision，网站首页/摘要不能充当因子或法律状态来源。"
+  }
+ ],
+ "glossary": {
+  "WBE": "污水流行病学（Wastewater-Based Epidemiology）：以群体污水检测估计群体暴露/负荷；受采样覆盖、降解、流量和人口估计影响，不用于推定个体行为。",
+  "consumption_mg_1000p": "千人日均负荷/消费量估计，单位 mg/day/1000人；concentration_ng_l*flow_m3_day*excretion_factor/population，population 单位为人。50*100000*2.3/500000=23；不是23000。",
+  "NPS": "新精神活性物质（New Psychoactive Substances）的监测分类，不等同于非列管；法律状态取决于司法辖区和分析时点有效的官方材料，未知不补全。",
+  "precursor_chemical": "前体化学品监测概念；是否易制毒/受管制、类别及生效时间须核验版本化官方材料，不从名称、CAS或关联用途推定法律状态。",
+  "excretion_factor": "明确有版本来源的无量纲回推校正乘数，不是排泄比例，不默认1；excretion_factor_source.version/citations 必须说明适用母体、代谢物和检测方法，来源给比例时须核实倒数及分子量校正。",
+  "cross_correlation": "时空共现/候选关联，不等同于统计显著或因果；区域键Join不等于跨源验证，需时间窗、滞后配置、两侧证据和来源独立性。",
+  "monitoring_fields": "region_code、substance_name、sample_start/sample_end、concentration_ng_l（ng/L）、flow_m3_day（m³/day）、population（人）、excretion_factor、excretion_factor_source.version/citations；每行真实 evidence_id/revision。未检出、低于定量限、缺测、0分别处理。",
+  "precursor_fields": "precursor_name、cas_no（可核实时）、related_substance、region_code、origin_region_code/destination_region_code、event_at、quantity、quantity_unit、anomaly_type、citations。数量单位不明拒绝跨行求和。",
+  "substance_aliases": "甲基苯丙胺=methamphetamine；氯胺酮=ketamine；依托咪酯=etomidate；美托咪酯=metomidate；麻黄碱=ephedrine。仅作检索别名，不表示法律状态或替代关系；盐型/异构体/类似物和CAS需原文确认，不模糊合并。",
+  "unit_normalization": "1 m³=1000 L；1 mg=1000000 ng；ng/L×m³/day 转为 mg/day 时乘0.001，再乘1000/population 得 mg/day/1000人。μg/L先乘1000转ng/L；L/day先除1000转m³/day；单位缺失/不明不猜测。",
+  "excretion_factor_source": "{version,citations:[{evidence_id,revision}]}；指外部方法材料版本，不是Skill版本。核实分析物/母体、方法适用性；不同版本不得直接跨周期比较，不伪造来源。",
+  "control_materials": "官方材料输入明确substance_name（CAS可核实时填写）、value、jurisdiction、effective_from/effective_to（如适用）、material_source.version/citations。无材料用[]，不得塞unknown占位；输出legal_status无适用材料为unknown。来源首页不是法律依据。",
+  "evidence_labels": "既有 kind 仅 source_statement、cross_source_verified、model_inference；真实 evidence_id+revision 可解析且属于 material_scope；双源需两个独立来源，转载不计；计算和成因推断保留输入证据。",
+  "threshold_source": "外部 threshold_config：version/citations、metric/unit、region_scope、valid_from/valid_to、rules。缺基线不算变化率，零基线不除零；缺阈值 risk_level=unknown/alert_level=unassessed，不内置高危界值。",
+  "coverage": "必填 covered_regions、uncovered_regions、failed_sources、truncated_evidence_ids、limitations 与报告 gaps；未覆盖不是未检出，检出不等于滥用人数，失败/截断不得隐去。"
+ },
+ "skills": [
+  {
+   "id": "regional-wastewater-modeling",
+   "version": "1.1.0",
+   "name": "区域污水毒情折算与时空趋势建模",
+   "method": "依据带版本来源的污水检测和校正乘数，折算区域千人日均负荷估计值；统一人/质量/体积单位与采样周期后计算趋势。估计不等于个体滥用人数，不硬编码模型输出。",
+   "steps": [
+    "输入按 output_schema.$defs.input_requirements 校验；仅引用当前租户可见材料中真实 evidence_id+revision，回读核对时间/单位/版本/material_scope。URL、document_id及测试ID不能替代证据。",
+    "kind：source_statement=单源陈述；cross_source_verified=至少两个独立原始来源印证同一事实（转载去重）；model_inference=计算/假设/成因推断，非实测或因果证明。行及claims保留citations；聚合/Join合并引用，按evidence_id/revision/chunk_index去重，不另造ID。",
+    "规范字段为 concentration_ng_l、flow_m3_day、population（人）、excretion_factor、excretion_factor_source（version/citations）；浓度>=0，日流量、人口和校正乘数>0。校正乘数不是排泄分数，必须来自适用物质/代谢物、样本条件的明确版本材料；不得默认1。来源只给排泄比例时须核实回推与分子量校正方法，不能直接相乘。",
+    "计算 consumption_mg_1000p = concentration_ng_l*flow_m3_day*excretion_factor/population。ng/L × m³/day ×1000 L/m³ ÷1000000 ng/mg ×1000人/population 的单位因子抵消；50*100000*2.3/500000=23 mg/day/1000人（仅合成验算样例，不是监测结论）。禁止除以 population/1000。",
+    "按 region_code/substance_name/同一采样周期/因子版本分组；重叠重复样本先去重。同等采样时长才取算术均值、峰值并给 sample_count；否则按已提供方法加权并披露，不能跨周期直接平均。数值输出保留原行 citations 与 excretion_factor_source。",
+    "环比/同比必须按相同区域、物质、可比周期、采样方案和因子版本关联 baseline_records；(current-baseline)/baseline*100。无基线为 missing_baseline、零基线为 zero_baseline、跨周期或因子不一致为 incompatible_period/incompatible_factor，省略 mom_pct/yoy_pct 并说明 gaps；comparable 必须保留 baseline_source。",
+    "risk_level 只来自外部 threshold_config 的 metric/unit/region_scope/有效期/rules 与版本引用；缺配置输出 unknown，不自设高危阈值、不拿地区排名代替风险。已评估等级必须输出 threshold_source，禁止将业务阈值说成法定标准。",
+    "失败：缺必要输入/证据、证据不可见或revision不符，停止该结论，不造值。证据有效但不足时显式unknown/unassessed/insufficient_evidence；coverage/gaps披露未覆盖、失败、截断与限制；空数据不代表无风险。",
+    "保存前校验output_schema及citation-integrity/intel_save_report实际证据和material_scope。仅方法合同，不代表runner受管执行、T15或真实模型验收完成。"
+   ],
+   "references": [
+    "skills: change-analysis@1.0.0, citation-integrity@1.0.0"
+   ],
+   "output_schema": {
+    "type": "object",
+    "required": [
+     "title",
+     "period",
+     "claims",
+     "material_scope",
+     "coverage",
+     "gaps",
+     "regional_metrics"
+    ],
+    "properties": {
+     "title": {
+      "type": "string",
+      "minLength": 1
+     },
+     "period": {
+      "$ref": "#/$defs/period"
+     },
+     "claims": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/claim"
+      },
+      "minItems": 1
+     },
+     "material_scope": {
+      "$ref": "#/$defs/material_scope"
+     },
+     "coverage": {
+      "$ref": "#/$defs/coverage"
+     },
+     "gaps": {
+      "$ref": "#/$defs/shared_1"
+     },
+     "regional_metrics": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/regional_metric"
+      },
+      "minItems": 0
+     }
+    },
+    "$defs": {
+     "citation": {
+      "type": "object",
+      "required": [
+       "evidence_id",
+       "revision"
+      ],
+      "properties": {
+       "evidence_id": {
+        "type": "string",
+        "minLength": 1
+       },
+       "revision": {
+        "type": "integer",
+        "minimum": 1
+       },
+       "chunk_index": {
+        "type": "integer",
+        "minimum": 0
+       }
+      },
+      "description": "必须来自当前租户可见的 intel_search_documents/intel_read_document 实际返回；URL、document_id 或自造 ID 不能代替 evidence_id。revision 必须与解析到的证据版本一致。"
+     },
+     "period": {
+      "type": "object",
+      "required": [
+       "start",
+       "end",
+       "granularity"
+      ],
+      "properties": {
+       "start": {
+        "type": "string",
+        "minLength": 1
+       },
+       "end": {
+        "type": "string",
+        "minLength": 1
+       },
+       "granularity": {
+        "enum": [
+         "day",
+         "week",
+         "month",
+         "custom"
+        ]
+       }
+      },
+      "description": "ISO 8601 时间，start<=end；统一时区；跨行/跨来源周期对齐由方法校验，JSON Schema 不验证时间先后或不同对象的相等关系。"
+     },
+     "coverage": {
+      "type": "object",
+      "required": [
+       "covered_regions",
+       "uncovered_regions",
+       "failed_sources",
+       "truncated_evidence_ids",
+       "limitations"
+      ],
+      "properties": {
+       "covered_regions": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "uncovered_regions": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "failed_sources": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "truncated_evidence_ids": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "limitations": {
+        "$ref": "#/$defs/shared_1"
+       }
+      }
+     },
+     "versioned_source": {
+      "type": "object",
+      "required": [
+       "version",
+       "citations"
+      ],
+      "properties": {
+       "version": {
+        "type": "string",
+        "minLength": 1
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      },
+      "description": "明确的外部材料版本与真实证据引用；不得把包版本当作因子、阈值或法律材料版本。"
+     },
+     "claim": {
+      "type": "object",
+      "required": [
+       "text",
+       "kind",
+       "citations"
+      ],
+      "properties": {
+       "text": {
+        "type": "string",
+        "minLength": 1
+       },
+       "kind": {
+        "enum": [
+         "source_statement",
+         "cross_source_verified",
+         "model_inference"
+        ]
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      },
+      "description": "source_statement=单源陈述；cross_source_verified=至少两个独立来源对同一事实的印证；model_inference=模型推断/计算结果，保留输入证据，不升级为实测或因果证明。独立性必须回读原始来源核验。"
+     },
+     "material_scope": {
+      "type": "object",
+      "required": [],
+      "properties": {
+       "document_ids": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "source_ids": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "to": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "anyOf": [
+       {
+        "required": [
+         "document_ids"
+        ]
+       },
+       {
+        "required": [
+         "source_ids"
+        ]
+       }
+      ]
+     },
+     "threshold_source": {
+      "type": "object",
+      "required": [
+       "version",
+       "citations",
+       "metric",
+       "unit",
+       "region_scope",
+       "valid_from",
+       "valid_to",
+       "rules"
+      ],
+      "properties": {
+       "version": {
+        "type": "string",
+        "minLength": 1
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       },
+       "metric": {
+        "type": "string",
+        "minLength": 1
+       },
+       "unit": {
+        "type": "string",
+        "minLength": 1
+       },
+       "region_scope": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "valid_from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "valid_to": {
+        "type": "string",
+        "minLength": 1
+       },
+       "rules": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "level",
+          "operator",
+          "value"
+         ],
+         "properties": {
+          "level": {
+           "type": "string",
+           "minLength": 1
+          },
+          "operator": {
+           "enum": [
+            "gt",
+            "gte",
+            "lt",
+            "lte"
+           ]
+          },
+          "value": {
+           "type": "number"
+          }
+         }
+        },
+        "minItems": 1
+       }
+      },
+      "description": "外部配置，必须核实适用区域/物质/周期/单位；规则边界及优先级按来源材料，不内置通用毒情阈值。"
+     },
+     "monitoring_record": {
+      "type": "object",
+      "required": [
+       "region_code",
+       "substance_name",
+       "sample_start",
+       "sample_end",
+       "concentration_ng_l",
+       "flow_m3_day",
+       "population",
+       "excretion_factor",
+       "excretion_factor_source",
+       "citations"
+      ],
+      "properties": {
+       "region_code": {
+        "type": "string",
+        "minLength": 1
+       },
+       "substance_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "sample_start": {
+        "type": "string",
+        "minLength": 1
+       },
+       "sample_end": {
+        "type": "string",
+        "minLength": 1
+       },
+       "concentration_ng_l": {
+        "type": "number",
+        "minimum": 0
+       },
+       "flow_m3_day": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       },
+       "population": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       },
+       "excretion_factor": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       },
+       "excretion_factor_source": {
+        "$ref": "#/$defs/versioned_source"
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      },
+      "description": "浓度 ng/L；日流量 m³/day；population 单位为人，禁止千人为单位；excretion_factor 是无量纲、有适用母体/代谢物与来源版本的回推校正乘数。缺字段/非有限值/单位不明拒绝计算，不把未检出或低于定量限自动当0。"
+     },
+     "baseline_record": {
+      "type": "object",
+      "required": [
+       "region_code",
+       "substance_name",
+       "period",
+       "consumption_mg_1000p",
+       "excretion_factor_source",
+       "citations"
+      ],
+      "properties": {
+       "region_code": {
+        "type": "string",
+        "minLength": 1
+       },
+       "substance_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "period": {
+        "$ref": "#/$defs/period"
+       },
+       "consumption_mg_1000p": {
+        "type": "number",
+        "minimum": 0
+       },
+       "excretion_factor_source": {
+        "$ref": "#/$defs/versioned_source"
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      }
+     },
+     "regional_metric": {
+      "type": "object",
+      "required": [
+       "region_code",
+       "substance_name",
+       "period",
+       "consumption_mg_1000p",
+       "unit",
+       "excretion_factor",
+       "excretion_factor_source",
+       "risk_level",
+       "comparison_status",
+       "kind",
+       "citations"
+      ],
+      "properties": {
+       "region_code": {
+        "type": "string",
+        "minLength": 1
+       },
+       "region_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "substance_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "period": {
+        "$ref": "#/$defs/period"
+       },
+       "consumption_mg_1000p": {
+        "type": "number",
+        "minimum": 0
+       },
+       "unit": {
+        "const": "mg/day/1000人"
+       },
+       "excretion_factor": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       },
+       "excretion_factor_source": {
+        "$ref": "#/$defs/versioned_source"
+       },
+       "risk_level": {
+        "enum": [
+         "unknown",
+         "low",
+         "medium",
+         "high",
+         "critical"
+        ]
+       },
+       "threshold_source": {
+        "$ref": "#/$defs/threshold_source"
+       },
+       "comparison_status": {
+        "enum": [
+         "comparable",
+         "missing_baseline",
+         "zero_baseline",
+         "incompatible_period",
+         "incompatible_factor"
+        ]
+       },
+       "baseline_source": {
+        "$ref": "#/$defs/versioned_source"
+       },
+       "mom_pct": {
+        "type": "number"
+       },
+       "yoy_pct": {
+        "type": "number"
+       },
+       "sample_count": {
+        "type": "integer",
+        "minimum": 1
+       },
+       "peak_mg_1000p": {
+        "type": "number",
+        "minimum": 0
+       },
+       "kind": {
+        "enum": [
+         "source_statement",
+         "cross_source_verified",
+         "model_inference"
+        ]
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      },
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "risk_level": {
+           "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+           ]
+          }
+         },
+         "required": [
+          "risk_level"
+         ]
+        },
+        "then": {
+         "required": [
+          "threshold_source"
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "comparison_status": {
+           "enum": [
+            "comparable"
+           ]
+          }
+         },
+         "required": [
+          "comparison_status"
+         ]
+        },
+        "then": {
+         "required": [
+          "baseline_source"
+         ],
+         "anyOf": [
+          {
+           "required": [
+            "mom_pct"
+           ]
+          },
+          {
+           "required": [
+            "yoy_pct"
+           ]
+          }
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "comparison_status": {
+           "enum": [
+            "missing_baseline",
+            "zero_baseline",
+            "incompatible_period",
+            "incompatible_factor"
+           ]
+          }
+         },
+         "required": [
+          "comparison_status"
+         ]
+        },
+        "then": {
+         "not": {
+          "anyOf": [
+           {
+            "required": [
+             "mom_pct"
+            ]
+           },
+           {
+            "required": [
+             "yoy_pct"
+            ]
+           }
+          ]
+         }
+        }
+       }
+      ]
+     },
+     "input_requirements": {
+      "type": "object",
+      "required": [
+       "period",
+       "material_scope",
+       "coverage",
+       "monitoring_records",
+       "baseline_records"
+      ],
+      "properties": {
+       "period": {
+        "$ref": "#/$defs/period"
+       },
+       "material_scope": {
+        "$ref": "#/$defs/material_scope"
+       },
+       "coverage": {
+        "$ref": "#/$defs/coverage"
+       },
+       "monitoring_records": {
+        "type": "array",
+        "items": {
+         "$ref": "#/$defs/monitoring_record"
+        },
+        "minItems": 1
+       },
+       "baseline_records": {
+        "type": "array",
+        "items": {
+         "$ref": "#/$defs/baseline_record"
+        },
+        "minItems": 0
+       },
+       "threshold_config": {
+        "$ref": "#/$defs/threshold_source"
+       }
+      }
+     },
+     "shared_1": {
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+     },
+     "shared_2": {
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+     },
+     "shared_3": {
+      "items": {
+       "$ref": "#/$defs/citation"
+      },
+      "minItems": 1,
+      "type": "array"
+     }
+    },
+    "description": "行业声明合同；schema 验证不替代真实证据解析、跨记录周期/版本一致性和来源独立性校验，受管运行接线另行验收。"
+   }
+  },
+  {
+   "id": "nps-substitution-screening",
+   "version": "1.1.0",
+   "name": "新精神活性物质 (NPS) 动态筛查与替代研判",
+   "method": "依据检出记录与原始通报筛查新增物质，区分检出事实、混用观察与替代假设；NPS 是监测概念，不推定法律状态。",
+   "steps": [
+    "输入按 output_schema.$defs.input_requirements 校验；仅引用当前租户可见材料中真实 evidence_id+revision，回读核对时间/单位/版本/material_scope。URL、document_id及测试ID不能替代证据。",
+    "kind：source_statement=单源陈述；cross_source_verified=至少两个独立原始来源印证同一事实（转载去重）；model_inference=计算/假设/成因推断，非实测或因果证明。行及claims保留citations；聚合/Join合并引用，按evidence_id/revision/chunk_index去重，不另造ID。",
+    "抽取规范 substance_name、已确认的 cas_no、category、detected_regions、first_detected_at 与 co_use_features。只按有来源的别名/CAS 映射，不能将异构体、盐型或类似物合并；首次检出指当前可见材料内首次，不能声称全球首次。混用未记录时为空数组并写 coverage 限制，不表示已证实没有混用。",
+    "按相同区域/周期比对 traditional_metrics 与检出趋势；仅有新增检出不能证明替代效应，输出 substitution_status=insufficient_evidence。具备可比观察时仅给 hypothesis、substitutes_for、comparison_citations，kind 必须为 model_inference，并讨论检测覆盖与抽样改变等替代解释。",
+    "法律状态仅使用 control_materials 内明确适用 substance_name/cas_no 的官方材料及可追溯的司法辖区 jurisdiction、effective_from/effective_to、材料 version 与 citations，核对分析时点及适用目录/增补版本。没有官方有效材料则 legal_status.status=unknown，省略 value；不得从 NPS/类似物、搜索摘要、网站首页或词表推定列管/未列管。",
+    "失败：缺必要输入/证据、证据不可见或revision不符，停止该结论，不造值。证据有效但不足时显式unknown/unassessed/insufficient_evidence；coverage/gaps披露未覆盖、失败、截断与限制；空数据不代表无风险。",
+    "保存前校验output_schema及citation-integrity/intel_save_report实际证据和material_scope。仅方法合同，不代表runner受管执行、T15或真实模型验收完成。"
+   ],
+   "references": [
+    "skills: cross-source-verification@1.0.0, citation-integrity@1.0.0"
+   ],
+   "output_schema": {
+    "type": "object",
+    "required": [
+     "title",
+     "period",
+     "claims",
+     "material_scope",
+     "coverage",
+     "gaps",
+     "emerging_substances"
+    ],
+    "properties": {
+     "title": {
+      "type": "string",
+      "minLength": 1
+     },
+     "period": {
+      "$ref": "#/$defs/period"
+     },
+     "claims": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/claim"
+      },
+      "minItems": 1
+     },
+     "material_scope": {
+      "$ref": "#/$defs/material_scope"
+     },
+     "coverage": {
+      "$ref": "#/$defs/coverage"
+     },
+     "gaps": {
+      "$ref": "#/$defs/shared_1"
+     },
+     "emerging_substances": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "required": [
+        "substance_name",
+        "category",
+        "detected_regions",
+        "first_detected_at",
+        "co_use_features",
+        "substitution_status",
+        "legal_status",
+        "kind",
+        "citations"
+       ],
+       "properties": {
+        "substance_name": {
+         "type": "string",
+         "minLength": 1
+        },
+        "cas_no": {
+         "type": "string",
+         "minLength": 1
+        },
+        "category": {
+         "type": "string",
+         "minLength": 1
+        },
+        "detected_regions": {
+         "$ref": "#/$defs/shared_2"
+        },
+        "first_detected_at": {
+         "type": "string",
+         "minLength": 1
+        },
+        "co_use_features": {
+         "$ref": "#/$defs/shared_1"
+        },
+        "substitutes_for": {
+         "type": "string",
+         "minLength": 1
+        },
+        "substitution_status": {
+         "enum": [
+          "insufficient_evidence",
+          "hypothesis"
+         ]
+        },
+        "comparison_citations": {
+         "$ref": "#/$defs/shared_3"
+        },
+        "legal_status": {
+         "$ref": "#/$defs/legal_status"
+        },
+        "kind": {
+         "enum": [
+          "source_statement",
+          "cross_source_verified",
+          "model_inference"
+         ]
+        },
+        "citations": {
+         "$ref": "#/$defs/shared_3"
+        }
+       },
+       "allOf": [
+        {
+         "if": {
+          "properties": {
+           "substitution_status": {
+            "enum": [
+             "hypothesis"
+            ]
+           }
+          },
+          "required": [
+           "substitution_status"
+          ]
+         },
+         "then": {
+          "required": [
+           "substitutes_for",
+           "comparison_citations"
+          ],
+          "properties": {
+           "kind": {
+            "const": "model_inference"
+           }
+          }
+         }
+        }
+       ]
+      },
+      "minItems": 0
+     }
+    },
+    "$defs": {
+     "citation": {
+      "type": "object",
+      "required": [
+       "evidence_id",
+       "revision"
+      ],
+      "properties": {
+       "evidence_id": {
+        "type": "string",
+        "minLength": 1
+       },
+       "revision": {
+        "type": "integer",
+        "minimum": 1
+       },
+       "chunk_index": {
+        "type": "integer",
+        "minimum": 0
+       }
+      },
+      "description": "必须来自当前租户可见的 intel_search_documents/intel_read_document 实际返回；URL、document_id 或自造 ID 不能代替 evidence_id。revision 必须与解析到的证据版本一致。"
+     },
+     "period": {
+      "type": "object",
+      "required": [
+       "start",
+       "end",
+       "granularity"
+      ],
+      "properties": {
+       "start": {
+        "type": "string",
+        "minLength": 1
+       },
+       "end": {
+        "type": "string",
+        "minLength": 1
+       },
+       "granularity": {
+        "enum": [
+         "day",
+         "week",
+         "month",
+         "custom"
+        ]
+       }
+      },
+      "description": "ISO 8601 时间，start<=end；统一时区；跨行/跨来源周期对齐由方法校验，JSON Schema 不验证时间先后或不同对象的相等关系。"
+     },
+     "coverage": {
+      "type": "object",
+      "required": [
+       "covered_regions",
+       "uncovered_regions",
+       "failed_sources",
+       "truncated_evidence_ids",
+       "limitations"
+      ],
+      "properties": {
+       "covered_regions": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "uncovered_regions": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "failed_sources": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "truncated_evidence_ids": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "limitations": {
+        "$ref": "#/$defs/shared_1"
+       }
+      }
+     },
+     "versioned_source": {
+      "type": "object",
+      "required": [
+       "version",
+       "citations"
+      ],
+      "properties": {
+       "version": {
+        "type": "string",
+        "minLength": 1
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      },
+      "description": "明确的外部材料版本与真实证据引用；不得把包版本当作因子、阈值或法律材料版本。"
+     },
+     "claim": {
+      "type": "object",
+      "required": [
+       "text",
+       "kind",
+       "citations"
+      ],
+      "properties": {
+       "text": {
+        "type": "string",
+        "minLength": 1
+       },
+       "kind": {
+        "enum": [
+         "source_statement",
+         "cross_source_verified",
+         "model_inference"
+        ]
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      },
+      "description": "source_statement=单源陈述；cross_source_verified=至少两个独立来源对同一事实的印证；model_inference=模型推断/计算结果，保留输入证据，不升级为实测或因果证明。独立性必须回读原始来源核验。"
+     },
+     "material_scope": {
+      "type": "object",
+      "required": [],
+      "properties": {
+       "document_ids": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "source_ids": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "to": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "anyOf": [
+       {
+        "required": [
+         "document_ids"
+        ]
+       },
+       {
+        "required": [
+         "source_ids"
+        ]
+       }
+      ]
+     },
+     "legal_status": {
+      "type": "object",
+      "required": [
+       "status"
+      ],
+      "properties": {
+       "status": {
+        "enum": [
+         "unknown",
+         "documented"
+        ]
+       },
+       "value": {
+        "type": "string",
+        "minLength": 1
+       },
+       "jurisdiction": {
+        "type": "string",
+        "minLength": 1
+       },
+       "effective_from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "effective_to": {
+        "type": "string",
+        "minLength": 1
+       },
+       "material_source": {
+        "$ref": "#/$defs/versioned_source"
+       }
+      },
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "status": {
+           "enum": [
+            "documented"
+           ]
+          }
+         },
+         "required": [
+          "status"
+         ]
+        },
+        "then": {
+         "required": [
+          "value",
+          "jurisdiction",
+          "effective_from",
+          "material_source"
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "status": {
+           "enum": [
+            "unknown"
+           ]
+          }
+         },
+         "required": [
+          "status"
+         ]
+        },
+        "then": {
+         "not": {
+          "required": [
+           "value"
+          ]
+         }
+        }
+       }
+      ]
+     },
+     "detection_record": {
+      "type": "object",
+      "required": [
+       "substance_name",
+       "region_code",
+       "detected_at",
+       "category",
+       "co_use_features",
+       "citations"
+      ],
+      "properties": {
+       "substance_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "cas_no": {
+        "type": "string",
+        "minLength": 1
+       },
+       "region_code": {
+        "type": "string",
+        "minLength": 1
+       },
+       "detected_at": {
+        "type": "string",
+        "minLength": 1
+       },
+       "category": {
+        "type": "string",
+        "minLength": 1
+       },
+       "co_use_features": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      }
+     },
+     "input_requirements": {
+      "type": "object",
+      "required": [
+       "period",
+       "material_scope",
+       "coverage",
+       "detection_records",
+       "traditional_metrics",
+       "control_materials"
+      ],
+      "properties": {
+       "period": {
+        "$ref": "#/$defs/period"
+       },
+       "material_scope": {
+        "$ref": "#/$defs/material_scope"
+       },
+       "coverage": {
+        "$ref": "#/$defs/coverage"
+       },
+       "detection_records": {
+        "type": "array",
+        "items": {
+         "$ref": "#/$defs/detection_record"
+        },
+        "minItems": 1
+       },
+       "traditional_metrics": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "region_code",
+          "substance_name",
+          "period",
+          "value",
+          "unit",
+          "citations"
+         ],
+         "properties": {
+          "region_code": {
+           "type": "string",
+           "minLength": 1
+          },
+          "substance_name": {
+           "type": "string",
+           "minLength": 1
+          },
+          "period": {
+           "$ref": "#/$defs/period"
+          },
+          "value": {
+           "type": "number",
+           "minimum": 0
+          },
+          "unit": {
+           "type": "string",
+           "minLength": 1
+          },
+          "citations": {
+           "$ref": "#/$defs/shared_3"
+          }
+         }
+        },
+        "minItems": 0
+       },
+       "control_materials": {
+        "type": "array",
+        "items": {
+         "$ref": "#/$defs/control_material"
+        },
+        "minItems": 0
+       }
+      }
+     },
+     "control_material": {
+      "type": "object",
+      "required": [
+       "substance_name",
+       "value",
+       "jurisdiction",
+       "effective_from",
+       "material_source"
+      ],
+      "properties": {
+       "substance_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "cas_no": {
+        "type": "string",
+        "minLength": 1
+       },
+       "value": {
+        "type": "string",
+        "minLength": 1
+       },
+       "jurisdiction": {
+        "type": "string",
+        "minLength": 1
+       },
+       "effective_from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "effective_to": {
+        "type": "string",
+        "minLength": 1
+       },
+       "material_source": {
+        "$ref": "#/$defs/versioned_source"
+       }
+      },
+      "additionalProperties": false,
+      "description": "已取得的官方材料，明确适用物质；CAS可核实时填写，版本、辖区、生效时间及真实引用必填。无材料使用空数组，不使用unknown占位；输出法律状态另用legal_status。"
+     },
+     "shared_1": {
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+     },
+     "shared_2": {
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+     },
+     "shared_3": {
+      "items": {
+       "$ref": "#/$defs/citation"
+      },
+      "minItems": 1,
+      "type": "array"
+     }
+    },
+    "description": "行业声明合同；schema 验证不替代真实证据解析、跨记录周期/版本一致性和来源独立性校验，受管运行接线另行验收。"
+   }
+  },
+  {
+   "id": "precursor-substance-correlation",
+   "version": "1.1.0",
+   "name": "易制毒化学品异常流向与毒情交叉印证",
+   "method": "在有来源的关联时间窗与区域映射内，对前体流向线索和目标物质观察作候选关联；键 Join 只生成候选，不等于独立证据印证，更不证明制贩因果。",
+   "steps": [
+    "输入按 output_schema.$defs.input_requirements 校验；仅引用当前租户可见材料中真实 evidence_id+revision，回读核对时间/单位/版本/material_scope。URL、document_id及测试ID不能替代证据。",
+    "kind：source_statement=单源陈述；cross_source_verified=至少两个独立原始来源印证同一事实（转载去重）；model_inference=计算/假设/成因推断，非实测或因果证明。行及claims保留citations；聚合/Join合并引用，按evidence_id/revision/chunk_index去重，不另造ID。",
+    "先校验 precursor_records 的事件时间 event_at、区域、物质、quantity/quantity_unit、anomaly_type 与来源，并读取 monitoring_records.observed_at。关联必须同时满足区域映射、目标物质匹配及 association_config.max_lag_days；窗口与容许滞后由外部版本配置，不自设。跨周期/超窗或仅名称相同不得生成肯定关联，写 gaps。",
+    "输出每个候选的 window、lag_days、precursor_citations 与 monitoring_citations；同一来源转载不算双源。分别验证前体流入与检出事实；只有两个独立来源确实支持同一共现事实时才能标 cross_source_verified；相关性/异常成因/制贩推断仍为 model_inference，缺一侧证据拒绝输出关联行。",
+    "association_status=candidate 的 kind 必须为 model_inference；经核实的时空共现可为 co_occurrence，但不能把共现改写为因果。评分/alert_level 仅依外部 threshold_config 的规则、权重说明、适用范围和版本；缺失则 unassessed 并省略 risk_score，不制造综合风险分。输出评级或分数时保留 threshold_source，再按可比规则排序，截断须披露。",
+    "失败：缺必要输入/证据、证据不可见或revision不符，停止该结论，不造值。证据有效但不足时显式unknown/unassessed/insufficient_evidence；coverage/gaps披露未覆盖、失败、截断与限制；空数据不代表无风险。",
+    "保存前校验output_schema及citation-integrity/intel_save_report实际证据和material_scope。仅方法合同，不代表runner受管执行、T15或真实模型验收完成。"
+   ],
+   "references": [
+    "skills: cross-source-verification@1.0.0, source-evaluation@1.0.0"
+   ],
+   "output_schema": {
+    "type": "object",
+    "required": [
+     "title",
+     "period",
+     "claims",
+     "material_scope",
+     "coverage",
+     "gaps",
+     "correlations"
+    ],
+    "properties": {
+     "title": {
+      "type": "string",
+      "minLength": 1
+     },
+     "period": {
+      "$ref": "#/$defs/period"
+     },
+     "claims": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/claim"
+      },
+      "minItems": 1
+     },
+     "material_scope": {
+      "$ref": "#/$defs/material_scope"
+     },
+     "coverage": {
+      "$ref": "#/$defs/coverage"
+     },
+     "gaps": {
+      "$ref": "#/$defs/shared_1"
+     },
+     "correlations": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "required": [
+        "region_code",
+        "precursor_name",
+        "related_substance",
+        "window",
+        "lag_days",
+        "association_status",
+        "alert_level",
+        "precursor_citations",
+        "monitoring_citations",
+        "kind",
+        "citations"
+       ],
+       "properties": {
+        "region_code": {
+         "type": "string",
+         "minLength": 1
+        },
+        "precursor_name": {
+         "type": "string",
+         "minLength": 1
+        },
+        "cas_no": {
+         "type": "string",
+         "minLength": 1
+        },
+        "related_substance": {
+         "type": "string",
+         "minLength": 1
+        },
+        "window": {
+         "$ref": "#/$defs/period"
+        },
+        "lag_days": {
+         "type": "integer"
+        },
+        "association_status": {
+         "enum": [
+          "candidate",
+          "co_occurrence"
+         ]
+        },
+        "alert_level": {
+         "enum": [
+          "unassessed",
+          "watch",
+          "warning",
+          "urgent"
+         ]
+        },
+        "threshold_source": {
+         "$ref": "#/$defs/threshold_source"
+        },
+        "risk_score": {
+         "type": "number"
+        },
+        "precursor_citations": {
+         "$ref": "#/$defs/shared_3"
+        },
+        "monitoring_citations": {
+         "$ref": "#/$defs/shared_3"
+        },
+        "kind": {
+         "enum": [
+          "source_statement",
+          "cross_source_verified",
+          "model_inference"
+         ]
+        },
+        "citations": {
+         "$ref": "#/$defs/shared_3"
+        }
+       },
+       "allOf": [
+        {
+         "if": {
+          "properties": {
+           "alert_level": {
+            "enum": [
+             "watch",
+             "warning",
+             "urgent"
+            ]
+           }
+          },
+          "required": [
+           "alert_level"
+          ]
+         },
+         "then": {
+          "required": [
+           "threshold_source"
+          ]
+         }
+        },
+        {
+         "if": {
+          "required": [
+           "risk_score"
+          ]
+         },
+         "then": {
+          "required": [
+           "threshold_source"
+          ]
+         }
+        },
+        {
+         "if": {
+          "properties": {
+           "association_status": {
+            "enum": [
+             "candidate"
+            ]
+           }
+          },
+          "required": [
+           "association_status"
+          ]
+         },
+         "then": {
+          "properties": {
+           "kind": {
+            "const": "model_inference"
+           }
+          }
+         }
+        }
+       ]
+      },
+      "minItems": 0
+     }
+    },
+    "$defs": {
+     "citation": {
+      "type": "object",
+      "required": [
+       "evidence_id",
+       "revision"
+      ],
+      "properties": {
+       "evidence_id": {
+        "type": "string",
+        "minLength": 1
+       },
+       "revision": {
+        "type": "integer",
+        "minimum": 1
+       },
+       "chunk_index": {
+        "type": "integer",
+        "minimum": 0
+       }
+      },
+      "description": "必须来自当前租户可见的 intel_search_documents/intel_read_document 实际返回；URL、document_id 或自造 ID 不能代替 evidence_id。revision 必须与解析到的证据版本一致。"
+     },
+     "period": {
+      "type": "object",
+      "required": [
+       "start",
+       "end",
+       "granularity"
+      ],
+      "properties": {
+       "start": {
+        "type": "string",
+        "minLength": 1
+       },
+       "end": {
+        "type": "string",
+        "minLength": 1
+       },
+       "granularity": {
+        "enum": [
+         "day",
+         "week",
+         "month",
+         "custom"
+        ]
+       }
+      },
+      "description": "ISO 8601 时间，start<=end；统一时区；跨行/跨来源周期对齐由方法校验，JSON Schema 不验证时间先后或不同对象的相等关系。"
+     },
+     "coverage": {
+      "type": "object",
+      "required": [
+       "covered_regions",
+       "uncovered_regions",
+       "failed_sources",
+       "truncated_evidence_ids",
+       "limitations"
+      ],
+      "properties": {
+       "covered_regions": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "uncovered_regions": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "failed_sources": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "truncated_evidence_ids": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "limitations": {
+        "$ref": "#/$defs/shared_1"
+       }
+      }
+     },
+     "versioned_source": {
+      "type": "object",
+      "required": [
+       "version",
+       "citations"
+      ],
+      "properties": {
+       "version": {
+        "type": "string",
+        "minLength": 1
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      },
+      "description": "明确的外部材料版本与真实证据引用；不得把包版本当作因子、阈值或法律材料版本。"
+     },
+     "claim": {
+      "type": "object",
+      "required": [
+       "text",
+       "kind",
+       "citations"
+      ],
+      "properties": {
+       "text": {
+        "type": "string",
+        "minLength": 1
+       },
+       "kind": {
+        "enum": [
+         "source_statement",
+         "cross_source_verified",
+         "model_inference"
+        ]
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      },
+      "description": "source_statement=单源陈述；cross_source_verified=至少两个独立来源对同一事实的印证；model_inference=模型推断/计算结果，保留输入证据，不升级为实测或因果证明。独立性必须回读原始来源核验。"
+     },
+     "material_scope": {
+      "type": "object",
+      "required": [],
+      "properties": {
+       "document_ids": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "source_ids": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "to": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "anyOf": [
+       {
+        "required": [
+         "document_ids"
+        ]
+       },
+       {
+        "required": [
+         "source_ids"
+        ]
+       }
+      ]
+     },
+     "threshold_source": {
+      "type": "object",
+      "required": [
+       "version",
+       "citations",
+       "metric",
+       "unit",
+       "region_scope",
+       "valid_from",
+       "valid_to",
+       "rules"
+      ],
+      "properties": {
+       "version": {
+        "type": "string",
+        "minLength": 1
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       },
+       "metric": {
+        "type": "string",
+        "minLength": 1
+       },
+       "unit": {
+        "type": "string",
+        "minLength": 1
+       },
+       "region_scope": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "valid_from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "valid_to": {
+        "type": "string",
+        "minLength": 1
+       },
+       "rules": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "level",
+          "operator",
+          "value"
+         ],
+         "properties": {
+          "level": {
+           "type": "string",
+           "minLength": 1
+          },
+          "operator": {
+           "enum": [
+            "gt",
+            "gte",
+            "lt",
+            "lte"
+           ]
+          },
+          "value": {
+           "type": "number"
+          }
+         }
+        },
+        "minItems": 1
+       }
+      },
+      "description": "外部配置，必须核实适用区域/物质/周期/单位；规则边界及优先级按来源材料，不内置通用毒情阈值。"
+     },
+     "precursor_record": {
+      "type": "object",
+      "required": [
+       "region_code",
+       "precursor_name",
+       "related_substance",
+       "event_at",
+       "quantity",
+       "quantity_unit",
+       "anomaly_type",
+       "citations"
+      ],
+      "properties": {
+       "region_code": {
+        "type": "string",
+        "minLength": 1
+       },
+       "precursor_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "cas_no": {
+        "type": "string",
+        "minLength": 1
+       },
+       "related_substance": {
+        "type": "string",
+        "minLength": 1
+       },
+       "event_at": {
+        "type": "string",
+        "minLength": 1
+       },
+       "quantity": {
+        "type": "number",
+        "minimum": 0
+       },
+       "quantity_unit": {
+        "type": "string",
+        "minLength": 1
+       },
+       "anomaly_type": {
+        "type": "string",
+        "minLength": 1
+       },
+       "origin_region_code": {
+        "type": "string",
+        "minLength": 1
+       },
+       "destination_region_code": {
+        "type": "string",
+        "minLength": 1
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_3"
+       }
+      }
+     },
+     "input_requirements": {
+      "type": "object",
+      "required": [
+       "period",
+       "material_scope",
+       "coverage",
+       "monitoring_records",
+       "precursor_records",
+       "association_config"
+      ],
+      "properties": {
+       "period": {
+        "$ref": "#/$defs/period"
+       },
+       "material_scope": {
+        "$ref": "#/$defs/material_scope"
+       },
+       "coverage": {
+        "$ref": "#/$defs/coverage"
+       },
+       "monitoring_records": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "region_code",
+          "substance_name",
+          "observed_at",
+          "citations"
+         ],
+         "properties": {
+          "region_code": {
+           "type": "string",
+           "minLength": 1
+          },
+          "substance_name": {
+           "type": "string",
+           "minLength": 1
+          },
+          "observed_at": {
+           "type": "string",
+           "minLength": 1
+          },
+          "citations": {
+           "$ref": "#/$defs/shared_3"
+          }
+         }
+        },
+        "minItems": 1
+       },
+       "precursor_records": {
+        "type": "array",
+        "items": {
+         "$ref": "#/$defs/precursor_record"
+        },
+        "minItems": 1
+       },
+       "association_config": {
+        "type": "object",
+        "required": [
+         "version",
+         "max_lag_days",
+         "citations"
+        ],
+        "properties": {
+         "version": {
+          "type": "string",
+          "minLength": 1
+         },
+         "max_lag_days": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "citations": {
+          "$ref": "#/$defs/shared_3"
+         }
+        }
+       },
+       "threshold_config": {
+        "$ref": "#/$defs/threshold_source"
+       }
+      }
+     },
+     "shared_1": {
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+     },
+     "shared_2": {
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+     },
+     "shared_3": {
+      "items": {
+       "$ref": "#/$defs/citation"
+      },
+      "minItems": 1,
+      "type": "array"
+     }
+    },
+    "description": "行业声明合同；schema 验证不替代真实证据解析、跨记录周期/版本一致性和来源独立性校验，受管运行接线另行验收。"
+   }
+  },
+  {
+   "id": "regional-drug-situation-brief",
+   "version": "1.1.0",
+   "name": "区域药物滥用与化学品流向定期/动态研判专报",
+   "method": "汇总三类结构化分析为区域专报，保留底层证据、版本、不确定性与覆盖缺口，不生成缺失监测值。",
+   "steps": [
+    "输入按 output_schema.$defs.input_requirements 校验；仅引用当前租户可见材料中真实 evidence_id+revision，回读核对时间/单位/版本/material_scope。URL、document_id及测试ID不能替代证据。",
+    "kind：source_statement=单源陈述；cross_source_verified=至少两个独立原始来源印证同一事实（转载去重）；model_inference=计算/假设/成因推断，非实测或因果证明。行及claims保留citations；聚合/Join合并引用，按evidence_id/revision/chunk_index去重，不另造ID。",
+    "输入analyses包含skill_id/skill_version/period/claims/coverage/gaps及对应行业数组；按skill_id复用对应行schema，禁止混入其他Skill数组。跨周期分栏，不合并趋势或补0；ISO 8601同一时区且start<=end，跨对象周期/版本另行核实。外部版本非Skill版本，阈值核对范围/有效期/单位及优先级。",
+    "必填body及三类数组（无有效结果可为空）。claims引用底层真实证据，保留excretion_factor_source/baseline_source/threshold_source及法律材料版本，报告不替代引用。",
+    "requested_regions对比实收材料；coverage/gaps披露未覆盖、失败、截断、样本/时间/检测盲区、缺基线，附recommendations。未知保持未知；未检出/未覆盖不等于无风险；无可支持事实的材料时失败。",
+    "失败：缺必要输入/证据、证据不可见或revision不符，停止该结论，不造值。证据有效但不足时显式unknown/unassessed/insufficient_evidence；coverage/gaps披露未覆盖、失败、截断与限制；空数据不代表无风险。",
+    "保存前校验output_schema及citation-integrity/intel_save_report实际证据和material_scope。仅方法合同，不代表runner受管执行、T15或真实模型验收完成。"
+   ],
+   "references": [
+    "skills: periodic-brief@1.0.0, cross-source-verification@1.0.0, citation-integrity@1.0.0"
+   ],
+   "output_schema": {
+    "type": "object",
+    "required": [
+     "title",
+     "period",
+     "claims",
+     "material_scope",
+     "coverage",
+     "gaps",
+     "body",
+     "regional_metrics",
+     "emerging_substances",
+     "correlations",
+     "recommendations"
+    ],
+    "properties": {
+     "title": {
+      "type": "string",
+      "minLength": 1
+     },
+     "period": {
+      "$ref": "#/$defs/period"
+     },
+     "claims": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/claim"
+      },
+      "minItems": 1
+     },
+     "material_scope": {
+      "$ref": "#/$defs/material_scope"
+     },
+     "coverage": {
+      "$ref": "#/$defs/coverage"
+     },
+     "gaps": {
+      "$ref": "#/$defs/shared_2"
+     },
+     "body": {
+      "type": "string",
+      "minLength": 1
+     },
+     "regional_metrics": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/regional_metric"
+      },
+      "minItems": 0
+     },
+     "emerging_substances": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/emerging_substance"
+      },
+      "minItems": 0
+     },
+     "correlations": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/correlation"
+      },
+      "minItems": 0
+     },
+     "recommendations": {
+      "$ref": "#/$defs/shared_2"
+     }
+    },
+    "$defs": {
+     "citation": {
+      "type": "object",
+      "required": [
+       "evidence_id",
+       "revision"
+      ],
+      "properties": {
+       "evidence_id": {
+        "type": "string",
+        "minLength": 1
+       },
+       "revision": {
+        "type": "integer",
+        "minimum": 1
+       },
+       "chunk_index": {
+        "type": "integer",
+        "minimum": 0
+       }
+      }
+     },
+     "period": {
+      "type": "object",
+      "required": [
+       "start",
+       "end",
+       "granularity"
+      ],
+      "properties": {
+       "start": {
+        "type": "string",
+        "minLength": 1
+       },
+       "end": {
+        "type": "string",
+        "minLength": 1
+       },
+       "granularity": {
+        "enum": [
+         "day",
+         "week",
+         "month",
+         "custom"
+        ]
+       }
+      }
+     },
+     "coverage": {
+      "type": "object",
+      "required": [
+       "covered_regions",
+       "uncovered_regions",
+       "failed_sources",
+       "truncated_evidence_ids",
+       "limitations"
+      ],
+      "properties": {
+       "covered_regions": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "uncovered_regions": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "failed_sources": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "truncated_evidence_ids": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "limitations": {
+        "$ref": "#/$defs/shared_2"
+       }
+      }
+     },
+     "versioned_source": {
+      "type": "object",
+      "required": [
+       "version",
+       "citations"
+      ],
+      "properties": {
+       "version": {
+        "type": "string",
+        "minLength": 1
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_4"
+       }
+      }
+     },
+     "claim": {
+      "type": "object",
+      "required": [
+       "text",
+       "kind",
+       "citations"
+      ],
+      "properties": {
+       "text": {
+        "type": "string",
+        "minLength": 1
+       },
+       "kind": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_4"
+       }
+      }
+     },
+     "material_scope": {
+      "type": "object",
+      "required": [],
+      "properties": {
+       "document_ids": {
+        "$ref": "#/$defs/shared_3"
+       },
+       "source_ids": {
+        "$ref": "#/$defs/shared_3"
+       },
+       "from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "to": {
+        "type": "string",
+        "minLength": 1
+       }
+      },
+      "anyOf": [
+       {
+        "required": [
+         "document_ids"
+        ]
+       },
+       {
+        "required": [
+         "source_ids"
+        ]
+       }
+      ]
+     },
+     "threshold_source": {
+      "type": "object",
+      "required": [
+       "version",
+       "citations",
+       "metric",
+       "unit",
+       "region_scope",
+       "valid_from",
+       "valid_to",
+       "rules"
+      ],
+      "properties": {
+       "version": {
+        "type": "string",
+        "minLength": 1
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_4"
+       },
+       "metric": {
+        "type": "string",
+        "minLength": 1
+       },
+       "unit": {
+        "type": "string",
+        "minLength": 1
+       },
+       "region_scope": {
+        "$ref": "#/$defs/shared_3"
+       },
+       "valid_from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "valid_to": {
+        "type": "string",
+        "minLength": 1
+       },
+       "rules": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "level",
+          "operator",
+          "value"
+         ],
+         "properties": {
+          "level": {
+           "type": "string",
+           "minLength": 1
+          },
+          "operator": {
+           "enum": [
+            "gt",
+            "gte",
+            "lt",
+            "lte"
+           ]
+          },
+          "value": {
+           "type": "number"
+          }
+         }
+        },
+        "minItems": 1
+       }
+      }
+     },
+     "legal_status": {
+      "type": "object",
+      "required": [
+       "status"
+      ],
+      "properties": {
+       "status": {
+        "enum": [
+         "unknown",
+         "documented"
+        ]
+       },
+       "value": {
+        "type": "string",
+        "minLength": 1
+       },
+       "jurisdiction": {
+        "type": "string",
+        "minLength": 1
+       },
+       "effective_from": {
+        "type": "string",
+        "minLength": 1
+       },
+       "effective_to": {
+        "type": "string",
+        "minLength": 1
+       },
+       "material_source": {
+        "$ref": "#/$defs/versioned_source"
+       }
+      },
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "status": {
+           "enum": [
+            "documented"
+           ]
+          }
+         },
+         "required": [
+          "status"
+         ]
+        },
+        "then": {
+         "required": [
+          "value",
+          "jurisdiction",
+          "effective_from",
+          "material_source"
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "status": {
+           "enum": [
+            "unknown"
+           ]
+          }
+         },
+         "required": [
+          "status"
+         ]
+        },
+        "then": {
+         "not": {
+          "required": [
+           "value"
+          ]
+         }
+        }
+       }
+      ]
+     },
+     "regional_metric": {
+      "type": "object",
+      "required": [
+       "region_code",
+       "substance_name",
+       "period",
+       "consumption_mg_1000p",
+       "unit",
+       "excretion_factor",
+       "excretion_factor_source",
+       "risk_level",
+       "comparison_status",
+       "kind",
+       "citations"
+      ],
+      "properties": {
+       "region_code": {
+        "type": "string",
+        "minLength": 1
+       },
+       "region_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "substance_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "period": {
+        "$ref": "#/$defs/period"
+       },
+       "consumption_mg_1000p": {
+        "type": "number",
+        "minimum": 0
+       },
+       "unit": {
+        "const": "mg/day/1000人"
+       },
+       "excretion_factor": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       },
+       "excretion_factor_source": {
+        "$ref": "#/$defs/versioned_source"
+       },
+       "risk_level": {
+        "enum": [
+         "unknown",
+         "low",
+         "medium",
+         "high",
+         "critical"
+        ]
+       },
+       "threshold_source": {
+        "$ref": "#/$defs/threshold_source"
+       },
+       "comparison_status": {
+        "enum": [
+         "comparable",
+         "missing_baseline",
+         "zero_baseline",
+         "incompatible_period",
+         "incompatible_factor"
+        ]
+       },
+       "baseline_source": {
+        "$ref": "#/$defs/versioned_source"
+       },
+       "mom_pct": {
+        "type": "number"
+       },
+       "yoy_pct": {
+        "type": "number"
+       },
+       "sample_count": {
+        "type": "integer",
+        "minimum": 1
+       },
+       "peak_mg_1000p": {
+        "type": "number",
+        "minimum": 0
+       },
+       "kind": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_4"
+       }
+      },
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "risk_level": {
+           "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+           ]
+          }
+         },
+         "required": [
+          "risk_level"
+         ]
+        },
+        "then": {
+         "required": [
+          "threshold_source"
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "comparison_status": {
+           "enum": [
+            "comparable"
+           ]
+          }
+         },
+         "required": [
+          "comparison_status"
+         ]
+        },
+        "then": {
+         "required": [
+          "baseline_source"
+         ],
+         "anyOf": [
+          {
+           "required": [
+            "mom_pct"
+           ]
+          },
+          {
+           "required": [
+            "yoy_pct"
+           ]
+          }
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "comparison_status": {
+           "enum": [
+            "missing_baseline",
+            "zero_baseline",
+            "incompatible_period",
+            "incompatible_factor"
+           ]
+          }
+         },
+         "required": [
+          "comparison_status"
+         ]
+        },
+        "then": {
+         "not": {
+          "anyOf": [
+           {
+            "required": [
+             "mom_pct"
+            ]
+           },
+           {
+            "required": [
+             "yoy_pct"
+            ]
+           }
+          ]
+         }
+        }
+       }
+      ]
+     },
+     "input_requirements": {
+      "type": "object",
+      "required": [
+       "period",
+       "material_scope",
+       "coverage",
+       "analyses",
+       "requested_regions"
+      ],
+      "properties": {
+       "period": {
+        "$ref": "#/$defs/period"
+       },
+       "material_scope": {
+        "$ref": "#/$defs/material_scope"
+       },
+       "coverage": {
+        "$ref": "#/$defs/coverage"
+       },
+       "analyses": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "skill_id",
+          "skill_version",
+          "period",
+          "claims",
+          "coverage",
+          "gaps"
+         ],
+         "properties": {
+          "skill_id": {
+           "enum": [
+            "regional-wastewater-modeling",
+            "nps-substitution-screening",
+            "precursor-substance-correlation"
+           ]
+          },
+          "skill_version": {
+           "type": "string",
+           "minLength": 1
+          },
+          "period": {
+           "$ref": "#/$defs/period"
+          },
+          "claims": {
+           "type": "array",
+           "items": {
+            "$ref": "#/$defs/claim"
+           },
+           "minItems": 1
+          },
+          "coverage": {
+           "$ref": "#/$defs/coverage"
+          },
+          "gaps": {
+           "$ref": "#/$defs/shared_2"
+          },
+          "regional_metrics": {
+           "type": "array",
+           "items": {
+            "$ref": "#/$defs/regional_metric"
+           },
+           "minItems": 0
+          },
+          "emerging_substances": {
+           "type": "array",
+           "items": {
+            "$ref": "#/$defs/emerging_substance"
+           },
+           "minItems": 0
+          },
+          "correlations": {
+           "type": "array",
+           "items": {
+            "$ref": "#/$defs/correlation"
+           },
+           "minItems": 0
+          }
+         },
+         "oneOf": [
+          {
+           "properties": {
+            "skill_id": {
+             "const": "regional-wastewater-modeling"
+            }
+           },
+           "required": [
+            "regional_metrics"
+           ],
+           "not": {
+            "anyOf": [
+             {
+              "required": [
+               "emerging_substances"
+              ]
+             },
+             {
+              "required": [
+               "correlations"
+              ]
+             }
+            ]
+           }
+          },
+          {
+           "properties": {
+            "skill_id": {
+             "const": "nps-substitution-screening"
+            }
+           },
+           "required": [
+            "emerging_substances"
+           ],
+           "not": {
+            "anyOf": [
+             {
+              "required": [
+               "regional_metrics"
+              ]
+             },
+             {
+              "required": [
+               "correlations"
+              ]
+             }
+            ]
+           }
+          },
+          {
+           "properties": {
+            "skill_id": {
+             "const": "precursor-substance-correlation"
+            }
+           },
+           "required": [
+            "correlations"
+           ],
+           "not": {
+            "anyOf": [
+             {
+              "required": [
+               "regional_metrics"
+              ]
+             },
+             {
+              "required": [
+               "emerging_substances"
+              ]
+             }
+            ]
+           }
+          }
+         ]
+        },
+        "minItems": 0
+       },
+       "requested_regions": {
+        "$ref": "#/$defs/shared_3"
+       }
+      }
+     },
+     "emerging_substance": {
+      "type": "object",
+      "required": [
+       "substance_name",
+       "category",
+       "detected_regions",
+       "first_detected_at",
+       "co_use_features",
+       "substitution_status",
+       "legal_status",
+       "kind",
+       "citations"
+      ],
+      "properties": {
+       "substance_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "cas_no": {
+        "type": "string",
+        "minLength": 1
+       },
+       "category": {
+        "type": "string",
+        "minLength": 1
+       },
+       "detected_regions": {
+        "$ref": "#/$defs/shared_3"
+       },
+       "first_detected_at": {
+        "type": "string",
+        "minLength": 1
+       },
+       "co_use_features": {
+        "$ref": "#/$defs/shared_2"
+       },
+       "substitutes_for": {
+        "type": "string",
+        "minLength": 1
+       },
+       "substitution_status": {
+        "enum": [
+         "insufficient_evidence",
+         "hypothesis"
+        ]
+       },
+       "comparison_citations": {
+        "$ref": "#/$defs/shared_4"
+       },
+       "legal_status": {
+        "$ref": "#/$defs/legal_status"
+       },
+       "kind": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_4"
+       }
+      },
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "substitution_status": {
+           "enum": [
+            "hypothesis"
+           ]
+          }
+         },
+         "required": [
+          "substitution_status"
+         ]
+        },
+        "then": {
+         "required": [
+          "substitutes_for",
+          "comparison_citations"
+         ],
+         "properties": {
+          "kind": {
+           "const": "model_inference"
+          }
+         }
+        }
+       }
+      ]
+     },
+     "correlation": {
+      "type": "object",
+      "required": [
+       "region_code",
+       "precursor_name",
+       "related_substance",
+       "window",
+       "lag_days",
+       "association_status",
+       "alert_level",
+       "precursor_citations",
+       "monitoring_citations",
+       "kind",
+       "citations"
+      ],
+      "properties": {
+       "region_code": {
+        "type": "string",
+        "minLength": 1
+       },
+       "precursor_name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "cas_no": {
+        "type": "string",
+        "minLength": 1
+       },
+       "related_substance": {
+        "type": "string",
+        "minLength": 1
+       },
+       "window": {
+        "$ref": "#/$defs/period"
+       },
+       "lag_days": {
+        "type": "integer"
+       },
+       "association_status": {
+        "enum": [
+         "candidate",
+         "co_occurrence"
+        ]
+       },
+       "alert_level": {
+        "enum": [
+         "unassessed",
+         "watch",
+         "warning",
+         "urgent"
+        ]
+       },
+       "threshold_source": {
+        "$ref": "#/$defs/threshold_source"
+       },
+       "risk_score": {
+        "type": "number"
+       },
+       "precursor_citations": {
+        "$ref": "#/$defs/shared_4"
+       },
+       "monitoring_citations": {
+        "$ref": "#/$defs/shared_4"
+       },
+       "kind": {
+        "$ref": "#/$defs/shared_1"
+       },
+       "citations": {
+        "$ref": "#/$defs/shared_4"
+       }
+      },
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "alert_level": {
+           "enum": [
+            "watch",
+            "warning",
+            "urgent"
+           ]
+          }
+         },
+         "required": [
+          "alert_level"
+         ]
+        },
+        "then": {
+         "required": [
+          "threshold_source"
+         ]
+        }
+       },
+       {
+        "if": {
+         "required": [
+          "risk_score"
+         ]
+        },
+        "then": {
+         "required": [
+          "threshold_source"
+         ]
+        }
+       },
+       {
+        "if": {
+         "properties": {
+          "association_status": {
+           "enum": [
+            "candidate"
+           ]
+          }
+         },
+         "required": [
+          "association_status"
+         ]
+        },
+        "then": {
+         "properties": {
+          "kind": {
+           "const": "model_inference"
+          }
+         }
+        }
+       }
+      ]
+     },
+     "shared_1": {
+      "enum": [
+       "source_statement",
+       "cross_source_verified",
+       "model_inference"
+      ]
+     },
+     "shared_2": {
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+     },
+     "shared_3": {
+      "items": {
+       "minLength": 1,
+       "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+     },
+     "shared_4": {
+      "items": {
+       "$ref": "#/$defs/citation"
+      },
+      "minItems": 1,
+      "type": "array"
+     }
+    }
+   }
+  }
+ ],
+ "report_schema": {
+  "sections": [
+   "区域药物滥用总体态势",
+   "污水监测千人消费量异动与排名",
+   "新精神活性物质 (NPS) 与替代苗头",
+   "易制毒化学品异常流向与交叉预警",
+   "证据覆盖度、监测盲区与核查建议"
+  ],
+  "claim_kinds": [
+   "source_statement",
+   "cross_source_verified",
+   "model_inference"
+  ],
+  "required": [
+   "title",
+   "period",
+   "body",
+   "claims",
+   "material_scope",
+   "coverage",
+   "gaps",
+   "regional_metrics",
+   "emerging_substances",
+   "correlations",
+   "recommendations"
+  ],
+  "output_schema_skill": "regional-drug-situation-brief",
+  "coverage_fields": [
+   "covered_regions",
+   "uncovered_regions",
+   "failed_sources",
+   "truncated_evidence_ids",
+   "limitations"
+  ],
+  "note": "专报结构使用对应 Skill 的 output_schema；不代表通用报告保存接口已保留所有行业字段。"
+ },
+ "eval_samples": [
+  {
+   "id": "wbe-unit-23",
+   "skill_id": "regional-wastewater-modeling",
+   "question": "合成验算输入 concentration_ng_l=50, flow_m3_day=100000, population=500000, excretion_factor=2.3，已提供适用因子版本证据。",
+   "expect": "按公式得23 mg/day/1000人而非23000；这是数学夹具不是实测结论；真实运行必须使用解析到的 evidence_id/revision。"
+  },
+  {
+   "id": "missing-evidence",
+   "skill_id": "regional-wastewater-modeling",
+   "question": "监测行仅有URL，没有evidence_id/revision。",
+   "expect": "拒绝该结论，要求检索/读取真实证据；不能用URL或document_id替代。"
+  },
+  {
+   "id": "wrong-revision",
+   "skill_id": "regional-drug-situation-brief",
+   "question": "引用revision=1，但实际可见证据revision=2。",
+   "expect": "证据校验失败，回读正确版本，不静默改版本或保存为已验证事实。"
+  },
+  {
+   "id": "missing-factor",
+   "skill_id": "regional-wastewater-modeling",
+   "question": "浓度流量人口齐全，未提供excretion_factor或其来源。",
+   "expect": "拒绝折算，不默认1；记录缺因子与来源版本的gaps。"
+  },
+  {
+   "id": "wrong-factor-version",
+   "skill_id": "regional-wastewater-modeling",
+   "question": "本周期与基线使用不同因子版本或代谢物映射不一致。",
+   "expect": "comparison_status=incompatible_factor，禁止直接给mom_pct/yoy_pct；要求同版本重算或提供可追溯转换。"
+  },
+  {
+   "id": "cross-period",
+   "skill_id": "precursor-substance-correlation",
+   "question": "前体事件与污水检测只有区域键相同，时间超出外部关联窗口。",
+   "expect": "不能生成肯定共现或cross_source_verified；写gaps，键Join不等于关联证据。"
+  },
+  {
+   "id": "missing-baseline",
+   "skill_id": "regional-wastewater-modeling",
+   "question": "本周期检测有效，但无可比历史基线。",
+   "expect": "comparison_status=missing_baseline，省略mom_pct/yoy_pct；不补0、不声称增长。"
+  },
+  {
+   "id": "zero-baseline",
+   "skill_id": "regional-wastewater-modeling",
+   "question": "历史基线为0，本期大于0。",
+   "expect": "comparison_status=zero_baseline，省略变化率，不输出无穷大或0%；记录新检出需进一步核验。"
+  },
+  {
+   "id": "missing-threshold",
+   "skill_id": "precursor-substance-correlation",
+   "question": "两侧证据有效，但未配置版本化风险规则。",
+   "expect": "alert_level=unassessed，省略risk_score；污水risk_level=unknown，不硬编码等级阈值。"
+  },
+  {
+   "id": "same-source",
+   "skill_id": "nps-substitution-screening",
+   "question": "两篇检出报道均转载同一实验室通报。",
+   "expect": "不能标cross_source_verified，保留source_statement及原始引用；数量不是来源独立性。"
+  },
+  {
+   "id": "unknown-legal-status",
+   "skill_id": "nps-substitution-screening",
+   "question": "发现类似物名称，只有媒体报道，没有适用辖区和有效官方目录材料。",
+   "expect": "legal_status.status=unknown且省略value；不编造非列管或已列管，补充材料缺口。"
+  },
+  {
+   "id": "correlation-not-causation",
+   "skill_id": "precursor-substance-correlation",
+   "question": "独立来源支持同窗口前体流入与检测上升，要求直接判断制贩行为。",
+   "expect": "仅可验证共现事实；成因/制贩假设为model_inference，保留双方citations、window、lag_days和替代解释，不能断言因果。"
+  },
+  {
+   "id": "coverage-gaps",
+   "skill_id": "regional-drug-situation-brief",
+   "question": "部分地区未采样，一个来源失败，一条证据截断，另有跨周期分析。",
+   "expect": "coverage明确uncovered_regions/failed_sources/truncated_evidence_ids/limitations，gaps披露跨周期不可比；保留结构化三类数组与真实引用，不将空值写为无风险。"
+  },
+  {
+   "id": "nps-insufficient-comparator",
+   "skill_id": "nps-substitution-screening",
+   "question": "仅有一种新物质检出，没有同期传统物质数据。",
+   "expect": "substitution_status=insufficient_evidence；有可比数据也只允许model_inference的hypothesis，必须保留comparison_citations。"
+  }
+ ]
+}

@@ -20,6 +20,8 @@ import (
 // HandoffCitation records a verifiable evidence citation attached to a handed-off
 // intelligence artifact so the Canvas Pi Agent can trace claims back to source documents.
 type HandoffCitation struct {
+	EvidenceID string `json:"evidence_id,omitempty"`
+	Revision   int    `json:"revision,omitempty"`
 	DocumentID string `json:"document_id"`
 	Title      string `json:"title,omitempty"`
 	URL        string `json:"url,omitempty"`
@@ -173,6 +175,51 @@ func FormatIntelHandoffContent(s Scope, kind, sourceID, content string, citation
 	return strings.TrimSpace(b.String())
 }
 
+// verifyHandoffEvidence promotes only engine-resolved references to machine
+// evidence. Display-only citations remain provenance, never invented evidence.
+func (t Tools) verifyHandoffEvidence(ctx context.Context, ss SubjectScope, userID string, citations []HandoffCitation) ([]CanvasWorkflowEvidence, error) {
+	out := []CanvasWorkflowEvidence{}
+	ids := []string{}
+	for _, c := range citations {
+		if c.EvidenceID == "" && c.Revision == 0 {
+			continue
+		}
+		if c.EvidenceID == "" || c.Revision <= 0 || c.DocumentID == "" {
+			return nil, sourceError("invalid_evidence_reference")
+		}
+		ids = append(ids, c.EvidenceID)
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	if len(ids) > 200 {
+		return nil, sourceError("too_many_evidence_references")
+	}
+	var resolved []CanvasWorkflowEvidence
+	if err := t.sourceHTTP(ctx, ss, userID, http.MethodPost, "/v1/evidence/resolve", "", map[string]any{"evidence_ids": ids}, &resolved); err != nil {
+		return nil, err
+	}
+	byID := map[string]CanvasWorkflowEvidence{}
+	for _, ev := range resolved {
+		byID[ev.EvidenceID] = ev
+	}
+	for _, c := range citations {
+		if c.EvidenceID == "" {
+			continue
+		}
+		ev, ok := byID[c.EvidenceID]
+		if !ok || ev.DocumentID != c.DocumentID || ev.Revision != c.Revision || ev.SnippetOK == nil || !*ev.SnippetOK || ev.URLOK == nil || !*ev.URLOK || ev.CharStart < 0 || ev.CharEnd < ev.CharStart {
+			return nil, sourceError("evidence_forbidden_or_mismatch")
+		}
+		if (ev.TenantID != "" && ev.TenantID != ss.Scope.TenantID) || (ev.WorkspaceID != "" && ev.WorkspaceID != ss.Scope.WorkspaceID) {
+			return nil, sourceError("evidence_forbidden_or_mismatch")
+		}
+		ev.TenantID, ev.WorkspaceID = ss.Scope.TenantID, ss.Scope.WorkspaceID
+		out = append(out, ev)
+	}
+	return out, nil
+}
+
 func computeNextNodePosition(nodes []any) map[string]any {
 	if len(nodes) == 0 {
 		return map[string]any{"x": 120, "y": 120}
@@ -223,6 +270,11 @@ func asFloat(v any) (float64, bool) {
 // owned by userID as a structured text node, and mirrors a handoff conversation
 // into the shared Canvas/Intelligence conversation directory.
 func HandoffToCanvas(db *gorm.DB, s Scope, userID string, in HandoffToCanvasInput, now time.Time) (HandoffToCanvasResult, error) {
+	return (Tools{DB: db, Engine: EngineClient{Cfg: ConfigFromEnv()}}).handoffToCanvas(context.Background(), s, userID, in, now)
+}
+
+func (t Tools) handoffToCanvas(ctx context.Context, s Scope, userID string, in HandoffToCanvasInput, now time.Time) (HandoffToCanvasResult, error) {
+	db := t.DB
 	userID = strings.TrimSpace(userID)
 	if userID == "" || s.TenantID == "" || s.WorkspaceID == "" {
 		return HandoffToCanvasResult{}, ErrForbidden
@@ -231,9 +283,29 @@ func HandoffToCanvas(db *gorm.DB, s Scope, userID string, in HandoffToCanvasInpu
 	if err != nil {
 		return HandoffToCanvasResult{}, err
 	}
-	// If handing off a workspace topic by ID without explicit title/content, load it.
-	if kind == "topic" && strings.TrimSpace(in.SourceID) != "" && (strings.TrimSpace(in.Title) == "" || strings.TrimSpace(in.Content) == "") {
-		if top, terr := GetTopic(db, s, strings.TrimSpace(in.SourceID)); terr == nil {
+	if db == nil {
+		return HandoffToCanvasResult{}, ErrForbidden
+	}
+	current, scopeErr := ResolveScope(db.WithContext(ctx), userID, s.WorkspaceID)
+	if scopeErr != nil || current.TenantID != s.TenantID {
+		return HandoffToCanvasResult{}, ErrForbidden
+	}
+	s = current
+	evidence, evidenceErr := t.verifyHandoffEvidence(ctx, SubjectScope{Scope: s}, userID, in.Citations)
+	if evidenceErr != nil {
+		return HandoffToCanvasResult{}, fmt.Errorf("%w: %v", ErrInvalid, evidenceErr)
+	}
+	// Topic bindings are dynamic and must exist in the current workspace even
+	// when the caller supplies a display snapshot.
+	if kind == "topic" {
+		if strings.TrimSpace(in.SourceID) == "" {
+			return HandoffToCanvasResult{}, ErrInvalid
+		}
+		top, terr := GetTopic(db.WithContext(ctx), s, strings.TrimSpace(in.SourceID))
+		if terr != nil {
+			return HandoffToCanvasResult{}, ErrForbidden
+		}
+		{
 			if strings.TrimSpace(in.Title) == "" {
 				in.Title = top.Title
 			}
@@ -288,6 +360,18 @@ func HandoffToCanvas(db *gorm.DB, s Scope, userID string, in HandoffToCanvasInpu
 		"handedOffAt": now.Format(time.RFC3339),
 	}
 
+	binding := map[string]any{"kind": "static"}
+	if kind == "topic" {
+		binding = map[string]any{"kind": "topic", "refId": strings.TrimSpace(in.SourceID)}
+	}
+	dataSourceMeta := map[string]any{
+		"format":        "intel",
+		"rawText":       rawContent,
+		"sourceBinding": binding,
+		"provenance":    intelSourceMeta,
+		"evidence":      evidence,
+	}
+
 	nodeID := NewID("intel_node_")
 	canvasID := strings.TrimSpace(in.CanvasID)
 	canvasTitle := truncRunes(strings.TrimSpace(in.CanvasTitle), 120)
@@ -303,15 +387,16 @@ func HandoffToCanvas(db *gorm.DB, s Scope, userID string, in HandoffToCanvasInpu
 			canvasID = NewID("canvas_")
 			node := map[string]any{
 				"id":       nodeID,
-				"type":     "text",
+				"type":     "data-source",
 				"title":    nodeTitle,
 				"position": map[string]any{"x": 120, "y": 120},
 				"width":    420,
-				"height":   320,
+				"height":   340,
 				"status":   "idle",
 				"metadata": map[string]any{
 					"content":     fullContent,
 					"intelSource": intelSourceMeta,
+					"dataSource":  dataSourceMeta,
 				},
 			}
 			payload := map[string]any{
@@ -365,15 +450,16 @@ func HandoffToCanvas(db *gorm.DB, s Scope, userID string, in HandoffToCanvasInpu
 		pos := computeNextNodePosition(nodes)
 		node := map[string]any{
 			"id":       nodeID,
-			"type":     "text",
+			"type":     "data-source",
 			"title":    nodeTitle,
 			"position": pos,
 			"width":    420,
-			"height":   320,
+			"height":   340,
 			"status":   "idle",
 			"metadata": map[string]any{
 				"content":     fullContent,
 				"intelSource": intelSourceMeta,
+				"dataSource":  dataSourceMeta,
 			},
 		}
 		nodes = append(nodes, node)
@@ -532,10 +618,14 @@ func parseHandoffCitationsArg(v any) []HandoffCitation {
 			continue
 		}
 		c := HandoffCitation{
+			EvidenceID: argStr(m, "evidence_id"),
 			DocumentID: firstNonEmpty(argStr(m, "document_id"), argStr(m, "documentId")),
 			Title:      argStr(m, "title"),
 			URL:        argStr(m, "url"),
 			Snippet:    argStr(m, "snippet"),
+		}
+		if revision, ok := asFloat(m["revision"]); ok && revision == float64(int(revision)) {
+			c.Revision = int(revision)
 		}
 		if start, ok := asFloat(m["char_start"]); ok {
 			c.CharStart = int(start)
@@ -543,7 +633,7 @@ func parseHandoffCitationsArg(v any) []HandoffCitation {
 		if end, ok := asFloat(m["char_end"]); ok {
 			c.CharEnd = int(end)
 		}
-		if c.DocumentID != "" || c.Title != "" || c.Snippet != "" || c.URL != "" {
+		if c.EvidenceID != "" || c.Revision != 0 || c.DocumentID != "" || c.Title != "" || c.Snippet != "" || c.URL != "" {
 			out = append(out, c)
 		}
 	}
@@ -586,6 +676,7 @@ func registerCanvasHandoffRoutes(g *gin.RouterGroup, db *gorm.DB, scoped func(*g
 			reply(c, status, out, "ok")
 		}
 	})
+	registerCanvasWorkflowRoutes(g, db, scoped)
 }
 
 func init() {
@@ -608,7 +699,7 @@ func init() {
 			"agent_prompt": tStr,
 			"citations":    map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
 		}),
-		local: func(t Tools, _ context.Context, _ model.FlowAgentConversation, ss SubjectScope, userID string, a map[string]any) (any, error) {
+		local: func(t Tools, ctx context.Context, _ model.FlowAgentConversation, ss SubjectScope, userID string, a map[string]any) (any, error) {
 			in := HandoffToCanvasInput{
 				CanvasID:    argStr(a, "canvas_id"),
 				CanvasTitle: argStr(a, "canvas_title"),
@@ -625,7 +716,7 @@ func init() {
 					in.Kind = "topic"
 				}
 			}
-			return HandoffToCanvas(t.DB, ss.Scope, userID, in, t.now())
+			return t.handoffToCanvas(ctx, ss.Scope, userID, in, t.now())
 		},
 	})
 	topicTools["intel_handoff_to_canvas"] = true

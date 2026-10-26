@@ -123,6 +123,14 @@ type CloudAgentRunViewOptions struct {
 }
 
 func validateCloudAgentRequest(req *CloudAgentRequest) error {
+	return validateCloudAgentRequestFor(req, false)
+}
+
+// Manual control-plane roots (canvas workflow approvals) never run Pi: their
+// model calls are frozen through the flow gateway route with their own budget,
+// not through the agent text-model binding. Only the model-selection clause is
+// waived there; every other request rule still applies.
+func validateCloudAgentRequestFor(req *CloudAgentRequest, manualControlPlane bool) error {
 	if req == nil {
 		return BadAuthRequest("请求不能为空")
 	}
@@ -215,14 +223,16 @@ func validateCloudAgentRequest(req *CloudAgentRequest) error {
 		req.FocusNodeIDs[i] = id
 		seenFocus[id] = true
 	}
-	if req.LogicalModelID != "" {
-		if req.ChannelID != "" || req.ChannelModelKey != "" {
-			return BadAuthRequest("逻辑模型和系统渠道不能混用")
+	if !manualControlPlane {
+		if req.LogicalModelID != "" {
+			if req.ChannelID != "" || req.ChannelModelKey != "" {
+				return BadAuthRequest("逻辑模型和系统渠道不能混用")
+			}
+		} else if req.ChannelID == "" || req.ChannelModelKey == "" {
+			return BadAuthRequest("请选择后端受管文本模型；Agent 不接受浏览器自定义密钥或上游地址")
+		} else if req.Model != "" && req.Model != req.ChannelModelKey {
+			return BadAuthRequest("渠道模型标识与 model 不一致")
 		}
-	} else if req.ChannelID == "" || req.ChannelModelKey == "" {
-		return BadAuthRequest("请选择后端受管文本模型；Agent 不接受浏览器自定义密钥或上游地址")
-	} else if req.Model != "" && req.Model != req.ChannelModelKey {
-		return BadAuthRequest("渠道模型标识与 model 不一致")
 	}
 	if req.Budget.MaxGenerationTasks < 0 || req.Budget.MaxVideoSeconds < 0 || req.Budget.MaxSteps < 0 {
 		return BadAuthRequest("生成任务、视频秒数和模型调用步数预算不能为负数")

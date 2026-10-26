@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 67
+const CurrentSchemaVersion int64 = 68
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -260,6 +260,12 @@ var schemaMigrations = []migration{
 	{version: 67, name: "flow_command_outbox_v67", checksum: "sha256:flow-command-outbox-v67-20261019", apply: func(tx *gorm.DB) error {
 		// §11.3 platform command outbox for manual collection/research commands + FORCE RLS.
 		if err := tx.AutoMigrate(&model.FlowCommandOutbox{}); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 68, name: "canvas_workflow_execution", checksum: "sha256:canvas-workflow-execution-v68", apply: func(tx *gorm.DB) error {
+		if err := tx.AutoMigrate(&model.CanvasWorkflowExecution{}); err != nil {
 			return err
 		}
 		return applyFlowRLS(tx)

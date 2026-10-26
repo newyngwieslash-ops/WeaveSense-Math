@@ -461,6 +461,10 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 			state.Approval.Decision = decision
 			state.Approval.Reason = reason
 			state.Decisions[approvalID] = decision
+			if state.Approval.Purpose != "" {
+				if state.WorkflowApprovals == nil { state.WorkflowApprovals = map[string]cloudAgentApproval{} }
+				state.WorkflowApprovals[approvalID] = *state.Approval
+			}
 			if settings != nil {
 				if state.DecisionSettings == nil {
 					state.DecisionSettings = map[string]string{}
@@ -537,6 +541,9 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 		if attempt == 7 {
 			return err
 		}
+	}
+	if state.WorkflowWaitID != "" || state.ManualApproval {
+		return nil
 	}
 	if mediaTaskID == "" {
 		return s.resumeCloudAgentAfterApproval(userID, id, &state)

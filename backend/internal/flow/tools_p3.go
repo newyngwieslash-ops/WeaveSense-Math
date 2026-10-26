@@ -70,39 +70,9 @@ var p3Tools = []ToolSpec{
 	{Name: "intel_save_report", Description: "Save a report with claims and citations. Every non-inference claim must cite evidence (evidence_id + revision) inside material_scope. Claim kinds: source_statement | cross_source_verified (≥2 sources) | model_inference.",
 		Class: "write", Scope: "intel.reports.write", Timeout: 20 * time.Second, OutputCap: 8000,
 		Parameters: obj([]string{"title", "claims", "material_scope"}, map[string]any{"title": tStr, "body": tStr, "skill_id": tStr, "research_run_id": tStr,
-			"claims": map[string]any{"type": "array", "items": reportClaimSchema}, "material_scope": materialScopeSchema}),
-		prepare: func(t Tools, ctx context.Context, conv model.FlowAgentConversation, ss SubjectScope, userID string, a map[string]any) (map[string]any, error) {
-			var claims []ReportClaim
-			var scope MaterialScope
-			if err := decodeInto(a["claims"], &claims); err != nil {
-				return nil, fmt.Errorf("%w: claims: %v", ErrToolArgs, err)
-			}
-			if err := decodeInto(a["material_scope"], &scope); err != nil {
-				return nil, fmt.Errorf("%w: material_scope: %v", ErrToolArgs, err)
-			}
-			ids := []string{}
-			for _, c := range claims {
-				for _, ct := range c.Citations {
-					ids = append(ids, ct.EvidenceID)
-				}
-			}
-			resolved, err := t.resolveEvidence(ctx, ss, userID, ids)
-			if err != nil {
-				return nil, err
-			}
-			truncated, err := ValidateCitations(claims, scope, resolved)
-			if err != nil {
-				CountCitationRejected("report_save")
-				return nil, err
-			}
-			skill, err := skillRefFor(t, conv, ss, a)
-			if err != nil {
-				return nil, err
-			}
-			return map[string]any{"title": a["title"], "body": a["body"], "claims": claims, "material_scope": scope, "skill": skill,
-				"research_run_id": a["research_run_id"], "coverage": map[string]any{"truncated_citations": truncated, "truncated": len(truncated) > 0}}, nil
-		},
-		route: func(a map[string]any) (string, string, any) { return http.MethodPost, "/v1/reports", a }},
+			"claims": map[string]any{"type": "array", "items": reportClaimSchema}, "material_scope": materialScopeSchema,
+			"coverage": map[string]any{"type": "object"}, "structured": map[string]any{"type": "object"}, "skill_ids": tStrs}),
+		local: saveManagedReport},
 	{Name: "intel_preview_schedule", Description: "Preview a periodic brief schedule (query, sources, 5-field cron, IANA timezone, window hours). Returns next run times; does not save.",
 		Class: "read", Scope: "intel.sources.read", Timeout: 10 * time.Second, OutputCap: 8000,
 		Parameters: obj([]string{"query", "source_ids", "cron", "timezone"}, map[string]any{"name": tStr, "query": tStr, "source_ids": tStrs, "cron": tStr, "timezone": tStr, "window_hours": tInt, "skill_id": tStr}),

@@ -138,11 +138,14 @@ func run(ctx context.Context) error {
 	svc.ConfigureFlowMCP(mcpGateway)
 	flow.RegisterMCPRoutes(flowAPI, db, mcpGateway, flowUser)
 	flow.RegisterMCPOAuthRoutes(flowAPI, db, mcpGateway, flowUser)
+	canvasExecutions := svc.CanvasWorkflowExecutions()
+	flow.RegisterMonitorCanvasApprovalVerifier(svc.VerifyCloudAgentPlanApproval)
+	flow.RegisterMonitorCanvasRecurringTool(svc.MonitorCanvasRecurringTool)
 	var modelGW flow.ModelGateway
 	if g := flow.ModelGatewayFromEnv(); g != nil {
 		modelGW = g
 		svc.ConfigureFlowModel(g)
-		tasks := flow.ModelTasks{DB: db, GW: g, Status: flow.ModelStatusFromEnv()}
+		tasks := flow.ModelTasks{DB: db, GW: g, Status: flow.ModelStatusFromEnv(), CanvasExecutions: &canvasExecutions}
 		if flowCfg.Enabled() {
 			// Push completion: a finished brief summarization wakes the engine's
 			// brief generator for that window (its scheduler tick stays the fallback).
@@ -150,6 +153,10 @@ func run(ctx context.Context) error {
 		}
 		go flow.RunModelTaskWorker(context.Background(), tasks, 2*time.Second)
 	}
+	canvasTools := flow.Tools{DB: db, Engine: flow.EngineClient{Cfg: flowCfg}, MCP: mcpGateway, Model: modelGW}
+	canvasRunner := flow.CanvasWorkflowManagedRunner{Tools: canvasTools, WorkerID: "app-canvas", NodeBudgetMicro: 100000, MaxTokens: 4096, Timeout: 5*time.Minute}
+	svc.ConfigureCanvasWorkflowRunner(canvasRunner.Run)
+	registerCanvasWorkflowAppRoutes(flowAPI, svc, flowUser)
 	flow.RegisterModelTaskRoutes(flowAPI, db, flowUser)
 	flow.RegisterP5Routes(flowAPI, db, flowCfg, flowUser, modelGW)
 	flow.RegisterP7Routes(flowAPI, db, flowUser, mcpGateway)
@@ -160,7 +167,13 @@ func run(ctx context.Context) error {
 	go flow.RunNotifier(context.Background(), flow.Notifier{DB: db, Mail: flow.SMTPMailerFromEnv(), BaseURL: os.Getenv("FLOW_PUBLIC_BASE_URL")}, 10*time.Second)
 	go flow.RunBillingMaintenance(context.Background(), db, 15*time.Minute)
 	if flowCfg.Enabled() {
-		go flow.RunCommandDispatcher(context.Background(), flow.CommandDispatcher{DB: db, Engine: flow.EngineClient{Cfg: flowCfg}}, 2*time.Second)
+		dispatcher := flow.CommandDispatcher{DB: db, Engine: flow.EngineClient{Cfg: flowCfg}}
+		// canvas.run executes the managed canvas workflow in-process (T22): the
+		// recurring monitor loop never round-trips a canvas run through Loom.
+		dispatcher.Local = map[string]func(context.Context, model.FlowCommandOutbox) (int, []byte, error){
+			flow.MonitorCanvasRunCommand: svc.ExecuteMonitorCanvasRun,
+		}
+		go flow.RunCommandDispatcher(context.Background(), dispatcher, 2*time.Second)
 	}
 	go svc.RunFlowAutoContinue(context.Background(), 5*time.Second)
 	r.NoRoute(handler.SystemProxyNoRouteHandler(svc))

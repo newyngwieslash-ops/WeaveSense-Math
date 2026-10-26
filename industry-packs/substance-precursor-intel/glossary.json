@@ -1,0 +1,17 @@
+{
+  "NPS": "新精神活性物质（New Psychoactive Substances）的监测分类，不等同于非列管；法律状态取决于司法辖区和分析时点有效的官方材料，未知不补全。",
+  "WBE": "污水流行病学（Wastewater-Based Epidemiology）：以群体污水检测估计群体暴露/负荷；受采样覆盖、降解、流量和人口估计影响，不用于推定个体行为。",
+  "consumption_mg_1000p": "千人日均负荷/消费量估计，单位 mg/day/1000人；concentration_ng_l*flow_m3_day*excretion_factor/population，population 单位为人。50*100000*2.3/500000=23；不是23000。",
+  "control_materials": "官方材料输入明确substance_name（CAS可核实时填写）、value、jurisdiction、effective_from/effective_to（如适用）、material_source.version/citations。无材料用[]，不得塞unknown占位；输出legal_status无适用材料为unknown。来源首页不是法律依据。",
+  "coverage": "必填 covered_regions、uncovered_regions、failed_sources、truncated_evidence_ids、limitations 与报告 gaps；未覆盖不是未检出，检出不等于滥用人数，失败/截断不得隐去。",
+  "cross_correlation": "时空共现/候选关联，不等同于统计显著或因果；区域键Join不等于跨源验证，需时间窗、滞后配置、两侧证据和来源独立性。",
+  "evidence_labels": "既有 kind 仅 source_statement、cross_source_verified、model_inference；真实 evidence_id+revision 可解析且属于 material_scope；双源需两个独立来源，转载不计；计算和成因推断保留输入证据。",
+  "excretion_factor": "明确有版本来源的无量纲回推校正乘数，不是排泄比例，不默认1；excretion_factor_source.version/citations 必须说明适用母体、代谢物和检测方法，来源给比例时须核实倒数及分子量校正。",
+  "excretion_factor_source": "{version,citations:[{evidence_id,revision}]}；指外部方法材料版本，不是Skill版本。核实分析物/母体、方法适用性；不同版本不得直接跨周期比较，不伪造来源。",
+  "monitoring_fields": "region_code、substance_name、sample_start/sample_end、concentration_ng_l（ng/L）、flow_m3_day（m³/day）、population（人）、excretion_factor、excretion_factor_source.version/citations；每行真实 evidence_id/revision。未检出、低于定量限、缺测、0分别处理。",
+  "precursor_chemical": "前体化学品监测概念；是否易制毒/受管制、类别及生效时间须核验版本化官方材料，不从名称、CAS或关联用途推定法律状态。",
+  "precursor_fields": "precursor_name、cas_no（可核实时）、related_substance、region_code、origin_region_code/destination_region_code、event_at、quantity、quantity_unit、anomaly_type、citations。数量单位不明拒绝跨行求和。",
+  "substance_aliases": "甲基苯丙胺=methamphetamine；氯胺酮=ketamine；依托咪酯=etomidate；美托咪酯=metomidate；麻黄碱=ephedrine。仅作检索别名，不表示法律状态或替代关系；盐型/异构体/类似物和CAS需原文确认，不模糊合并。",
+  "threshold_source": "外部 threshold_config：version/citations、metric/unit、region_scope、valid_from/valid_to、rules。缺基线不算变化率，零基线不除零；缺阈值 risk_level=unknown/alert_level=unassessed，不内置高危界值。",
+  "unit_normalization": "1 m³=1000 L；1 mg=1000000 ng；ng/L×m³/day 转为 mg/day 时乘0.001，再乘1000/population 得 mg/day/1000人。μg/L先乘1000转ng/L；L/day先除1000转m³/day；单位缺失/不明不猜测。"
+}

@@ -110,6 +110,9 @@ func (s *Service) resumeFlowWait(w model.FlowExternalWait) (string, error) {
 	if err := json.Unmarshal([]byte(w.Checkpoint), &req); err != nil {
 		return "", err
 	}
+	if strings.HasPrefix(w.OperationID, "cw_") {
+		return s.resumeCanvasWorkflowWait(w)
+	}
 	req.Prompt = fmt.Sprintf("[auto-continue] Background operation %s finished with status %s. Read its results (intel_get_operation) and continue the original task.", w.OperationID, w.Outcome)
 	req.IdempotencyKey = "autocontinue:" + w.ID
 	req.FlowMCPTools = nil

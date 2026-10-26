@@ -105,7 +105,7 @@ func TestSaveReportCitationValidation(t *testing.T) {
 	ctx := context.Background()
 	scope := map[string]any{"source_ids": []any{"src_1"}}
 	save := func(call string, claims []any, sc map[string]any) ToolResult {
-		r, err := tools.Invoke(ctx, conv, ss, "u_alice", call, "intel_save_report", map[string]any{"title": "R", "claims": claims, "material_scope": sc}, "")
+		r, err := tools.Invoke(ctx, conv, ss, "u_alice", call, "intel_save_report", map[string]any{"title": "R", "body": "Report body", "claims": claims, "material_scope": sc}, "")
 		if err != nil {
 			t.Fatal(err)
 		}

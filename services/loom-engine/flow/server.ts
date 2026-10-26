@@ -1,6 +1,7 @@
 // Internal HTTP API for the Go platform. Every /v1 call needs a verified execution context.
 import { metricsText } from "./metrics.ts";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { verify, requireScope, AuthError, type ExecutionContext } from "./auth.ts";
 import { Engine, HttpError } from "./engine.ts";
 import { Reports } from "./reports.ts";
@@ -21,9 +22,33 @@ async function readJson(req: IncomingMessage): Promise<any> {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new HttpError(400, "invalid json"); }
 }
 
-function send(res: ServerResponse, status: number, data: unknown, msg = "ok") {
+function send(res: ServerResponse, status: number, data: unknown, msg = "ok", reason?: string) {
   res.writeHead(status, { "content-type": "application/json" });
-  res.end(JSON.stringify({ code: status >= 400 ? status : 0, data, msg }));
+  res.end(JSON.stringify({ code: status >= 400 ? status : 0, data, msg, ...(reason ? { reason } : {}) }));
+}
+
+// A normal context token authorizes API access, not a recurring grant. The platform
+// attests the exact server-built mutation only after resolving its real approval.
+function monitorBody(body: any, authorization?: { key: string; ctx: ExecutionContext; monitorId: string }) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "invalid json object");
+  if (Object.hasOwn(body, "canvas_authorization")) {
+    const denied = () => Object.assign(new HttpError(403, "canvas_authorization_invalid"), { reason: "canvas_authorization_invalid" });
+    if (!authorization || Object.keys(body).length !== 1) throw denied();
+    const proof = body.canvas_authorization;
+    if (typeof proof?.payload !== "string" || typeof proof.signature !== "string" || !/^[a-f0-9]{64}$/.test(proof.signature)) throw denied();
+    const expected = createHmac("sha256", authorization.key).update("monitor-canvas-v1\n" + proof.payload).digest();
+    if (!timingSafeEqual(expected, Buffer.from(proof.signature, "hex"))) throw denied();
+    let attested: any;
+    try { attested = JSON.parse(Buffer.from(proof.payload, "base64url").toString("utf8")); } catch { throw denied(); }
+    const now = Math.floor(Date.now()/1000), ctx = authorization.ctx;
+    if (attested.tenant_id !== ctx.tenant_id || attested.workspace_id !== ctx.workspace_id || attested.actor !== `${ctx.actor.type}:${ctx.actor.id}`
+      || attested.monitor_id !== authorization.monitorId || !Number.isSafeInteger(attested.expires_at) || attested.expires_at <= now || attested.expires_at > now+120
+      || !attested.mutation?.canvas_auto_run_grant || !Number.isSafeInteger(attested.mutation.expected_version)) throw denied();
+    return attested.mutation;
+  }
+  if (body.canvas_auto_run_grant != null) throw Object.assign(new HttpError(409, "canvas_approval_unavailable"), { reason: "canvas_approval_unavailable" });
+  if (Object.hasOwn(body, "canvas_config")) throw Object.assign(new HttpError(400, "canvas_client_snapshot_forbidden"), { reason: "canvas_client_snapshot_forbidden" });
+  return body;
 }
 
 export function handler(engine: Engine, cfg: ServerConfig) {
@@ -45,7 +70,7 @@ export function handler(engine: Engine, cfg: ServerConfig) {
       // Postgres RLS second layer: every query of this request runs with app.tenant_id = token tenant.
       return await withTenant(ctx.tenant_id, () => route(req, res, url, ctx));
     } catch (e: any) {
-      if (e instanceof AuthError || e instanceof HttpError) return send(res, e.status, null, e.message);
+      if (e instanceof AuthError || e instanceof HttpError) return send(res, e.status, null, e.message, (e as any).reason);
       console.error("[loom-engine]", e);
       return send(res, 500, null, "internal error");
     }
@@ -84,18 +109,29 @@ export function handler(engine: Engine, cfg: ServerConfig) {
       if (m === "POST" && p === "/v1/documents/read") { requireScope(ctx, "intel.documents.read"); return send(res, 200, await engine.readDocument(ctx, await readJson(req))); }
       if (m === "POST" && p === "/v1/evidence") { requireScope(ctx, "intel.documents.read"); return send(res, 201, await engine.createEvidence(ctx, String(req.headers["x-idempotency-key"] ?? ""), await readJson(req))); }
       if (m === "GET" && p === "/v1/evidence") { requireScope(ctx, "intel.documents.read"); return send(res, 200, await engine.listEvidence(ctx, url.searchParams.get("document_id") ?? undefined)); }
+      if (m === "GET" && (mm = p.match(/^\/v1\/monitors\/([\w-]+)\/hits$/))) {
+        requireScope(ctx, "intel.documents.read");
+        return send(res, 200, await engine.listMonitorHits(ctx, mm[1], {
+          from: url.searchParams.get("from") ?? undefined, to: url.searchParams.get("to") ?? undefined,
+          limit: url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : undefined,
+          offset: url.searchParams.has("offset") ? Number(url.searchParams.get("offset")) : undefined,
+        }));
+      }
+      if (m === "GET" && (mm = p.match(/^\/v1\/schedules\/([\w-]+)\/canvas-binding$/))) {
+        requireScope(ctx, "intel.sources.read"); return send(res, 200, await engine.getScheduleCanvasBinding(ctx, mm[1]));
+      }
       if (m === "GET" && p === "/v1/monitors") { requireScope(ctx, "intel.sources.read"); return send(res, 200, await engine.listMonitors(ctx)); }
-      if (m === "POST" && p === "/v1/monitors/preview") { requireScope(ctx, "intel.sources.read"); return send(res, 200, await engine.previewMonitor(ctx, await readJson(req))); }
+      if (m === "POST" && p === "/v1/monitors/preview") { requireScope(ctx, "intel.sources.read"); return send(res, 200, await engine.previewMonitor(ctx, monitorBody(await readJson(req)))); }
       if (m === "POST" && p === "/v1/monitors") {
         requireScope(ctx, "intel.monitors.write");
-        const b = await readJson(req);
+        const b = monitorBody(await readJson(req));
         return send(res, 201, await engine.applyMonitor(ctx, `${ctx.actor.type}:${ctx.actor.id}`, ctx.policy_version,
           { ...b, idempotency_key: String(req.headers["x-idempotency-key"] ?? b.idempotency_key ?? "") }));
       }
       if (m === "GET" && (mm = p.match(/^\/v1\/monitors\/previews\/([\w-]+)$/))) { requireScope(ctx, "intel.sources.read"); return send(res, 200, await engine.getMonitorPreview(ctx, mm[1])); }
       if (m === "PATCH" && (mm = p.match(/^\/v1\/monitors\/([\w-]+)$/))) {
         requireScope(ctx, "intel.monitors.write");
-        return send(res, 200, await engine.updateMonitor(ctx, `${ctx.actor.type}:${ctx.actor.id}`, mm[1], await readJson(req)));
+        return send(res, 200, await engine.updateMonitor(ctx, `${ctx.actor.type}:${ctx.actor.id}`, mm[1], monitorBody(await readJson(req), { key: cfg.signingKey, ctx, monitorId: mm[1] })));
       }
       if (m === "GET" && (mm = p.match(/^\/v1\/monitors\/([\w-]+)\/revisions$/))) { requireScope(ctx, "intel.sources.read"); return send(res, 200, await engine.listMonitorRevisions(ctx, mm[1])); }
       if (m === "GET" && (mm = p.match(/^\/v1\/reports\/([\w-]+)\/export$/))) {
@@ -135,6 +171,7 @@ export function handler(engine: Engine, cfg: ServerConfig) {
       const idem = () => String(req.headers["x-idempotency-key"] ?? "");
       const actor = `${ctx.actor.type}:${ctx.actor.id}`;
       if (m === "POST" && p === "/v1/evidence/resolve") { requireScope(ctx, "intel.documents.read"); return send(res, 200, await rp.resolveEvidence(ctx, (await readJson(req)).evidence_ids ?? [])); }
+      if (m === "GET" && p === "/v1/reports/by-key") { requireScope(ctx, "intel.reports.write"); return send(res, 200, await rp.reportByKey(ctx, url.searchParams.get("key") ?? "", url.searchParams.get("request_hash") ?? "")); }
       if (m === "GET" && p === "/v1/reports") { requireScope(ctx, "intel.documents.read"); return send(res, 200, await rp.listReports(ctx)); }
       if (m === "GET" && (mm = p.match(/^\/v1\/reports\/([\w-]+)$/))) { requireScope(ctx, "intel.documents.read"); return send(res, 200, await rp.getReport(ctx, mm[1])); }
       if (m === "POST" && p === "/v1/reports") { requireScope(ctx, "intel.reports.write"); return send(res, 201, await rp.saveReport(ctx, actor, idem(), await readJson(req))); }

@@ -241,6 +241,9 @@ func cloneDescriptor(descriptor Descriptor) Descriptor {
 	descriptor.DetailFields = append([]string(nil), descriptor.DetailFields...)
 	patchFields := make(map[string]PatchField, len(descriptor.PatchFields))
 	for key, field := range descriptor.PatchFields {
+		if field.Schema != nil {
+			field.Schema = cloneJSONValue(field.Schema).(map[string]any)
+		}
 		patchFields[key] = field
 	}
 	descriptor.PatchFields = patchFields
@@ -291,6 +294,8 @@ type hashPatchField struct {
 	Order       int
 	Description string
 	MaxRunes    int
+	Limit       float64
+	Schema      map[string]any
 }
 
 func registryHashItems(descriptors []Descriptor) []hashDescriptor {
@@ -304,7 +309,7 @@ func registryHashItems(descriptors []Descriptor) []hashDescriptor {
 		patchFields := make([]hashPatchField, 0, len(keys))
 		for _, key := range keys {
 			field := descriptor.PatchFields[key]
-			patchFields = append(patchFields, hashPatchField{Key: key, Path: field.Path, Kind: field.Kind, Label: field.Label, Order: field.Order, Description: field.Description, MaxRunes: field.MaxRunes})
+			patchFields = append(patchFields, hashPatchField{Key: key, Path: field.Path, Kind: field.Kind, Label: field.Label, Order: field.Order, Description: field.Description, MaxRunes: field.MaxRunes, Limit: field.Limit, Schema: field.Schema})
 		}
 		items = append(items, hashDescriptor{
 			Type: descriptor.Type, Version: descriptor.Version, Label: descriptor.Label,

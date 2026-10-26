@@ -1,0 +1,36 @@
+{
+  "claim_kinds": [
+    "source_statement",
+    "cross_source_verified",
+    "model_inference"
+  ],
+  "coverage_fields": [
+    "covered_regions",
+    "uncovered_regions",
+    "failed_sources",
+    "truncated_evidence_ids",
+    "limitations"
+  ],
+  "note": "专报结构使用对应 Skill 的 output_schema；不代表通用报告保存接口已保留所有行业字段。",
+  "output_schema_skill": "regional-drug-situation-brief",
+  "required": [
+    "title",
+    "period",
+    "body",
+    "claims",
+    "material_scope",
+    "coverage",
+    "gaps",
+    "regional_metrics",
+    "emerging_substances",
+    "correlations",
+    "recommendations"
+  ],
+  "sections": [
+    "区域药物滥用总体态势",
+    "污水监测千人消费量异动与排名",
+    "新精神活性物质 (NPS) 与替代苗头",
+    "易制毒化学品异常流向与交叉预警",
+    "证据覆盖度、监测盲区与核查建议"
+  ]
+}

@@ -48,8 +48,10 @@ test("report keeps resolving the original revision after the document is updated
   await collect(A, s1, "c1");
   const r = await rp.startResearch(A, "k1", { parent_run_id: "run_r", question: "cobalt" });
   const cite = r.output.claims[0].citations[0];
-  const saved = await rp.saveReport(A, "user:u", "rep1", { title: "Cobalt", claims: [{ text: "Cobalt output fell", kind: "source_statement", citations: [cite] }] });
-  assert.equal((await rp.saveReport(A, "user:u", "rep1", { title: "Cobalt", claims: [] })).replayed, true);
+  const payload = { title: "Cobalt", body: "Cobalt output fell", material_scope: { source_ids: [s1.id] }, claims: [{ text: "Cobalt output fell", kind: "source_statement", citations: [cite] }] };
+  const saved = await rp.saveReport(A, "user:u", "rep1", payload);
+  assert.equal((await rp.saveReport(A, "user:u", "rep1", payload)).replayed, true);
+  await assert.rejects(rp.saveReport(A, "user:u", "rep1", { ...payload, claims: [] }), (e: any) => e.status === 409);
   feeds = { "https://one.example/f": [item("1", "cobalt output RISES 5 percent (corrected)")] };
   await collect(A, s1, "c2");
   assert.equal((await eng.listDocuments(A, {}))[0].current_revision, 2);
@@ -58,8 +60,8 @@ test("report keeps resolving the original revision after the document is updated
   assert.match(rep.claims[0].citations[0].chunk_text, /falls 10 percent/);
   await assert.rejects(rp.getReport(B, saved.report_id!), (e: any) => e.status === 404);
   assert.equal((await rp.resolveEvidence(B, [cite.evidence_id])).length, 0);
-  await assert.rejects(rp.saveReport(A, "u", "rep2", { title: "x", claims: [{ text: "t", kind: "source_statement", citations: [{ ...cite, revision: 2 }] }] }), (e: any) => e.status === 422);
-  await assert.rejects(rp.saveReport(B, "u", "rep3", { title: "x", claims: [{ text: "t", kind: "source_statement", citations: [cite] }] }), (e: any) => e.status === 422);
+  await assert.rejects(rp.saveReport(A, "u", "rep2", { ...payload, title: "x", claims: [{ text: "t", kind: "source_statement", citations: [{ ...cite, revision: 2 }] }] }), (e: any) => e.status === 422);
+  await assert.rejects(rp.saveReport(B, "u", "rep3", { ...payload, title: "x", claims: [{ text: "t", kind: "source_statement", citations: [cite] }] }), (e: any) => e.status === 422);
   const ev = (await eng.db.query(`SELECT type FROM flow_outbox WHERE type='report.completed'`)).rows;
   assert.equal(ev.length, 1);
 });

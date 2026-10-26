@@ -278,6 +278,21 @@ func compileCanvasAgentTools(req CloudAgentRequest, includeProfileTool bool) []m
 			},
 		}
 		add("canvas_apply_ops", "创建空白节点、编辑或连线；先读画布传 snapshotHash，生成用 generate_media。每次最多20项，禁止删除、任意 metadata 和媒体 URL。必填字段见 schema；add_node 可用 x/y，省略自动排位；update_node 按能力填 patch，可用 x/y 或视频首尾帧。镜头绑定示例：资产→分镜 {\"toHandleId\":\"row:<rowId>\"}；输出示例：分镜→图片/视频 {\"fromHandleId\":\"row:<rowId>\"}；rowId 取读取结果，不是镜头编号；整表用 storyboard:context。连线不会改变已提交任务的输入；来源须 canSource，目标须 canTarget 且接受来源 inputKind。批量排位用 canvas_arrange_nodes。", map[string]any{"snapshotHash": str("canvas_get_state返回的snapshotHash"), "ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem}}, "snapshotHash", "ops")
+		if req.PermissionMode == "auto" || req.PermissionMode == "request_approval" {
+			add("canvas_run_workflow", "审批并运行具体画布工作流；ops 与 run 共同进入独立审批，批准前不建图、不执行。ops 可为空以运行现有图；修改画布或执行参数后必须重新审批。返回持久 run_id，未知结果应查询而非重复创建。", map[string]any{
+				"expected_revision": map[string]any{"type": "integer", "minimum": 0},
+				"ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem},
+				"run": map[string]any{
+					"type": "object", "additionalProperties": false, "required": []string{"budget_micro"},
+					"properties": map[string]any{
+						"budget_micro": map[string]any{"type": "integer", "minimum": 1},
+						"refresh_bindings": map[string]any{"type": "boolean"},
+						"save_report": map[string]any{"type": "boolean"},
+						"report_title": map[string]any{"type": "string"},
+					},
+				},
+			}, "expected_revision", "ops", "run")
+		}
 		add("canvas_arrange_nodes", "整理画布节点位置：只改坐标，不改内容、不建连线、不增删节点，先读画布并传 snapshotHash。mode 省略即 auto（有连线按依赖分层，否则按媒体类型分区）。groups 为横向分带（label 展示名，可覆盖整组 mode）。nodeIds 省略则整理全部可整理节点（跳过锁定节点、容器、批次子节点与已归属背板者）。align 对齐/等距，dryRun 只预演；一次最多 50 个节点，只挪单个节点用 update_node 的 x/y。", map[string]any{
 			"snapshotHash": str("最近一次画布读取的 snapshotHash"),
 			"nodeIds":      map[string]any{"type": "array", "maxItems": cloudAgentArrangeMaxNodes, "items": str("节点ID；省略=全部可整理")},
@@ -367,11 +382,7 @@ func cloudAgentPatchSchema() map[string]any {
 			continue
 		}
 		for key, field := range descriptor.PatchFields {
-			property := map[string]any{"type": field.Kind}
-			if field.Kind == "string" && field.MaxRunes > 0 {
-				property["maxLength"] = field.MaxRunes
-			}
-			properties[key] = property
+			properties[key] = field.JSONSchema()
 		}
 	}
 	return map[string]any{"type": "object", "minProperties": 1, "properties": properties, "additionalProperties": false}

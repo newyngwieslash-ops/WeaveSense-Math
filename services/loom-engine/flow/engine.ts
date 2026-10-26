@@ -123,6 +123,79 @@ const CHUNK = 1200;
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 type Scope = Pick<ExecutionContext, "tenant_id" | "workspace_id">;
 
+export interface CanvasAutoRunGrant {
+  purpose: "monitor_canvas_recurring"; execution_id: string; monitor_id: string;
+  interval_seconds: number; timezone: string; total_budget_micro: number; max_runs: number; expires_at: string; revoked_at?: string | null;
+  approval_id: string; actor: string; policy_version: string;
+  config_hash: string; config_version: number; budget_micro_per_window: number;
+  scope: Scope & { canvas_id: string; source_ids: string[]; tool_ids: string[] };
+}
+type MonitorCanvasChange = { canvas_id?: string | null; canvas_auto_run_grant?: CanvasAutoRunGrant | null; canvas_config?: any };
+const monitorError = (status: number, reason: string) => Object.assign(new HttpError(status, reason), { reason });
+const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object"
+  ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
+
+/** Hash authored configuration, never the run snapshot or materialized DAG output. */
+export function canvasConfigHash(config: any): string {
+  if (!config || !Array.isArray(config.nodes) || !Array.isArray(config.connections)) throw monitorError(400, "canvas_config_invalid");
+  const doc = structuredClone(config);
+  const incoming = new Set(doc.connections.filter((c: any) => !["batch-output", "storyboard-output"].includes(c.relation)).map((c: any) => c.toNodeId));
+  for (const key of ["updatedAt", "createdAt", "revision", "viewport"]) delete doc[key];
+  for (const n of doc.nodes) {
+    const m = n.metadata;
+    if (!m) continue;
+    delete m.lastRunSnapshot;
+    const ds = m.dataSource;
+    const bound = ds?.sourceBinding?.kind && ds?.sourceBinding?.refId;
+    if (bound) { delete ds.rawText; delete ds.sourceBinding.lastSyncedAt; }
+    const derived = ["logic", "skill"].includes(n.type) || incoming.has(n.id)
+      || (n.type === "data-source" && (bound || (typeof ds?.rawText === "string" && ds.rawText.trim() !== "")));
+    if (derived) delete m.content;
+  }
+  return sha(JSON.stringify(canonical(doc)));
+}
+
+function monitorCanvasBinding(s: Scope, actor: string, cur: any, next: any, expansion: string[], now: Date) {
+  const canvas = next.canvas_id === undefined ? cur.canvas_id : next.canvas_id;
+  if (canvas !== null && (typeof canvas !== "string" || !canvas.trim() || canvas !== canvas.trim())) throw monitorError(400, "canvas_id_invalid");
+  if (next.enabled !== undefined && typeof next.enabled !== "boolean") throw monitorError(400, "monitor_enabled_invalid");
+  const old: CanvasAutoRunGrant | null = cur.canvas_auto_run_grant;
+  const supplied = next.canvas_auto_run_grant;
+  // Unlink/rebind or explicit revocation never inherits authority from the previous binding.
+  const grant: CanvasAutoRunGrant | null = supplied === undefined ? (canvas === cur.canvas_id ? old : null) : supplied;
+  if (!canvas && grant) throw monitorError(400, "canvas_grant_invalid");
+  if (grant) {
+    const validIDs = (v: any) => Array.isArray(v) && v.length > 0 && v.every(x => typeof x === "string" && x.trim() === x && x.length > 0) && new Set(v).size === v.length;
+    if (supplied != null) {
+      if (grant.purpose !== "monitor_canvas_recurring" || !grant.execution_id?.trim() || grant.monitor_id !== cur.id
+        || grant.interval_seconds !== Number(next.interval_seconds) || grant.timezone !== next.timezone
+        || !Number.isSafeInteger(grant.max_runs) || grant.max_runs < 1 || !Number.isSafeInteger(grant.total_budget_micro)
+        || grant.total_budget_micro < grant.budget_micro_per_window || grant.revoked_at
+        || !Number.isFinite(Date.parse(grant.expires_at)) || Date.parse(grant.expires_at) <= now.getTime()) throw monitorError(400, "canvas_grant_invalid");
+      if (typeof grant.approval_id !== "string" || !grant.approval_id.trim() || grant.approval_id.startsWith("user-direct:") || grant.actor !== actor || !actor.startsWith("user:")
+        || typeof grant.policy_version !== "string" || !grant.policy_version.trim() || !Number.isSafeInteger(grant.config_version) || grant.config_version < 1
+        || !Number.isSafeInteger(grant.budget_micro_per_window) || grant.budget_micro_per_window < Number(next.budget_micro_per_window)
+        || grant.scope?.tenant_id !== s.tenant_id || grant.scope?.workspace_id !== s.workspace_id || grant.scope?.canvas_id !== canvas
+        || !validIDs(grant.scope?.source_ids) || !validIDs(grant.scope?.tool_ids)
+        || grant.scope.source_ids.length !== next.source_ids.length
+        || !next.source_ids.every((id: string) => grant.scope.source_ids.includes(id))
+        || !next.canvas_config || grant.config_hash !== canvasConfigHash(next.canvas_config)) throw monitorError(400, "canvas_grant_invalid");
+    }
+    const configChanged = next.canvas_config !== undefined && canvasConfigHash(next.canvas_config) !== old?.config_hash;
+    const authorityChanged = old && (grant.actor !== old.actor || grant.policy_version !== old.policy_version || canvas !== cur.canvas_id || grant.config_version !== old.config_version
+      || grant.interval_seconds < old.interval_seconds || grant.timezone !== old.timezone || grant.max_runs > old.max_runs
+      || grant.total_budget_micro > old.total_budget_micro || Date.parse(grant.expires_at) > Date.parse(old.expires_at)
+      || grant.budget_micro_per_window > old.budget_micro_per_window
+      || grant.scope.source_ids.some(id => !old.scope.source_ids.includes(id)) || grant.scope.tool_ids.some(id => !old.scope.tool_ids.includes(id)));
+    if (old && (expansion.length || configChanged || authorityChanged)) {
+      if (!supplied || grant.approval_id === old.approval_id || (configChanged && grant.config_version <= old.config_version))
+        throw monitorError(409, "canvas_reapproval_required");
+    }
+    if (old && grant.config_version < old.config_version) throw monitorError(409, "canvas_reapproval_required");
+  }
+  return { canvas, grant };
+}
+
 export class Engine {
   db: Db; fetcher: Fetcher; now: () => Date; extractor: Extractor = defaultExtractor;
   articleReader: ArticleReader = defaultArticleReader; subtitles: SubtitleClient = subtitleClient(); ocr: OcrClient = ocrClient(); asr: AsrClient = asrClient();
@@ -590,6 +663,39 @@ export class Engine {
     return (await this.db.query(`SELECT * FROM flow_schedules WHERE tenant_id=$1 AND workspace_id=$2 ORDER BY created_at`, [s.tenant_id, s.workspace_id])).rows;
   }
 
+  private async recordMonitorHit(q: Q, run: any, cycle: any, sourceId: string, documentId: string, revision: number, text: string) {
+    if (!cycle?.monitor_id || !(cycle.expected_source_ids as string[]).includes(sourceId)) return;
+    const keywords: string[] = cycle.keywords ?? [];
+    if (keywords.length && !keywords.some(k => k.trim() && text.toLocaleLowerCase().includes(k.toLocaleLowerCase()))) return;
+    await q.query(`INSERT INTO flow_monitor_hits (id, tenant_id, workspace_id, monitor_id, monitor_version, schedule_id,
+      operation_id, job_id, source_id, document_id, revision, matched_at, scheduled_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING`,
+      [newId("hit_"), run.tenant_id, run.workspace_id, cycle.monitor_id, cycle.monitor_version, cycle.schedule_id,
+       run.operation_id, run.id, sourceId, documentId, revision, this.now().toISOString(), cycle.scheduled_at]);
+  }
+
+  async listMonitorHits(s: Scope, monitorId: string, o: { from?: string; to?: string; limit?: number; offset?: number }) {
+    const monitor = (await this.db.query(`SELECT id FROM flow_monitors WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3`, [monitorId, s.tenant_id, s.workspace_id])).rows[0];
+    if (!monitor) throw new HttpError(404, "monitor not found");
+    const limit = o.limit ?? 50, offset = o.offset ?? 0;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50 || !Number.isSafeInteger(offset) || offset < 0) throw new HttpError(400, "invalid pagination");
+    for (const value of [o.from, o.to]) if (value != null && (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value)))) throw new HttpError(400, "invalid hit window");
+    if (o.from && o.to && Date.parse(o.from) >= Date.parse(o.to)) throw new HttpError(400, "invalid hit window");
+    const rows = (await this.db.query(`SELECT id AS hit_id, monitor_id, monitor_version, schedule_id, operation_id, job_id, source_id, document_id, revision, matched_at, scheduled_at
+      FROM flow_monitor_hits WHERE tenant_id=$1 AND workspace_id=$2 AND monitor_id=$3
+      AND ($4::timestamptz IS NULL OR matched_at >= $4) AND ($5::timestamptz IS NULL OR matched_at < $5)
+      ORDER BY matched_at, id LIMIT $6 OFFSET $7`, [s.tenant_id, s.workspace_id, monitorId, o.from ?? null, o.to ?? null, limit + 1, offset])).rows;
+    return { items: rows.slice(0, limit), next_offset: rows.length > limit ? offset + limit : null };
+  }
+
+  async getScheduleCanvasBinding(s: Scope, scheduleId: string) {
+    const row = (await this.db.query(`SELECT sc.id AS schedule_id, sc.state, m.id AS monitor_id, m.version, m.canvas_id, m.canvas_auto_run_grant
+      FROM flow_schedules sc LEFT JOIN flow_monitors m ON m.schedule_id=sc.id AND m.tenant_id=sc.tenant_id AND m.workspace_id=sc.workspace_id
+      WHERE sc.id=$1 AND sc.tenant_id=$2 AND sc.workspace_id=$3`, [scheduleId, s.tenant_id, s.workspace_id])).rows[0];
+    if (!row) throw monitorError(404, "schedule_not_found");
+    return row;
+  }
+
   /**
    * Single scheduler tick: claims due schedules (SKIP LOCKED), creates one run per
    * source keyed by tenant_id+schedule_id+scheduled_at, and advances next_run_at
@@ -637,6 +743,13 @@ export class Engine {
           // A budgeted window without a reservation is not admitted (fail closed).
           if (this.budget && Number(sc.budget_micro_per_window) > 0 && !reservations.has(key)) continue;
           const op = newId("op_");
+          const monitor = (await q.query(`SELECT id, version, keywords, canvas_id, canvas_auto_run_grant FROM flow_monitors
+            WHERE schedule_id=$1 AND tenant_id=$2 AND workspace_id=$3`, [sc.id, sc.tenant_id, sc.workspace_id])).rows[0];
+          await q.query(`INSERT INTO flow_collection_windows (tenant_id, workspace_id, operation_id, schedule_id, scheduled_at, expected_source_ids,
+            monitor_id, monitor_version, keywords, canvas_id, canvas_auto_run_grant, interval_seconds, timezone)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT DO NOTHING`,
+            [sc.tenant_id, sc.workspace_id, op, sc.id, scheduledAt, sc.source_ids, monitor?.id ?? null, monitor?.version ?? null,
+             monitor?.keywords ?? [], monitor?.canvas_id ?? null, monitor?.canvas_auto_run_grant == null ? null : JSON.stringify(monitor.canvas_auto_run_grant), sc.interval_seconds, sc.timezone]);
           for (const sid of sc.source_ids as string[]) {
             const r = await q.query(`INSERT INTO flow_collection_runs (id, operation_id, tenant_id, workspace_id, source_id, idempotency_key, request_hash, schedule_id, scheduled_at, budget_reservation_id)
                SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$11 WHERE EXISTS (SELECT 1 FROM flow_sources WHERE id=$5 AND tenant_id=$3 AND status='active' AND (backoff_until IS NULL OR backoff_until <= $10))
@@ -786,6 +899,10 @@ export class Engine {
       return this.fail(run, String(e?.message ?? e));
     }
     return this.db.tx(async (q) => {
+      // Serialize commits of this frozen cycle before locking a job: competing
+      // source workers must see each other's committed completion state.
+      const cycle = (await q.query(`SELECT * FROM flow_collection_windows WHERE tenant_id=$1 AND workspace_id=$2 AND operation_id=$3 FOR UPDATE`,
+        [run.tenant_id, run.workspace_id, run.operation_id])).rows[0];
       const cur = await q.query(`SELECT fencing_token, status FROM flow_collection_runs WHERE id=$1 FOR UPDATE`, [run.id]);
       if (cur.rows[0]?.status === "cancel_requested" && Number(cur.rows[0].fencing_token) === Number(run.fencing_token)) throw new CancelRequested();
       if (cur.rows[0]?.status !== "running" || Number(cur.rows[0].fencing_token) !== Number(run.fencing_token)) {
@@ -821,7 +938,11 @@ export class Engine {
           const d = (await q.query(`SELECT d.id, d.current_revision, r.content_hash FROM flow_documents d
               JOIN flow_document_revisions r ON r.document_id=d.id AND r.revision=d.current_revision
               WHERE d.tenant_id=$1 AND d.workspace_id=$2 AND d.source_id=$3 AND d.external_id=$4`, [run.tenant_id, run.workspace_id, src.id, it.external_id])).rows[0];
-          if (!d || d.content_hash === hash) continue; // dedup: unchanged
+          if (!d) continue;
+          if (d.content_hash === hash) {
+            await this.recordMonitorHit(q, run, cycle, src.id, d.id, Number(d.current_revision), `${it.title ?? ""}\n${it.body ?? ""}`);
+            continue;
+          }
           docId = d.id; rev = d.current_revision + 1; revised++;
           await q.query(`UPDATE flow_documents SET current_revision=$2, title=$3 WHERE id=$1`, [docId, rev, it.title ?? ""]);
           await this.emit(q, run, run.operation_id, run.id, "document.revised", { document_id: docId, revision: rev, previous_revision: rev - 1, source_id: src.id, cause: "collection" });
@@ -832,6 +953,7 @@ export class Engine {
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'feed')`, [docId, rev, run.tenant_id, hash, it.title ?? "", it.body ?? "", run.id, raw.json, raw.digest]);
         await enqueueDerived(q, run, docId, rev, hash);
         await this.indexChunks(q, run, src.id, docId, rev, `${it.title ?? ""}\n\n${it.body ?? ""}`, it.published_at);
+        await this.recordMonitorHit(q, run, cycle, src.id, docId, rev, `${it.title ?? ""}\n${it.body ?? ""}`);
         if (it.published_at && (!maxPub || it.published_at > maxPub)) maxPub = it.published_at;
       }
       // Cursor advances only inside the same commit as the data.
@@ -862,7 +984,21 @@ export class Engine {
            JSON.stringify(items.slice(0, 3).map((i) => ({ external_id: i.external_id, title: i.title.slice(0, 120), published_at: i.published_at })))]);
       }
       await q.query(`UPDATE flow_sources SET consecutive_failures=0, last_error=NULL, backoff_until=NULL WHERE id=$1`, [src.id]);
-      await this.emit(q, run, run.operation_id, run.id, "collection.completed", { source_id: src.id, items_new: created, items_revised: revised });
+      const sourceCompletions = (await q.query(`SELECT id AS job_id, source_id, status FROM flow_collection_runs
+        WHERE tenant_id=$1 AND workspace_id=$2 AND operation_id=$3 ORDER BY source_id`, [run.tenant_id, run.workspace_id, run.operation_id])).rows;
+      const expected: string[] = cycle?.expected_source_ids ?? sourceCompletions.map((r: any) => r.source_id);
+      const complete = expected.length > 0 && expected.every(id => sourceCompletions.some((r: any) => r.source_id === id && r.status === "succeeded"));
+      const active = sourceCompletions.some((r: any) => ACTIVE_JOB_STATES.includes(r.status));
+      await this.emit(q, run, run.operation_id, run.id, "collection.completed", {
+        source_id: src.id, status: final, items_new: created, items_revised: revised, operation_id: run.operation_id,
+        schedule_id: cycle?.schedule_id ?? null, monitor_id: cycle?.monitor_id ?? null, monitor_version: cycle?.monitor_version ?? null,
+        window: cycle ? { scheduled_at: new Date(cycle.scheduled_at).toISOString(),
+          from: new Date(new Date(cycle.scheduled_at).getTime() - cycle.interval_seconds * 1000).toISOString(),
+          to: new Date(cycle.scheduled_at).toISOString(), timezone: cycle.timezone } : null,
+        expected_source_ids: expected, source_completions: sourceCompletions, cycle_complete: complete,
+        cycle_status: complete ? "succeeded" : active ? "running" : "partial",
+        canvas_id: cycle?.canvas_id ?? null, canvas_auto_run_grant: cycle?.canvas_auto_run_grant ?? null,
+      });
       if (hooks.beforeCommit) await hooks.beforeCommit();
       return { status: final, items_new: created, items_revised: revised };
     }).catch(async (err) => {
@@ -1013,7 +1149,12 @@ export class Engine {
     const r = (await this.db.query(`SELECT title, body FROM flow_document_revisions WHERE document_id=$1 AND revision=$2 AND tenant_id=$3`, [d.id, rev, s.tenant_id])).rows[0];
     if (!r) throw new HttpError(404, "revision not found");
     const full = `${r.title}\n\n${r.body}`, off = Math.max(Number(o.offset) || 0, 0), max = Math.min(Math.max(Number(o.max_chars) || 4000, 1), 20000);
-    const text = full.slice(off, off + max);
+    const splitsPair = (at: number) => at > 0 && full.charCodeAt(at) >= 0xDC00 && full.charCodeAt(at) <= 0xDFFF && full.charCodeAt(at - 1) >= 0xD800 && full.charCodeAt(at - 1) <= 0xDBFF;
+    if (!Number.isSafeInteger(off) || !Number.isSafeInteger(max) || splitsPair(off)) throw new HttpError(400, "invalid UTF16 offset");
+    let end = Math.min(full.length, off + max);
+    if (splitsPair(end)) end--;
+    if (end === off && off < full.length) throw new HttpError(400, "max_chars cannot split a Unicode character");
+    const text = full.slice(off, end);
     return { document_id: d.id, revision: rev, title: d.title, url: d.url, offset: off, text,
       times: { published_at: d.published_at, event_occurred_at: d.event_occurred_at ?? null, event_occurred_at_source: d.event_occurred_at_source ?? null, collected_at: d.created_at },
       coverage: { total_chars: full.length, returned_chars: text.length, truncated: off + text.length < full.length, next_offset: off + text.length < full.length ? off + text.length : null } };
@@ -1096,16 +1237,17 @@ export class Engine {
    * widening sources, raising the budget, increasing frequency or changing notification targets needs a new approval_id.
    */
   async updateMonitor(s: Scope, actor: string, id: string, o: { name?: string; keywords?: string[]; source_ids?: string[]; interval_seconds?: number; timezone?: string;
-      budget_micro_per_window?: number; notification_target_ids?: string[]; enabled?: boolean; expected_version?: number; approval_id?: string }) {
+      budget_micro_per_window?: number; notification_target_ids?: string[]; enabled?: boolean; expected_version?: number; approval_id?: string } & MonitorCanvasChange) {
     return this.db.tx(async (q) => {
       const cur = (await q.query(`SELECT * FROM flow_monitors WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3 FOR UPDATE`, [id, s.tenant_id, s.workspace_id])).rows[0];
       if (!cur) throw new HttpError(404, "monitor not found");
-      if (o.expected_version != null && Number(o.expected_version) !== Number(cur.version)) throw new HttpError(409, "monitor version conflict");
+      if (o.expected_version != null && Number(o.expected_version) !== Number(cur.version)) throw monitorError(409, "monitor_version_conflict");
       const next: any = {
         name: o.name ?? cur.name, keywords: o.keywords ?? cur.keywords, source_ids: o.source_ids ? [...new Set(o.source_ids)].sort() : cur.source_ids,
         interval_seconds: o.interval_seconds ?? cur.interval_seconds, timezone: o.timezone ?? cur.timezone,
         budget_micro_per_window: o.budget_micro_per_window ?? Number(cur.budget_micro_per_window),
-        notification_target_ids: o.notification_target_ids ? [...new Set(o.notification_target_ids)] : cur.notification_target_ids, enabled: o.enabled };
+        notification_target_ids: o.notification_target_ids ? [...new Set(o.notification_target_ids)] : cur.notification_target_ids, enabled: o.enabled,
+        canvas_id: o.canvas_id, canvas_auto_run_grant: o.canvas_auto_run_grant, canvas_config: o.canvas_config };
       if (!next.keywords?.length) throw new HttpError(400, "keywords required");
       if (!(next.interval_seconds >= 300)) throw new HttpError(400, "interval_seconds >= 300");
       if (!Number.isSafeInteger(Number(next.budget_micro_per_window)) || next.budget_micro_per_window < 0) throw new HttpError(400, "budget_micro_per_window must be a non-negative integer");
@@ -1118,22 +1260,23 @@ export class Engine {
     cur = cur ?? (await q.query(`SELECT * FROM flow_monitors WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3 FOR UPDATE`, [id, s.tenant_id, s.workspace_id])).rows[0];
     if (!cur) throw new HttpError(404, "monitor not found");
     const expansion = monitorExpansion(cur, next);
+    const { canvas, grant } = monitorCanvasBinding(s, actor, cur, next, expansion, this.now());
     if (expansion.length && !approvalId) {
-      throw Object.assign(new HttpError(409, `reapproval_required: ${expansion.join(",")}`), { expansion });
+      throw Object.assign(monitorError(409, "reapproval_required"), { expansion });
     }
     const srcs = await this.ownedSources(q, s, next.source_ids);
     const version = Number(cur.version) + 1;
     const m = (await q.query(`UPDATE flow_monitors SET name=$4, keywords=$5, source_ids=$6, interval_seconds=$7, timezone=$8, budget_micro_per_window=$9, notification_target_ids=$10,
-          extraction_method=$11, version=$12, updated_at=now(), approval_id=coalesce($13, approval_id) WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3 RETURNING *`,
+          extraction_method=$11, version=$12, updated_at=now(), approval_id=coalesce($13, approval_id), canvas_id=$14, canvas_auto_run_grant=$15 WHERE id=$1 AND tenant_id=$2 AND workspace_id=$3 RETURNING *`,
       [id, s.tenant_id, s.workspace_id, next.name, next.keywords, next.source_ids, next.interval_seconds, next.timezone, Number(next.budget_micro_per_window),
-       next.notification_target_ids ?? [], extractionMethodFor((srcs as any[]).map((x) => x.kind)), version, approvalId])).rows[0];
+       next.notification_target_ids ?? [], extractionMethodFor((srcs as any[]).map((x) => x.kind)), version, approvalId, canvas, grant ? JSON.stringify(grant) : null])).rows[0];
     if (cur.schedule_id) {
       await q.query(`UPDATE flow_schedules SET source_ids=$3, interval_seconds=$4, timezone=$5, budget_micro_per_window=$6,
-            state = CASE WHEN $7::boolean IS NULL THEN state WHEN $7 THEN 'active' ELSE 'disabled' END WHERE id=$1 AND tenant_id=$2`,
-        [cur.schedule_id, s.tenant_id, next.source_ids, next.interval_seconds, next.timezone, Number(next.budget_micro_per_window), next.enabled ?? null]);
+            state = CASE WHEN $7::boolean IS NULL THEN state WHEN $7 THEN 'active' ELSE 'disabled' END WHERE id=$1 AND tenant_id=$2 AND workspace_id=$8`,
+        [cur.schedule_id, s.tenant_id, next.source_ids, next.interval_seconds, next.timezone, Number(next.budget_micro_per_window), next.enabled ?? null, s.workspace_id]);
     }
     await q.query(`INSERT INTO flow_monitor_revisions (id, tenant_id, workspace_id, monitor_id, version, spec, expanded, expansion, approval_id, actor) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [newId("mrv_"), s.tenant_id, s.workspace_id, id, version, JSON.stringify(next), expansion.length > 0, expansion, approvalId, actor]);
+      [newId("mrv_"), s.tenant_id, s.workspace_id, id, version, JSON.stringify({ ...next, canvas_config: undefined, canvas_id: canvas, canvas_auto_run_grant: grant }), expansion.length > 0, expansion, approvalId, actor]);
     if (previewId) await q.query(`UPDATE flow_monitor_previews SET applied_monitor_id=$2 WHERE id=$1`, [previewId, id]);
     return { monitor: m, replayed: false, expansion, version };
   }
@@ -1164,23 +1307,31 @@ export class Engine {
     });
   }
 
-  /** Records evidence spans for documents in scope; idempotent per key+index. Foreign docs are skipped. */
+  /** Exact UTF-16 spans only. Receipt lookup is by scoped idempotency key, not a recent-list scan. */
   async createEvidence(s: Scope, key: string, o: { items: { document_id: string; revision?: number; char_start?: number; char_end?: number; quote?: string }[]; created_by?: string }) {
-    if (!key) throw new HttpError(400, "X-Idempotency-Key required");
-    const items = (o.items ?? []).slice(0, 50);
+    if (!key || !Array.isArray(o.items) || o.items.length > 50) throw new HttpError(400, "invalid evidence request");
     return this.db.tx(async (q) => {
-      let created = 0;
-      for (const [i, it] of items.entries()) {
+      let created = 0; const receipts: any[] = [];
+      for (const [i, it] of o.items.entries()) {
         const d = (await q.query(`SELECT current_revision, url FROM flow_documents WHERE tenant_id=$1 AND workspace_id=$2 AND id=$3`, [s.tenant_id, s.workspace_id, it.document_id])).rows[0];
-        if (!d) continue;
-        const quote = String(it.quote ?? "").slice(0, 1000);
-        const r = await q.query(`INSERT INTO flow_evidence (id, tenant_id, workspace_id, document_id, revision, char_start, char_end, quote, created_by, idempotency_key, snippet_hash, url)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (tenant_id, idempotency_key) DO NOTHING`,
-          [newId("ev_"), s.tenant_id, s.workspace_id, it.document_id, Number(it.revision) || d.current_revision, Math.max(0, Number(it.char_start) || 0),
-           Math.max(0, Number(it.char_end) || 0), quote, String(o.created_by ?? "agent").slice(0, 200), `${key}:${i}`, snippetHash(quote), d.url ?? ""]);
-        created += affected(r);
+        if (!d) throw new HttpError(404, "document not found");
+        const rev = it.revision ?? d.current_revision, start = it.char_start ?? 0, end = it.char_end;
+        const quote = it.quote;
+        if (!Number.isSafeInteger(rev) || rev <= 0 || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end! < start || typeof quote !== "string" || quote.length > 1000) throw new HttpError(422, "invalid evidence span");
+        const revision = (await q.query(`SELECT title, body FROM flow_document_revisions WHERE document_id=$1 AND tenant_id=$2 AND revision=$3`, [it.document_id, s.tenant_id, rev])).rows[0];
+        const full = revision ? `${revision.title}\n\n${revision.body}` : null;
+        const split = (n: number) => full != null && n > 0 && full.charCodeAt(n) >= 0xDC00 && full.charCodeAt(n) <= 0xDFFF && full.charCodeAt(n - 1) >= 0xD800 && full.charCodeAt(n - 1) <= 0xDBFF;
+        if (full == null || end! > full.length || split(start) || split(end!) || full.slice(start, end) !== quote) throw new HttpError(422, "evidence revision or range mismatch");
+        const inserted = await q.query(`INSERT INTO flow_evidence (id, tenant_id, workspace_id, document_id, revision, char_start, char_end, quote, created_by, idempotency_key, snippet_hash, url)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (tenant_id, idempotency_key) DO NOTHING`,
+          [newId("ev_"), s.tenant_id, s.workspace_id, it.document_id, rev, start, end, quote, String(o.created_by ?? "agent").slice(0, 200), `${key}:${i}`, snippetHash(quote), d.url ?? ""]);
+        created += affected(inserted);
+        const receipt = (await q.query(`SELECT id AS evidence_id, tenant_id, workspace_id, document_id, revision, char_start, char_end, quote, idempotency_key
+          FROM flow_evidence WHERE tenant_id=$1 AND workspace_id=$2 AND idempotency_key=$3`, [s.tenant_id, s.workspace_id, `${key}:${i}`])).rows[0];
+        if (!receipt || receipt.document_id !== it.document_id || receipt.revision !== rev || receipt.char_start !== start || receipt.char_end !== end || receipt.quote !== quote) throw new HttpError(409, "evidence idempotency conflict");
+        receipts.push(receipt);
       }
-      return { created };
+      return { created, items: receipts };
     });
   }
 

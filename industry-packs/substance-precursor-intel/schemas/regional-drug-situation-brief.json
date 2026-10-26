@@ -1,0 +1,948 @@
+{
+  "$defs": {
+    "citation": {
+      "properties": {
+        "chunk_index": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "evidence_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "claim": {
+      "properties": {
+        "citations": {
+          "$ref": "#/$defs/shared_4"
+        },
+        "kind": {
+          "$ref": "#/$defs/shared_1"
+        },
+        "text": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "kind",
+        "citations"
+      ],
+      "type": "object"
+    },
+    "correlation": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "alert_level": {
+                "enum": [
+                  "watch",
+                  "warning",
+                  "urgent"
+                ]
+              }
+            },
+            "required": [
+              "alert_level"
+            ]
+          },
+          "then": {
+            "required": [
+              "threshold_source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "risk_score"
+            ]
+          },
+          "then": {
+            "required": [
+              "threshold_source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "association_status": {
+                "enum": [
+                  "candidate"
+                ]
+              }
+            },
+            "required": [
+              "association_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "model_inference"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "alert_level": {
+          "enum": [
+            "unassessed",
+            "watch",
+            "warning",
+            "urgent"
+          ]
+        },
+        "association_status": {
+          "enum": [
+            "candidate",
+            "co_occurrence"
+          ]
+        },
+        "cas_no": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "citations": {
+          "$ref": "#/$defs/shared_4"
+        },
+        "kind": {
+          "$ref": "#/$defs/shared_1"
+        },
+        "lag_days": {
+          "type": "integer"
+        },
+        "monitoring_citations": {
+          "$ref": "#/$defs/shared_4"
+        },
+        "precursor_citations": {
+          "$ref": "#/$defs/shared_4"
+        },
+        "precursor_name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "region_code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "related_substance": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "risk_score": {
+          "type": "number"
+        },
+        "threshold_source": {
+          "$ref": "#/$defs/threshold_source"
+        },
+        "window": {
+          "$ref": "#/$defs/period"
+        }
+      },
+      "required": [
+        "region_code",
+        "precursor_name",
+        "related_substance",
+        "window",
+        "lag_days",
+        "association_status",
+        "alert_level",
+        "precursor_citations",
+        "monitoring_citations",
+        "kind",
+        "citations"
+      ],
+      "type": "object"
+    },
+    "coverage": {
+      "properties": {
+        "covered_regions": {
+          "$ref": "#/$defs/shared_2"
+        },
+        "failed_sources": {
+          "$ref": "#/$defs/shared_2"
+        },
+        "limitations": {
+          "$ref": "#/$defs/shared_2"
+        },
+        "truncated_evidence_ids": {
+          "$ref": "#/$defs/shared_2"
+        },
+        "uncovered_regions": {
+          "$ref": "#/$defs/shared_2"
+        }
+      },
+      "required": [
+        "covered_regions",
+        "uncovered_regions",
+        "failed_sources",
+        "truncated_evidence_ids",
+        "limitations"
+      ],
+      "type": "object"
+    },
+    "emerging_substance": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "substitution_status": {
+                "enum": [
+                  "hypothesis"
+                ]
+              }
+            },
+            "required": [
+              "substitution_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "model_inference"
+              }
+            },
+            "required": [
+              "substitutes_for",
+              "comparison_citations"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "cas_no": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "category": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "citations": {
+          "$ref": "#/$defs/shared_4"
+        },
+        "co_use_features": {
+          "$ref": "#/$defs/shared_2"
+        },
+        "comparison_citations": {
+          "$ref": "#/$defs/shared_4"
+        },
+        "detected_regions": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "first_detected_at": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/shared_1"
+        },
+        "legal_status": {
+          "$ref": "#/$defs/legal_status"
+        },
+        "substance_name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "substitutes_for": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "substitution_status": {
+          "enum": [
+            "insufficient_evidence",
+            "hypothesis"
+          ]
+        }
+      },
+      "required": [
+        "substance_name",
+        "category",
+        "detected_regions",
+        "first_detected_at",
+        "co_use_features",
+        "substitution_status",
+        "legal_status",
+        "kind",
+        "citations"
+      ],
+      "type": "object"
+    },
+    "input_requirements": {
+      "properties": {
+        "analyses": {
+          "items": {
+            "oneOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "emerging_substances"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "correlations"
+                      ]
+                    }
+                  ]
+                },
+                "properties": {
+                  "skill_id": {
+                    "const": "regional-wastewater-modeling"
+                  }
+                },
+                "required": [
+                  "regional_metrics"
+                ]
+              },
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "regional_metrics"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "correlations"
+                      ]
+                    }
+                  ]
+                },
+                "properties": {
+                  "skill_id": {
+                    "const": "nps-substitution-screening"
+                  }
+                },
+                "required": [
+                  "emerging_substances"
+                ]
+              },
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "regional_metrics"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "emerging_substances"
+                      ]
+                    }
+                  ]
+                },
+                "properties": {
+                  "skill_id": {
+                    "const": "precursor-substance-correlation"
+                  }
+                },
+                "required": [
+                  "correlations"
+                ]
+              }
+            ],
+            "properties": {
+              "claims": {
+                "items": {
+                  "$ref": "#/$defs/claim"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "correlations": {
+                "items": {
+                  "$ref": "#/$defs/correlation"
+                },
+                "minItems": 0,
+                "type": "array"
+              },
+              "coverage": {
+                "$ref": "#/$defs/coverage"
+              },
+              "emerging_substances": {
+                "items": {
+                  "$ref": "#/$defs/emerging_substance"
+                },
+                "minItems": 0,
+                "type": "array"
+              },
+              "gaps": {
+                "$ref": "#/$defs/shared_2"
+              },
+              "period": {
+                "$ref": "#/$defs/period"
+              },
+              "regional_metrics": {
+                "items": {
+                  "$ref": "#/$defs/regional_metric"
+                },
+                "minItems": 0,
+                "type": "array"
+              },
+              "skill_id": {
+                "enum": [
+                  "regional-wastewater-modeling",
+                  "nps-substitution-screening",
+                  "precursor-substance-correlation"
+                ]
+              },
+              "skill_version": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "skill_id",
+              "skill_version",
+              "period",
+              "claims",
+              "coverage",
+              "gaps"
+            ],
+            "type": "object"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverage"
+        },
+        "material_scope": {
+          "$ref": "#/$defs/material_scope"
+        },
+        "period": {
+          "$ref": "#/$defs/period"
+        },
+        "requested_regions": {
+          "$ref": "#/$defs/shared_3"
+        }
+      },
+      "required": [
+        "period",
+        "material_scope",
+        "coverage",
+        "analyses",
+        "requested_regions"
+      ],
+      "type": "object"
+    },
+    "legal_status": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "documented"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "value",
+              "jurisdiction",
+              "effective_from",
+              "material_source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "effective_from": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "effective_to": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "jurisdiction": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "material_source": {
+          "$ref": "#/$defs/versioned_source"
+        },
+        "status": {
+          "enum": [
+            "unknown",
+            "documented"
+          ]
+        },
+        "value": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "material_scope": {
+      "anyOf": [
+        {
+          "required": [
+            "document_ids"
+          ]
+        },
+        {
+          "required": [
+            "source_ids"
+          ]
+        }
+      ],
+      "properties": {
+        "document_ids": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "from": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_ids": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "to": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "period": {
+      "properties": {
+        "end": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "granularity": {
+          "enum": [
+            "day",
+            "week",
+            "month",
+            "custom"
+          ]
+        },
+        "start": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "granularity"
+      ],
+      "type": "object"
+    },
+    "regional_metric": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "risk_level": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ]
+              }
+            },
+            "required": [
+              "risk_level"
+            ]
+          },
+          "then": {
+            "required": [
+              "threshold_source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "comparison_status": {
+                "enum": [
+                  "comparable"
+                ]
+              }
+            },
+            "required": [
+              "comparison_status"
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "required": [
+                  "mom_pct"
+                ]
+              },
+              {
+                "required": [
+                  "yoy_pct"
+                ]
+              }
+            ],
+            "required": [
+              "baseline_source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "comparison_status": {
+                "enum": [
+                  "missing_baseline",
+                  "zero_baseline",
+                  "incompatible_period",
+                  "incompatible_factor"
+                ]
+              }
+            },
+            "required": [
+              "comparison_status"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "mom_pct"
+                  ]
+                },
+                {
+                  "required": [
+                    "yoy_pct"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "baseline_source": {
+          "$ref": "#/$defs/versioned_source"
+        },
+        "citations": {
+          "$ref": "#/$defs/shared_4"
+        },
+        "comparison_status": {
+          "enum": [
+            "comparable",
+            "missing_baseline",
+            "zero_baseline",
+            "incompatible_period",
+            "incompatible_factor"
+          ]
+        },
+        "consumption_mg_1000p": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "excretion_factor": {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "excretion_factor_source": {
+          "$ref": "#/$defs/versioned_source"
+        },
+        "kind": {
+          "$ref": "#/$defs/shared_1"
+        },
+        "mom_pct": {
+          "type": "number"
+        },
+        "peak_mg_1000p": {
+          "minimum": 0,
+          "type": "number"
+        },
+        "period": {
+          "$ref": "#/$defs/period"
+        },
+        "region_code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "region_name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "risk_level": {
+          "enum": [
+            "unknown",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "sample_count": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "substance_name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "threshold_source": {
+          "$ref": "#/$defs/threshold_source"
+        },
+        "unit": {
+          "const": "mg/day/1000人"
+        },
+        "yoy_pct": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "region_code",
+        "substance_name",
+        "period",
+        "consumption_mg_1000p",
+        "unit",
+        "excretion_factor",
+        "excretion_factor_source",
+        "risk_level",
+        "comparison_status",
+        "kind",
+        "citations"
+      ],
+      "type": "object"
+    },
+    "shared_1": {
+      "enum": [
+        "source_statement",
+        "cross_source_verified",
+        "model_inference"
+      ]
+    },
+    "shared_2": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "shared_3": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "shared_4": {
+      "items": {
+        "$ref": "#/$defs/citation"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "threshold_source": {
+      "properties": {
+        "citations": {
+          "$ref": "#/$defs/shared_4"
+        },
+        "metric": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "region_scope": {
+          "$ref": "#/$defs/shared_3"
+        },
+        "rules": {
+          "items": {
+            "properties": {
+              "level": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "operator": {
+                "enum": [
+                  "gt",
+                  "gte",
+                  "lt",
+                  "lte"
+                ]
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "level",
+              "operator",
+              "value"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "unit": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "valid_from": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "valid_to": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "citations",
+        "metric",
+        "unit",
+        "region_scope",
+        "valid_from",
+        "valid_to",
+        "rules"
+      ],
+      "type": "object"
+    },
+    "versioned_source": {
+      "properties": {
+        "citations": {
+          "$ref": "#/$defs/shared_4"
+        },
+        "version": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "citations"
+      ],
+      "type": "object"
+    }
+  },
+  "properties": {
+    "body": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "claims": {
+      "items": {
+        "$ref": "#/$defs/claim"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "correlations": {
+      "items": {
+        "$ref": "#/$defs/correlation"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "coverage": {
+      "$ref": "#/$defs/coverage"
+    },
+    "emerging_substances": {
+      "items": {
+        "$ref": "#/$defs/emerging_substance"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "gaps": {
+      "$ref": "#/$defs/shared_2"
+    },
+    "material_scope": {
+      "$ref": "#/$defs/material_scope"
+    },
+    "period": {
+      "$ref": "#/$defs/period"
+    },
+    "recommendations": {
+      "$ref": "#/$defs/shared_2"
+    },
+    "regional_metrics": {
+      "items": {
+        "$ref": "#/$defs/regional_metric"
+      },
+      "minItems": 0,
+      "type": "array"
+    },
+    "title": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "title",
+    "period",
+    "claims",
+    "material_scope",
+    "coverage",
+    "gaps",
+    "body",
+    "regional_metrics",
+    "emerging_substances",
+    "correlations",
+    "recommendations"
+  ],
+  "type": "object"
+}

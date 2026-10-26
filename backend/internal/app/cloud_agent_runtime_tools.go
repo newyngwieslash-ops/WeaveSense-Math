@@ -458,6 +458,9 @@ func (s *Service) advanceCloudAgentTool(run *model.CloudAgentExecution, state *c
 		return s.terminateCloudAgent(run, "审批内容与待执行操作不一致，本轮已停止")
 	}
 	allowed := cloudAgentToolAllowed(state.Request, call.Function.Name)
+	if call.Function.Name == "canvas_run_workflow" {
+		return s.advanceCloudAgentWorkflow(run, state, call, allowed)
+	}
 	if flow.IsTool(call.Function.Name) {
 		return s.advanceCloudAgentIntelTool(run, state, call, allowed)
 	}

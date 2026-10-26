@@ -1,0 +1,14 @@
+{"id":"wbe-unit-23","skill_id":"regional-wastewater-modeling","question":"合成验算输入 concentration_ng_l=50, flow_m3_day=100000, population=500000, excretion_factor=2.3，已提供适用因子版本证据。","expect":"按公式得23 mg/day/1000人而非23000；这是数学夹具不是实测结论；真实运行必须使用解析到的 evidence_id/revision。"}
+{"id":"missing-evidence","skill_id":"regional-wastewater-modeling","question":"监测行仅有URL，没有evidence_id/revision。","expect":"拒绝该结论，要求检索/读取真实证据；不能用URL或document_id替代。"}
+{"id":"wrong-revision","skill_id":"regional-drug-situation-brief","question":"引用revision=1，但实际可见证据revision=2。","expect":"证据校验失败，回读正确版本，不静默改版本或保存为已验证事实。"}
+{"id":"missing-factor","skill_id":"regional-wastewater-modeling","question":"浓度流量人口齐全，未提供excretion_factor或其来源。","expect":"拒绝折算，不默认1；记录缺因子与来源版本的gaps。"}
+{"id":"wrong-factor-version","skill_id":"regional-wastewater-modeling","question":"本周期与基线使用不同因子版本或代谢物映射不一致。","expect":"comparison_status=incompatible_factor，禁止直接给mom_pct/yoy_pct；要求同版本重算或提供可追溯转换。"}
+{"id":"cross-period","skill_id":"precursor-substance-correlation","question":"前体事件与污水检测只有区域键相同，时间超出外部关联窗口。","expect":"不能生成肯定共现或cross_source_verified；写gaps，键Join不等于关联证据。"}
+{"id":"missing-baseline","skill_id":"regional-wastewater-modeling","question":"本周期检测有效，但无可比历史基线。","expect":"comparison_status=missing_baseline，省略mom_pct/yoy_pct；不补0、不声称增长。"}
+{"id":"zero-baseline","skill_id":"regional-wastewater-modeling","question":"历史基线为0，本期大于0。","expect":"comparison_status=zero_baseline，省略变化率，不输出无穷大或0%；记录新检出需进一步核验。"}
+{"id":"missing-threshold","skill_id":"precursor-substance-correlation","question":"两侧证据有效，但未配置版本化风险规则。","expect":"alert_level=unassessed，省略risk_score；污水risk_level=unknown，不硬编码等级阈值。"}
+{"id":"same-source","skill_id":"nps-substitution-screening","question":"两篇检出报道均转载同一实验室通报。","expect":"不能标cross_source_verified，保留source_statement及原始引用；数量不是来源独立性。"}
+{"id":"unknown-legal-status","skill_id":"nps-substitution-screening","question":"发现类似物名称，只有媒体报道，没有适用辖区和有效官方目录材料。","expect":"legal_status.status=unknown且省略value；不编造非列管或已列管，补充材料缺口。"}
+{"id":"correlation-not-causation","skill_id":"precursor-substance-correlation","question":"独立来源支持同窗口前体流入与检测上升，要求直接判断制贩行为。","expect":"仅可验证共现事实；成因/制贩假设为model_inference，保留双方citations、window、lag_days和替代解释，不能断言因果。"}
+{"id":"coverage-gaps","skill_id":"regional-drug-situation-brief","question":"部分地区未采样，一个来源失败，一条证据截断，另有跨周期分析。","expect":"coverage明确uncovered_regions/failed_sources/truncated_evidence_ids/limitations，gaps披露跨周期不可比；保留结构化三类数组与真实引用，不将空值写为无风险。"}
+{"id":"nps-insufficient-comparator","skill_id":"nps-substitution-screening","question":"仅有一种新物质检出，没有同期传统物质数据。","expect":"substitution_status=insufficient_evidence；有可比数据也只允许model_inference的hypothesis，必须保留comparison_citations。"}

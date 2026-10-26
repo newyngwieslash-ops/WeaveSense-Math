@@ -5,6 +5,7 @@ import { Engine, HttpError, newId } from "./engine.ts";
 import type { ExecutionContext } from "./auth.ts";
 import { BUILTIN_TERM_GROUPS, termPattern } from "./terms.ts";
 import { verifySnippet, renderReport, snippetHash } from "./gaps9.ts";
+import { reportEvidenceClaims, reportPayloadHash, validateReportEvidence } from "./report-payload.ts";
 
 type Scope = Pick<ExecutionContext, "tenant_id" | "workspace_id">;
 export const MAX_RESEARCH_CHILDREN = 3;
@@ -38,7 +39,12 @@ export class Reports {
       current_revision: x.current_revision, chunk_index: x.chunk_index ?? 0, char_start: x.char_start, char_end: x.char_end, quote: x.quote,
       truncated: (x.chunk_end != null && x.char_end > x.chunk_end) || x.quote.length < x.char_end - x.char_start,
       // §7.3: snippet hash and URL are re-verified on every resolve (tampered quote / moved document fail).
-      snippet_hash: x.snippet_hash, url: x.url ?? "", ...verifySnippet(x) }));
+      snippet_hash: x.snippet_hash, url: x.url ?? "", ...verifySnippet(x),
+      snippet_ok: verifySnippet(x).snippet_ok && typeof x.rev_text === "string" && x.quote.length > 0
+        && Number.isInteger(x.char_start) && Number.isInteger(x.char_end) && x.char_start >= 0
+        && x.char_end > x.char_start && x.char_end <= x.rev_text.length
+        && x.quote.length <= x.char_end - x.char_start
+        && x.rev_text.slice(x.char_start, x.char_start + x.quote.length) === x.quote }));
   }
 
   /**
@@ -47,40 +53,53 @@ export class Reports {
    */
   async saveReport(s: Scope, actor: string, key: string, o: any, hooks: { q?: Q; brief?: { schedule_id: string; scheduled_at: string } } = {}) {
     if (!key) throw new HttpError(400, "X-Idempotency-Key required");
-    const claims = Array.isArray(o.claims) ? o.claims.slice(0, 100) : [];
-    if (!String(o.title ?? "").trim()) throw new HttpError(400, "title required");
-    const ids = claims.flatMap((c: any) => (c.citations ?? []).map((x: any) => String(x.evidence_id)));
+    if (!String(o.title ?? "").trim() || !String(o.body ?? "").trim()) throw new HttpError(400, "title and body required");
+    const hash = reportPayloadHash(o);
+    const replay = (prior: any) => {
+      if (prior.workspace_id !== s.workspace_id || prior.request_hash !== hash) throw new HttpError(409, "report save key payload conflict");
+      return { report_id: prior.id, replayed: true };
+    };
+    const findPrior = async (q: Q) => (await q.query(`SELECT id, workspace_id, request_hash FROM flow_reports WHERE tenant_id=$1 AND idempotency_key=$2`, [s.tenant_id, key])).rows[0];
+    const prior = await findPrior(hooks.q ?? this.db);
+    if (prior) return replay(prior);
+    const checkedClaims = reportEvidenceClaims(o);
+    const claims = o.claims;
+    const ids = checkedClaims.flatMap((c: any) => (c.citations ?? []).map((x: any) => String(x.evidence_id)));
     const known = new Map((await this.resolveEvidence(s, ids, hooks.q)).map((x) => [x.evidence_id, x]));
-    for (const c of claims) {
-      if (!CLAIM_KINDS.includes(c.kind)) throw new HttpError(400, "invalid claim kind");
-      for (const x of c.citations ?? []) {
-        const ev = known.get(String(x.evidence_id));
-        if (!ev || Number(x.revision) !== ev.revision) throw new HttpError(422, "citation evidence not found at cited revision");
-        if (!ev.snippet_ok) throw new HttpError(422, `citation evidence ${ev.evidence_id} snippet hash mismatch`);
-        if (!ev.url_ok) throw new HttpError(422, `citation evidence ${ev.evidence_id} url mismatch`);
-        if (x.snippet_hash != null && String(x.snippet_hash) !== ev.snippet_hash) throw new HttpError(422, `citation ${ev.evidence_id} cites a different snippet hash`);
-        if (x.url != null && String(x.url) !== ev.url) throw new HttpError(422, `citation ${ev.evidence_id} cites a different url`);
-      }
-    }
+    validateReportEvidence(checkedClaims, o.material_scope, known);
+    const truncated = [...new Set([...((o.coverage?.truncated_citations ?? []) as string[]), ...[...known.values()].filter(x => x.truncated).map(x => x.evidence_id)])];
+    const coverage = { ...o.coverage, truncated: o.coverage?.truncated === true || truncated.length > 0, truncated_citations: truncated };
     const run = async (q: Q) => {
-      const prior = (await q.query(`SELECT id FROM flow_reports WHERE tenant_id=$1 AND idempotency_key=$2`, [s.tenant_id, key])).rows[0];
-      if (prior) return { report_id: prior.id, replayed: true };
+      const prior = await findPrior(q);
+      if (prior) return replay(prior);
       const id = newId("rpt_");
-      const ins = await q.query(`INSERT INTO flow_reports (id, tenant_id, workspace_id, kind, title, body, skill, material_scope, coverage, research_run_id, brief_schedule_id, scheduled_at, created_by, idempotency_key)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT DO NOTHING`,
-        [id, s.tenant_id, s.workspace_id, hooks.brief ? "brief" : "report", String(o.title).slice(0, 300), String(o.body ?? "").slice(0, 100_000),
-         JSON.stringify(o.skill ?? {}), JSON.stringify(o.material_scope ?? {}), JSON.stringify(o.coverage ?? {}), o.research_run_id ?? null,
-         hooks.brief?.schedule_id ?? null, hooks.brief?.scheduled_at ?? null, actor, key]);
-      if (!affected(ins)) return { report_id: null, replayed: true }; // brief window already produced
+      const ins = await q.query(`INSERT INTO flow_reports (id, tenant_id, workspace_id, kind, title, body, skill, material_scope, coverage, research_run_id, brief_schedule_id, scheduled_at, created_by, idempotency_key, structured_output, request_hash)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) ON CONFLICT DO NOTHING`,
+        [id, s.tenant_id, s.workspace_id, hooks.brief ? "brief" : "report", String(o.title), String(o.body),
+         JSON.stringify(o.skill ?? {}), JSON.stringify(o.material_scope ?? {}), JSON.stringify(coverage), o.research_run_id ?? null,
+         hooks.brief?.schedule_id ?? null, hooks.brief?.scheduled_at ?? null, actor, key, JSON.stringify(o.structured ?? {}), hash]);
+      if (!affected(ins)) {
+        const raced = await findPrior(q);
+        if (raced) return replay(raced);
+        throw new HttpError(409, "report window already saved under another key");
+      }
       for (const [i, c] of claims.entries()) {
         const cites = (c.citations ?? []).map((x: any) => { const ev = known.get(String(x.evidence_id))!; return { ...ev, current_revision: undefined }; });
         await q.query(`INSERT INTO flow_claims (id, tenant_id, report_id, idx, text, kind, citations) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [newId("clm_"), s.tenant_id, id, i, String(c.text).slice(0, 4000), c.kind, JSON.stringify(cites)]);
+          [newId("clm_"), s.tenant_id, id, i, String(c.text), c.kind, JSON.stringify(cites)]);
       }
       await this.e.emit(q, s, id, id, "report.completed", { report_id: id, title: String(o.title).slice(0, 300), kind: hooks.brief ? "brief" : "report", claims: claims.length });
       return { report_id: id, replayed: false };
     };
     return hooks.q ? run(hooks.q) : this.db.tx(run);
+  }
+
+  async reportByKey(s: Scope, key: string, hash: string) {
+    if (!key || !hash) throw new HttpError(400, "key and request_hash required");
+    const row = (await this.db.query(`SELECT id, request_hash FROM flow_reports WHERE tenant_id=$1 AND workspace_id=$2 AND idempotency_key=$3`, [s.tenant_id, s.workspace_id, key])).rows[0];
+    if (!row) throw new HttpError(404, "report not found");
+    if (row.request_hash !== hash) throw new HttpError(409, "report save key payload conflict");
+    return { report_id: row.id, replayed: true };
   }
 
   async listReports(s: Scope) {
@@ -110,7 +129,7 @@ export class Reports {
         x.chunk_text = k?.text ?? null;
       }
     }
-    return { ...r, skill: json(r.skill), material_scope: json(r.material_scope), coverage: json(r.coverage), claims };
+    return { ...r, structured: json(r.structured_output), skill: json(r.skill), material_scope: json(r.material_scope), coverage: json(r.coverage), claims };
   }
 
   /** Builds extractive claims + coverage from a fixed evidence scope (no model calls). */

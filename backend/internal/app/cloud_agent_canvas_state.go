@@ -475,6 +475,15 @@ func cloudAgentProjectNodeFields(node, meta map[string]any, descriptor capabilit
 				continue
 			}
 		}
+		if safe, truncated, handled := descriptor.ProjectStructuredField(key, value, textLimit); handled {
+			if safe != nil {
+				projected[key] = safe
+			}
+			if truncated {
+				projected[key+"Truncated"] = true
+			}
+			continue
+		}
 		if safe, truncated := cloudAgentSafeProjection(value, textLimit); safe != nil {
 			projected[key] = safe
 			if truncated {

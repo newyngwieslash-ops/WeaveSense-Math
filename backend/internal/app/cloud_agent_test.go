@@ -650,7 +650,7 @@ func TestCloudAgentNodeTypesExposeExecutableAllowList(t *testing.T) {
 // cloudAgentExpectedNodeTypes 是 Agent 可发现的现行节点类型全集（含不可创建的 character 变体）。
 // 新增或移除产品节点类型时必须同步更新这里，而不是放宽数量断言。
 var cloudAgentExpectedNodeTypes = []string{
-	"audio", "batch-table", "character", "data-source", "file", "frame",
+	"audio", "batch-table", "character", "chart", "data-source", "file", "frame",
 	"image", "logic", "markdown", "script", "skill", "text", "video",
 }
 

@@ -30,6 +30,7 @@ type Service struct {
 	flowEngine               flow.EngineCaller
 	flowMCP                  *flow.MCPGateway
 	flowModel                flow.ModelGateway
+	canvasWorkflowRunner     func(context.Context, flow.CanvasWorkflowExecutions, model.CanvasWorkflowExecution) error
 	dataDir                  string
 	cancelMu                 sync.Mutex
 	registrationMu           sync.Mutex

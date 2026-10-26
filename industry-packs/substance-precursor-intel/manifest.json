@@ -1,0 +1,53 @@
+{
+  "evaluation_set": "evals/evidence-cases.jsonl",
+  "glossary": "glossary.json",
+  "id": "substance-precursor-intel",
+  "kind": "industry",
+  "mcp_requirements": [],
+  "name": "区域管制药物与易制毒化学品监测研判包",
+  "note": "generated from the embedded pack; edit the source and regenerate (see industry_packs_test.go)",
+  "optional_connectors": [
+    "rss",
+    "telegram",
+    "wechat",
+    "public-web"
+  ],
+  "report_schema": "schemas/report.json",
+  "required_tools": [
+    "intel_search_documents",
+    "intel_read_document",
+    "intel_compare_evidence",
+    "intel_save_report",
+    "intel_list_sources",
+    "intel_handoff_to_canvas"
+  ],
+  "skills": [
+    {
+      "hash": "db9e914032570058e19bd1fdbe02bc38f519c0840a453f2db09e834b04b7df46",
+      "id": "regional-wastewater-modeling",
+      "output_schema": "schemas/regional-wastewater-modeling.json",
+      "version": "1.1.0"
+    },
+    {
+      "hash": "e6128559a7c672f8b8862b5b3707cde60380a747c434aa18888b60b0eea793f3",
+      "id": "nps-substitution-screening",
+      "output_schema": "schemas/nps-substitution-screening.json",
+      "version": "1.1.0"
+    },
+    {
+      "hash": "2488cd2fd47b75c6d142adf6740096affb3b9044bb35629f61e23367482ef866",
+      "id": "precursor-substance-correlation",
+      "output_schema": "schemas/precursor-substance-correlation.json",
+      "version": "1.1.0"
+    },
+    {
+      "hash": "154d2587f51d0ea410e42b328f9e90f3c3c14a600fbc213bda51d47276b33d74",
+      "id": "regional-drug-situation-brief",
+      "output_schema": "schemas/regional-drug-situation-brief.json",
+      "version": "1.1.0"
+    }
+  ],
+  "source": "backend/internal/flow/skillpacks/substance-precursor-intel.json",
+  "source_templates": "source-templates.json",
+  "version": "1.1.0"
+}

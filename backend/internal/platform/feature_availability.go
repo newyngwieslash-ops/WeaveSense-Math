@@ -47,10 +47,10 @@ type PublicFeatureAvailability struct {
 }
 
 func DefaultFeatureAvailability() FeatureAvailability {
-	// 缺少配置代表尚未由运维接管；前台模型需要明确配置后才开放。
+	// 短剧和前台模型需要明确配置后才开放；不覆盖已有配置。
 	return FeatureAvailability{
 		WelcomeEnabled:               true,
-		ShortDramaEnabled:            true,
+		ShortDramaEnabled:            false,
 		TaskCenterEnabled:            true,
 		CreditsEnabled:               true,
 		CustomChannelsEnabled:        true,
@@ -171,7 +171,7 @@ func (s *Service) readFeatureAvailability() (*model.SystemSetting, FeatureAvaila
 	if err != nil {
 		return nil, FeatureAvailability{}, err
 	}
-	// 以全开放默认值为基底，避免已有三字段配置在升级后因缺少新字段而意外关闭功能。
+	// 缺省值只补齐未配置的字段，保留已有显式开关。
 	value := DefaultFeatureAvailability()
 	if strings.TrimSpace(setting.ValueJSON) == "" || json.Unmarshal([]byte(setting.ValueJSON), &value) != nil {
 		return nil, FeatureAvailability{}, errors.New("功能开放配置格式无效")
