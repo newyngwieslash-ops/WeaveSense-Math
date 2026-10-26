@@ -5,6 +5,40 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 # 待测试
 
+## 行业研判画布 T00–T24 最终对账与待用户验收清单
+
+本节已同步 `T00–T24` 最新源码与自动化测试结论，并保留下方全部历史验收记录：
+
+- `T00–T22` 后端与前端代码及自动化测试已全部合龙（`backend/internal/flow` 与 `backend/internal/canvas/capability` 全部通过；前端行业研判相关 13 个测试文件全部通过；Web `typecheck`、`lint`、`build` 均退出 0）。
+- 节点顶栏 `lastRunSnapshot`（耗时、输入/输出条数、版本号、错误提示、最多 5 条样本展开）已通过 `NodeRunSnapshotBar` 挂载至 `data-source`、`logic`、`chart`、`markdown` 四类节点（`web/test/canvas-node-run-snapshot.test.tsx` 验证通过）。
+- `T14` 全图证据传播（`TestT14ManagedDAGEndToEndEvidencePropagation`）与 `T20` 三套行业蓝图（`TestT20IndustryBlueprintsManagedRun`：污水监测、新精神活性物质筛查、易制毒前体关联）已在 `CanvasWorkflowManagedRunner` 集成测试中完成端到端断言。
+- 明确列出仅剩的 `T24` 真实环境验收项（需真实登录态、Loom Engine 与模型网关）。
+
+### 已落盘范围与证据边界
+
+| 范围 | 当前可追溯实现 | 本轮证据口径 |
+| --- | --- | --- |
+| 算子、严格解析与预览 | Web `dataflow-evaluator.ts`、`NodeRunSnapshotBar`、Logic/Chart/DataSource/Markdown UI；Go `canvas_workflow_runner.go` 与 `canvas_workflow_parser_test.go` | `T01`–`T07`、`T18` 双端算子、严格 CSV/TSV/JSONL 解析、服务端权威输出消费与四类节点 `lastRunSnapshot` 样本抽屉已全部通过自动化测试。 |
+| 行业包与蓝图 | `industry-packs/substance-precursor-intel/`、自动导出、`substance_precursor_pack_test.go`、Web 三蓝图、`canvas_workflow_managed_test.go` | `T09`–`T11` 源包/四 Skill 1.1.0/自动导出无差异校验及 `T20` 三套行业蓝图 `TestT20IndustryBlueprintsManagedRun` 受管端到端试跑均已通过；保留 `energy-storage` 回归。 |
+| 准入和 source/Skill/report | `canvas_workflow_execution.go`、`canvas_workflow_sources.go`、`canvas_workflow_skill.go`、`canvas_report.go`、`report_save.go`、`canvas_workflow_managed.go`、`canvas_auto_run.go` | `T12`–`T17`、`T21`、`T22` 持久幂等、冻结能力、Loom monitor hits、ModelTasks、正式报告 adapter、`TestT14ManagedDAGEndToEndEvidencePropagation` 全图证据传播、真实 Service 审批链与本地 `CommandDispatcher` 自动闭环已在自动化测试合龙。 |
+| 双库增量 | 平台 schema 68；Loom 0019/0020/0021/0022 FORCE RLS | 隔离 PG17 迁移、Outbox 原子性/围栏/重启、RLS owner/非超级用户专项已通过；真实容器与外发网关联合运行归入下方 `T24` 现场验收。 |
+
+### T24 真实环境待验收项（需真实登录态、Loom Engine 与模型网关）
+
+- [x] **T00–T22 自动化测试合龙**：`T17` 真实 Service 审批与恢复链（`TestT17RealServiceDecisionAdmitManagedRunAndResume`）、`T21/T22` 长期授权与 `CommandDispatcher` 本地画布自动分发闭环（`TestT22RecurringCanvasAutoRunLoop`）、`T14` 全图证据传播（`TestT14ManagedDAGEndToEndEvidencePropagation`）、`T20` 三蓝图受管试跑（`TestT20IndustryBlueprintsManagedRun`）及 `T12/T18` 四类节点 `NodeRunSnapshotBar` 均已通过自动化测试。
+- [ ] **T24 真实登录态与浏览器 UI 验收**：在真实登录会话下验证画布顶栏“运行工作流”申请弹窗、批准/拒绝、取消、版本冲突提示，四类节点 `lastRunSnapshot`（耗时、输入/输出条数、版本号、错误提示、最多 5 条样本展开），三套行业蓝图插入、真实文件选择器/拖放导入、明暗主题、键盘焦点与滚动、新用户默认 `/intelligence` 入口及显式开启短剧开关回归。
+- [ ] **T24 真实模型网关与正式报告验收**：连接真实模型网关与 Loom Engine，验证手动/Agent 触发受管工作流生成结构化 Skill 输出、`intel_save_report → /v1/reports → Reports.saveReport` 落库、`saving_report` 仅重试保存不重跑模型，以及 Markdown 节点打开正式报告与证据引用展开。
+- [ ] **T24 真实 Loom 采集调度与网关撤权联调**：连接真实 Loom 监控任务与 `GET /v1/monitors/:id/hits` 命中数据，验证 `collection.completed → Inbox/Outbox → 本地 CommandDispatcher → 周期绑定授权 + 原子预算消费 → 受管运行` 在真实容器与网关撤权场景下的联合运行，以及非 Windows 环境下的 `backup.sh`（A18）备份恢复。
+
+### T23/T24 验证命令与对账说明
+
+专题文档（`backend/http-api.mdx`、`backend/backend-database.mdx`、`backend/code-map.mdx`、`overview/features.mdx`、`progress/pending-test.mdx`）与执行台账（`docs/flow/2026-10-25-canvas-industry-execution.md`）已按当前代码与测试结果同步。核心回归命令如下：
+
+```bash
+bun test --cwd web test/canvas-node-run-snapshot.test.tsx test/canvas-dataflow.test.ts test/canvas-tsv-import.test.ts test/canvas-jsonl-import.test.ts test/canvas-industry-blueprints.test.ts test/canvas-workflow-run.test.ts
+go -C backend test ./internal/flow/... ./internal/canvas/capability/... -count=1
+```
+
 ## F05测试合同已本地归档：全Web通过，其他门槛保持
 
 2026-10-23 19:16 +08:00：用户另行确认本地归档并保留分支，实际archive退出0、Native六项按本次无独立Verifier限制通过、stateVersion8、done/archived=true、工作区kept；已新增canvas-source-contract-portability主规格。归档仅本次测试/helper、工件及相关文档，混合文档只提交F05段落，其他修改/数据保留。引用有效2320/0/0及正式369项检查，未重跑产品测试或部署；Linux真实CI/浏览器媒体实机/原F03恢复等门槛保持。以下待归档/待接受为阶段记录。
@@ -23,10 +57,32 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 
 `fix-test-session-isolation-and-windows-execution`完整Shape获确认后，正式RED为7通过/9失败/19断言，再只修8份既有测试并新增1份组合回归。Runtime专项100通过/367断言、构建/lint退出0；实际全Web2300通过/8失败/0错误，与前轮38个去重失败名称对照无新增、消除30个。剩余8项为范围外静态UI旧债，不称全量通过。测试会话/真实guard、Windows路径/换行和CI mock执行边界已验证；生产鉴权/业务断言未放宽，未删跳过测试。用户禁止子代理，独立Verifier未执行，Native Verify v6七项pending，等待本次有限结果接受；尚未提交或归档。Linux真实CI、浏览器/PG本轮未执行，原F03恢复继续阻塞。见 `docs/superpowers/reports/2026-10-23-fix-test-session-isolation-and-windows-execution-verify.md` 及 `docs/flow/2026-10-23-172209-f04-tests-verified-handoff.md`。
 
+## F03只读取证与F04当前质量基线
+
+- [x] 当前HEAD `1941f6a9`实际全Web2234通过/40失败/2错误，38去重失败名称与前轮完全相同；18文件分进程复现，5文件16项单跑通过，其中13项全量失败。会话专项10通过后成员API1失败（AbortError）的双文件最小复现已留日志，不改产品鉴权。
+- [ ] 此段为16:46历史基线；F04当前结果由上节更新，剩余8项静态UI旧债仍待处理，单跑通过不代表全量通过。原F03取得5份含正文回执、0快照，但无本地上次确认哈希/完整正文，不能选择基线或恢复。此前浏览器原标签白页、只读PG仍5/*；本次测试修复未操作浏览器/PG。
+- C03已修两份runbook的“仅A19未验”、密码变量、迁移版本及无条件回退旧口径；未部署/迁移/提交。详细证据：`docs/flow/2026-10-23-f03-forensics-f04-baseline.md`，新交接：`docs/flow/2026-10-23-164611-f03-forensics-f04-baseline-handoff.md`。
+
 ## F03共享保存边界修复：原现场未收口
 
 - [x] 本轮正式加载RED两例、Agent刷新RED及直存RED后修复；新增16项79断言GREEN，Runtime相关64项221断言、构建/lint通过。新专项图坏值到合法值自动保存、重开、普通节点名称及PG一致，16原图/实采数据/非web容器保持。
 - [ ] 原F03图仍缺可信基线，本地合法值保持、PG5/*，不清缓存或强制恢复；需可验证的原基线/差异方案后续收口。用户先接受没有独立Verifier的有限结果，后单独确认本地归档；实际archive退出0，Native六项据此通过、done/archived=true、当前分支kept，新主规格已创建。原现场恢复继续阻塞；全Web2234通过、原40失败/2错误，不能称全量或发布通过。详见 `docs/superpowers/reports/2026-10-23-fix-canvas-pending-edit-sync-verify.md`。
+
+2026-10-23 10:59 +08:00：F03已建立 `fix-canvas-pending-edit-sync` 的完整Shape与四项任务，待用户本次确认后开始最小RED；只读PG仍revision5/`*`，真实页面本地合法值与未同步状态保持。未修复或部署，见 `docs/flow/2026-10-23-105919-f03-sync-shape-handoff.md`，不能提前勾选下面失败项。
+
+2026-10-23整体进度/40工作包与196项PRD映射入口：`docs/flow/2026-10-23-095706-project-progress-prd-handoff.md`；当前历史章节全索引：`docs/flow/2026-10-23-095706-pending-index.md`。先调查F03合法编辑未同步，历史已归档问题不重复开发；下面按时间保留原结果，未勾选不等于缺实现。本轮只盘点文档，未重跑产品测试。
+
+## Flow U03 四端口、深层字段与正则续验
+
+- [x] 原图mutation回执15→16仅revision/updatedAt变化，节点/连线/视图一致；当前payload与回执16仅差附加revision字段。宿主07:34启动与五容器07:48启动时间相符，具体触发人未证；上轮至本轮指纹一致，不恢复覆盖。
+- [x] 两张新图：零连线实际鼠标拖出源→If、T→A/F→B，A2/B2及空支路A0/B4、刷新/PG三边归属通过；深层姓名/数组/索引/0/false/缺失路径通过。坏正则三样本报错，True0/False4、独立支路正常，坏值刷新保持。
+- [ ] 合法正则恢复后页面1/3，但云端暂未同步，PG仍revision5/`*`；本地合法编辑保留，未强制回写，需最小复现共享同步边界。6项专项/37断言、合成32/真实PG34断言通过不抵消该失败；14原图/10文档/1报告/零模型预算及五容器保持，只新增2图。完整U03未过，证据 `docs/flow/2026-10-23-u03-ports-fields-acceptance.md`。
+
+## Flow U03 Skill库与Agent无模型续验
+
+- [x] 18088真实既有技能14文件/包逐文件哈希一致；当前会话启用1→取消0→恢复1、斜杠候选与未发送引用、重开选择保持。9次HTTP（登录1/GET8）成功，能力集注册skill；新专用图PG revision2/0节点0边，Agent执行和mutation均0。前端11项/56断言、后端7项PASS；fixture合同不替代live执行。
+- [ ] 完整Skill库→Agent实际读取/审批→创建连线节点→下游生成未执行，不调用模型；详情未找到一键插入节点，现行规格要求Agent建模，不据注释认定新缺陷。原13图有12图整行指纹保持，原情报图指纹变化待可信payload/审计核对；五容器同ID同镜像但今早启动时间变化，保护检查exit1，不能称全部保持。实采10文档/1报告及零模型预算指纹保持。
+- 证据与后续边界见 `docs/flow/2026-10-23-u03-skill-library-agent-acceptance.md`。本轮未改产品/部署/提交，不清缓存、模型、子代理或推送合并发布；离线等仍后置，全Web旧40失败/2错误未重跑或解决。
 
 ## Flow 预览编号覆盖修复（已本地归档）
 
@@ -34,12 +90,25 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - Runtime专项、TypeScript/Vite及lint通过；18088两张新图完成中心双向点击、Enter/Space、55%/63%/65%缩放、图片组展开/收起、主图选择及图层入口；刷新/重开与PG核对。首图无效媒体样本保留，媒体通过依据为第二张PNG及完整关系图。
 - 原十一图、10实采文档/1报告、零模型任务/预算、非web容器指纹保持。全Web2218通过、原40失败/2错误，失败名称与TSV轮一致；用户先明确接受本次无独立Verifier结果，再单独确认本地归档。Native六项通过、实际archive退出0、status=done/archived=true/工作区kept，新主规格已创建，不称独立审查、全量或发布通过。报告：`docs/superpowers/reports/2026-10-22-fix-canvas-preview-overlay-hit-target-verify.md`。
 
+## Flow U03 预览、复杂拓扑及Skill续验
+
+- [x] 18088三张新合成图真实ZIP导入：菱形T/F各2→A/B重汇合4，空True改为A0/B4仍输出4；三节点环/自环安全0输出，健康子图4条且刷新保持。Skill v3模板/合同/分支输入与空True/False抑制、九比较符代表样本及重开/PG通过。
+- [ ] 预览鼠标中心被右上“文本1”编号容器覆盖，真实elementFromPoint命中覆盖层；Enter/Space和未遮挡图标点击能切换，不能称鼠标入口通过。完整U03仍未通过，未擅自改产品或新建修复。
+- [x] 本轮16项/73断言；真实PG三图配置共享求值器22断言通过。原八图/10文档/1报告/零模型预算及web等五容器指纹保持，仅新增3图；无部署/清缓存/模型/子代理或推送合并发布。
+- [ ] 合成Skill快照不是技能库安装/Agent执行，真实模型及完整Skill入口、全端口手动拖接、端点重连仍待；浏览器离线等按用户决定后置。详见 `docs/flow/2026-10-22-u03-preview-topology-skill-acceptance.md`。
+
 ## Flow TSV 导入聚焦变更（已本地归档）
 
 - [x] 用户确认完整Shape后实际最小RED0通过/1失败，扩展RED1通过/4失败，再修共享CSV扫描器；仅csv/.tsv选择tab并保留原正文空列，GREEN16项/73断言，Runtime正式构建/lint退出0。
 - [x] 18088仅替换web并保卷，真实选择器rows.tsv为2条独立id/title/score，下游制表甲/乙；空列BOM/CRLF样本为col_1/title/flag/col_4，flag提取true/false。恢复正常文件后刷新与PG revision6/2节点/1连线一致；原七图、10文档/1报告、模型/预算0及非web容器指纹保持，仅新增一张图。
 - [ ] 全Web2214通过/40失败/2错误；与上轮JSONL日志逐名比较38个失败名称完全一致，无新增，不能称全量通过。用户先接受本次无独立Verifier结果，后另行确认本地归档；Native六项通过、status=done、archived=true、当前工作区kept，新主规格已创建，不代表独立审查或发布通过。
 - 证据见 `docs/superpowers/reports/2026-10-22-fix-canvas-tsv-import-verify.md`，设计任务见 `docs/superpowers/plans/2026-10-22-fix-canvas-tsv-import.md`。下方首次TSV失败保留历史，不清缓存、模型、子代理或推送/合并/发布，不修重连。
+
+## Flow U03 扩展格式与真实连线续验
+
+- [x] 18088真实选择器验证.markdown、大写CSV/JSON、空TXT及BOM/CRLF中文TXT；真实拖接、右键删边后连到其他目标、交互建环、撤销/重做及reload/PG持久通过，非预置边。新专项图3节点/3连线，原六图及10文档/1报告、模型预算0保持。
+- [ ] TSV实际拆列失败：.tsv被当CSV，两个数据行虽计数2，但id/title/score合成一个带制表符的键；真实预览和共享解析器诊断RED一致。本轮只定位，未修产品或新建Comet变更。
+- [ ] 既有边直接拖端点重连未找到UI/handler实现；当前仅删后重建通过，不代称原子重连。复杂拓扑/全端口/Skill等仍待。相邻11项/58断言通过，TSV诊断exit1单列，全Web旧失败未解。见 `docs/flow/2026-10-22-u03-tsv-connections-acceptance.md`。
 
 ## Flow JSONL 导入聚焦变更（已本地归档）
 
@@ -49,12 +118,38 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [ ] 全Web仍2209通过/40失败/2错误；仅撤回本轮补丁对照为2205/44/2，差异恰为4项新JSONL检查，修复无独有失败。既有失败尚未解决，不称全量通过。
 - 用户已明确接受本次没有独立Verifier的结果，随后另行确认本地归档；Native六项通过、status=done、archived=true、当前分支kept。不代表独立审查、全量测试或发布通过。详见 `docs/superpowers/reports/2026-10-22-fix-canvas-jsonl-import-verify.md`。TSV、拖接及浏览器后置项不纳入。
 
+## Flow U03 算子、循环及文件导入续验
+
+- [x] 18088专项导入图真实验证id交集1/并集3/差集1，整项交集0/并集4，score过滤2、字段提取4、If/Else T2/F2及T0/F4、循环停止两节点、撤销重做和刷新保留。原生ZIP实际导入5节点/4连线，PG核对一致。
+- [x] 中文JSON/带引号逗号CSV/TXT/Markdown文件通过真实文件选择器导入；坏JSON明确报错且0条。既有数据流专项6通过/37断言；未调用模型。
+- [ ] 合法JSONL实际失败：文件accept允许.jsonl，但共享解析按整份JSON处理，第二行报错/0条。另手工拖接仍0连线，尚未唯一定位产品或自动化热区原因；TSV、完整扩展名、Skill UI和复杂环未全验，U03不全通过。
+- 原3张画布/10文档/1报告指纹保持，新增两张专项画布保留，模型任务/预算0。详见 `docs/flow/2026-10-22-u03-operators-cycle-files-acceptance.md`。浏览器离线等继续最后处理。
+
+## Flow 当前双库恢复与后置浏览器待办
+
+- [x] 当前18088隔离平台143表/情报28表备份→新空库恢复，manifest/sha256一致；分别由普通应用角色拥有和恢复，各27张FORCE RLS保留，最小错误租户范围读0行，原五张关键表指纹及服务容器不变。
+- [x] 既有daily-test.sh在两个新合成测试库退出0：last-success、保留3份、sha256、恢复及下一次调度检查通过；不代表连续每日调度或真实备份裁剪验收。
+- [ ] 真实PG16/旧Loom副本、应用重启/未知结果、对象联合恢复、RPO/RTO及完整监控继续待验；Engine指标200、平台未配置指标令牌404，尚未运行promtool/双target/真实告警。见 `docs/flow/2026-10-22-current-restore-monitoring-acceptance.md`。
+- 用户已决定将真实Offline/进程冷启动/独立Profile最后处理，已存 `docs/flow/todo-browser-offline-cold-context.md`；不再用浏览器连接阻塞其他验收，未执行项目不改为通过。
+
+## Flow 真实离线与独立上下文验收续记
+
+- [x] 18088在线新document恢复：先about:blank卸载页面，再直达情报页，实际先恢复工作区再确认owner；助手目录owner标记1/member标记0。没有清缓存；此项不证明缓存回读或浏览器进程冷启动。
+- [ ] 真正浏览器Offline、进程冷启动及独立Profile仍阻塞：当前仅有同一内置浏览器两个标签，工具没有断网/进程重启/Profile控制能力。已请求用户协同环境，不用后端503或新标签替代。具体待验步骤见 `docs/flow/2026-10-22-offline-cold-context-acceptance.md`。
+- 本轮仅只读验收，原画布3/文档10/报告1，模型任务/预算0，相关RLS仍开启，web/platform/PG健康；未核对全IndexedDB或本轮整表内容哈希，完整U/A/G继续待验。
+
 ## Flow 跨标签会话隔离修复（Native）
 
 - [x] 新专项先复现共享scope写入错位、认证在途请求复用和目录迟到响应污染；补充消费者/SSE先RED。当前10项边界检查及相邻HTTP/目录/画布/生成存储回归合计45通过、221断言；正式Runtime三项检查（专项、TypeScript/Vite构建、UI lint）均退出0。
 - [x] 18088仅保卷更新web：真实双标签退出自动失效、owner/member双向切换及无旧标记；session503时发现portal仍可见，修后重验旧目录/Drawer均0，恢复路由后重试回登录页；同一已确认账号接口不可达仅显示自身缓存。原后端/数据库/卷保留，无真实模型调用。
 - 用户已明确接受无独立Verifier的限制，Native六项验收据此通过；随后另行明确确认本地归档，实际archive退出0、archived=true、status=done，保留当前分支。独立语义审查仍未执行，不标注独立审查通过，也不把本地归档当发布。
 - [ ] 真正浏览器离线、冷启动、全部IndexedDB及完整U/A/G门槛仍待；详见 `docs/superpowers/reports/2026-10-22-cross-tab-session-cache-isolation-verify.md`。
+
+## Flow 跨标签账号与缓存隔离验收（2026-10-22）
+
+- [ ] 18088两同源真实标签页已复现失败：B退出owner登录member后，A仍保留owner身份及旧会话；A只读重挂载情报目录后取到member内容，缓存写到旧身份。B重登录owner，platform短暂停顿期间实际显示member缓存标记。恢复接口及完整刷新后正确，不能据此解除失败。见 `docs/flow/2026-10-22-cross-tab-cache-acceptance.md`。
+- 本轮既有缓存单测1通过/6断言，只覆盖主动setUser后的key隔离，不覆盖共享Cookie与旧store错位。隔离platform已恢复healthy，画布整表哈希不变，模型任务/预算均0；无模型、产品代码修改、子代理或推送/合并/发布。
+- [ ] 跨标签身份失效及在途响应归属待聚焦修复；真正浏览器断网、冷启动、画布/素材IndexedDB及独立浏览器上下文仍未验。本轮暂停仅为已加载页面的接口不可达检查，不称完整离线通过。
 
 ## Flow 成员撤销与分析员权限修复（当前开发分支）
 
@@ -71,6 +166,14 @@ description: 当前项目已实现功能的手工验证清单与未确认边界
 - [x] 18088已部署邀请修复，31项真实登录HTTP检查通过：接受200、同/异账号重用400、viewer读200/写及管理403，撤销后原会话立即读写404、目录移除且个人scope仍可用。PG确认消费一次、成员removed、workspace-member无残留，原卷/旧行/实采文档报告保持，RLS不变、无模型和预算新增。证据见 `docs/flow/2026-10-21-invite-rls-deployment-acceptance.md`。
 - [x] 浏览器邀请生成/接受、viewer投影、重用/写入拒绝与API撤销后原浏览器立即失权通过；五角色核心权限矩阵及同租户双工作区对象隔离106项HTTP通过。详见 `docs/flow/2026-10-21-browser-role-workspace-acceptance.md`。
 - [ ] 页面缺撤销成员按钮；analyst前端邀请/角色编辑缺选项且专题写403与写scope口径待核对，完整角色门槛未通过。离线/跨标签与恢复迁移仍待。
+
+## Flow 真实模型、恢复与权限验收增量
+
+13:48续记：代理passthrough修正后新增授权3次/512token，本轮只用2次，剩余1次未用。两次真实Flow服务层JSON报告/单及双来源引用通过，错版本/越scope拒绝，预留结算余额守恒，同键复用任务且终态重放不调用，重复Settle不新增账单。此为恢复副本+合成证据，不替代真实报告/UI全链路。通过真实UI添加公开Atom后共享Outbox受理202，但采集任务blocked_address/0条；容器将github.com解析为基准测试地址，未放宽SSRF，RSS实采仍未通过。详情见下方证据账最新续记；首轮失败记录保留。
+
+2026-10-21实际结果见[证据账](../../../flow/2026-10-21-live-model-restore-permission-evidence.md)。用户授权的3次512token文本小样本已全部执行：网关认证及生成可达，第三次经真实Flow模型任务/账务链后返回纯文本，报告JSON解析失败，**真实模型报告门槛仍未通过**。仅一次调用、预留结算/剩余额度释放与幂等重放未再次调用已核对；没有追加模型请求。
+
+PG17隔离两库按现有脚本备份到全新恢复库，143/28表manifest匹配；真实MinIO的3个合成对象恢复及篡改拒绝通过。5项角色/跨租户、3项真实PG17非超级用户RLS、4项审批/SSE/越权专项通过。它们不代替PG16升级、旧Loom导入、真实对象全链路、浏览器多账号权限或真实审批重启验收。实采来源、真实MCP和外发目标尚待用户提供，未执行邮件/Webhook。
 
 ## 已有画布交接后的同步基线修复
 
@@ -3142,17 +3245,35 @@ SQLite 与 HTTP recorder 已验证；PostgreSQL 16／17、前端构建及浏览�
 - [ ] 文本创作类型目前只有 9 条原创条目，画廊池暂无文本条目，仍会重复出现，待补数据。
 - [ ] 外部来源（awesome-seedance、好好学 AI、YouMind）的署名与许可声明尚未在页面展示，待定。
 
+## Flow RSS 实采增量（2026-10-21）
+
+- [x] 隔离18088的Bun官方Atom采集成功：真实任务一次执行，PG持久10篇文档/10修订；同键重放返回原任务，数据库数量不增加。Clash Fake-IP问题由用户本地调整后解除，SSRF未放宽。
+- [ ] 独立采集去重、真实文档/报告UI、Telegram/公众号、MCP与邮件/Webhook、旧库迁移及完整多账号权限仍待验；此次未调用模型，剩余授权1次/最多512输出token。
+
+## Flow 实采模型报告闭环（2026-10-21）
+
+- [x] 真实Bun实采文档到真实模型JSON、有效引用、Engine持久报告、18088报告页面展开r1/片段#0通过。错误revision拒绝422且不落库、越scope拒绝，同键报告/任务复用，重复结算不增账单不改余额；预留50000/消费1546/退款48454。
+- 实际模型1次/max_tokens512，使用恢复库账务、原隔离Engine证据与报告；新增授权已用完，剩余0。不是完整Agent研究/审批入口或所有U/A通过。
+- [ ] 长提问RefID超过varchar(80)的实际入队拒绝需专项调查；导出、角色权限、未知结果恢复、其他连接器、外发及旧库迁移仍待验。
+
 ## Flow 长提问合成入队修复
 
 - 已修复共享StartSynthesis的Question→预算RefID映射：预算摘要仅保留前80个Unicode字符，模型请求与SynthesisContext仍保留全文，无表结构/API变化。
 - 本轮回归先复现RED：SQLite保存81字符摘要，隔离PG17实际报22001；修复后根/子预算、中文/英文/emoji、80/81边界、全文保留、同键task/reservation/账单/父预算不变、不同key独立及预算失败无残留通过。没有调用真实模型。
 - [ ] 部署当前修复后的完整Agent研究与定时简报入口真实验收；本轮没有构建或替换18088运行镜像，不能把源码测试当已部署。本修复不解除其余权限、迁移、外发与恢复发布门槛。
 
+## Flow 实采报告导出与多账号隔离（2026-10-21）
+
+- [x] 18088真实报告五种导出下载/结构/正文引用通过，PDF单页渲染可读；PDF字体替代、通用提取兼容与可读格式哈希短摘要限制保留。
+- [x] 两普通账号真实登录，33项HTTP权限检查通过；浏览器同站点账号切换及刷新后只显示各自标记会话。未调用模型，原localhost会话保持。
+- [ ] 创建组织真实API500（flow_billing_accounts RLS42501）待专项修复；专用组织由域服务准备，不能代替REST创建/邀请完整链路。完整角色矩阵、同租户多workspace与离线缓存竞态仍待验。
+
 ## Flow 创建组织RLS上下文修复
 
 - 已修复CreateOrganization内部的新租户初始化范围并恢复原上下文，保持组织/成员/工作区/共享账务原子提交，无API/表结构/策略变化。
 - [x] 非超级用户且无BYPASSRLS的PG17先RED复现真实中间件路由500/42501，后GREEN覆盖HTTP成功、嵌套上下文恢复与跨租户拒绝、注入失败全回滚及事务外无残留、独立调用不泄漏。另3项既有RLS专项和4项组织/角色/预算专项通过，Flow包构建通过。本轮0模型调用。
-- [ ] 18088运行镜像仍未替换，需部署当前源码后复验真实组织创建；不抹除此前REST500证据，也不将本次集成回归称所有权限或发布门槛通过。
+- [x] 18088已仅替换后端、保留原卷，当前修复commit经健康接口与二进制哈希确认；两普通账号真实创建组织/读取共享账务及跨账号拒绝共51项通过。原画布/实采文档/报告指纹不变，RLS保持开启，无模型任务或预算新增。详见 `docs/flow/2026-10-21-org-rls-deployment-acceptance.md`。
+- [ ] 真实邀请创建200，受邀者接受400；普通PG角色按受邀者已有租户范围查询新邀请可见数0。完整邀请/角色/撤销链路仍阻塞，不把组织创建修复称完整权限通过。
 
 ## 节点补丁字段基线
 
@@ -3160,3 +3281,18 @@ SQLite 与 HTTP recorder 已验证；PostgreSQL 16／17、前端构建及浏览�
 - [x] 专项测试覆盖新增/删除可选字段的真实 JSON 序列化、旧空补丁恢复、有效请求不变、缺少原快照不猜测以及无效变化不发送。
 - [x] 用户确认原先 Agent 发消息前“节点补丁缺少字段基线”的场景恢复正常。
 - [ ] 在多标签页同时修改字段并重试旧队列，确认服务端仍拒绝同字段冲突；本次未修改服务端并发校验。
+
+## 画布行业研判 T00–T24 收口对账明细（待用户确认）
+
+以下为 `T00–T24` 全部代码与测试收口增量，均已有自动化验证证据（汇总口径见文首章节与 `docs/flow/2026-10-25-canvas-industry-execution.md` 台账），仅剩真实环境与登录后交互待用户验收：
+
+- [x] **T12/T18 节点运行快照顶栏**：`NodeRunSnapshotBar`（耗时、输入/输出条数、版本号、错误提示、最多 5 条样本展开）已挂载至 `data-source`、`logic`、`chart`、`markdown` 四类节点（`web/test/canvas-node-run-snapshot.test.tsx` 通过）。
+- [x] **T14 全图证据传播端到端测试**：`TestT14ManagedDAGEndToEndEvidencePropagation` 已验证受管 DAG 多源 Join/Aggregate 证据引用与内联引文全图贯通至正式报告载荷。
+- [x] **T20 三套行业蓝图服务端受管试跑**：`TestT20IndustryBlueprintsManagedRun` 已在 `CanvasWorkflowManagedRunner` 集成测试中完成污水监测、新精神活性物质筛查、易制毒前体关联三套蓝图端到端断言。
+- [ ] **受管工作流安全收口现场复核**：Reconcile 撤权后不重排（not_found/failed 走当前权限门禁）、冻结费率 raw 相等校验、CloseFailedRun 释放/保留合同已在测试通过；需真实网关撤权场景复核。
+- [ ] **T17 手动审批链浏览器验收**：`POST /api/canvas-workflows/:id/approvals → 决定 → /run → GET 轮询 → cancel/retry-save` 已在测试内全链通过；真实浏览器顶栏“运行工作流”按钮、批准/拒绝、冲突提示待登录后验收。
+- [ ] **T07/T20 前端呈现与蓝图交互复核**：evaluator 消费服务端 `computed/computedBranches/skillOutput`（含空数组清旧）及三套蓝图服务端试跑已通过；待真实登录态下画布受管写回呈现复核。
+- [ ] **T13 monitor 数据源现场联调**：已接入 Loom hits API（分页/窗口/证据引用）；需真实监控命中数据联调。
+- [ ] **T16 报告页面打开验收**：Markdown 节点“保存报告/重试保存”已接 Provider 与真实 retry-save 接口；真实报告页面打开待验。
+- [ ] **T22 自动闭环与真实 Loom 调度器联调**：`collection.completed → Inbox/Outbox → 本地 CommandDispatcher → 周期绑定授权 + 原子预算消费 → 受管运行` 服务端端到端测试已通过；与真实 Loom 调度器的联合运行待执行。
+- [ ] **隔离 PostgreSQL 与备份脚本**：迁移 0019/0020/0021/0022、Outbox 原子性/围栏/重启、RLS owner/非超级用户已通过；A18 备份用例待非 Windows 环境执行 `backup.sh`。
