@@ -34,7 +34,14 @@ func reportEvidenceClaims(a map[string]any) ([]ReportClaim, error) {
 				}
 			}
 		case map[string]any:
-			if strings.Contains(path,".claims[") { var claim ReportClaim; if err:=decodeInto(v,&claim);err!=nil{return err}; claims=append(claims,claim);return nil }
+			if strings.Contains(path, ".claims[") {
+				var claim ReportClaim
+				if err := decodeInto(v, &claim); err != nil {
+					return err
+				}
+				claims = append(claims, claim)
+				return nil
+			}
 			raw, has := v["citations"]
 			required := row || strings.HasSuffix(path, "_source") || strings.HasSuffix(path, "_config")
 			if has || required {

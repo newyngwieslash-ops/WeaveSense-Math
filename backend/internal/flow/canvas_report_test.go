@@ -91,13 +91,22 @@ func TestT16ReportAdapterHTTPRetryAndSQLiteReplay(t *testing.T) {
 }
 
 func TestT16ReportPinsMultipleSkills(t *testing.T) {
- tools,fe,conv,ss:=setupP3(t)
- for _,id:=range []string{"periodic-brief","storage-market-brief"} {if _,err:=InstallSkill(tools.DB,ss.Scope,"u_alice",id,"");err!=nil {t.Fatal(err)}}
- p:=t16Payload();p["skill_ids"]=[]any{"periodic-brief","storage-market-brief"}
- result,err:=(CanvasReportSaver{Tools:tools}).Save(context.Background(),conv,ss,"u_alice","run-multi","md",p)
- if err!=nil || result.Status!="succeeded"{t.Fatalf("multi skill save: %+v %v",result,err)}
- refs:=fe.reports[0]["skill"].(map[string]any)["refs"].([]any)
- if len(refs)!=2 {t.Fatalf("lost pinned skill refs: %+v",refs)}
+	tools, fe, conv, ss := setupP3(t)
+	for _, id := range []string{"periodic-brief", "storage-market-brief"} {
+		if _, err := InstallSkill(tools.DB, ss.Scope, "u_alice", id, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := t16Payload()
+	p["skill_ids"] = []any{"periodic-brief", "storage-market-brief"}
+	result, err := (CanvasReportSaver{Tools: tools}).Save(context.Background(), conv, ss, "u_alice", "run-multi", "md", p)
+	if err != nil || result.Status != "succeeded" {
+		t.Fatalf("multi skill save: %+v %v", result, err)
+	}
+	refs := fe.reports[0]["skill"].(map[string]any)["refs"].([]any)
+	if len(refs) != 2 {
+		t.Fatalf("lost pinned skill refs: %+v", refs)
+	}
 }
 
 func TestT16RejectsNestedAndRowCitations(t *testing.T) {

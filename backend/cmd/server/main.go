@@ -162,7 +162,7 @@ func run(ctx context.Context) error {
 		go flow.RunModelTaskWorker(context.Background(), tasks, 2*time.Second)
 	}
 	canvasTools := flow.Tools{DB: db, Engine: flow.EngineClient{Cfg: flowCfg}, MCP: mcpGateway, Model: modelGW}
-	canvasRunner := flow.CanvasWorkflowManagedRunner{Tools: canvasTools, WorkerID: "app-canvas", NodeBudgetMicro: 100000, MaxTokens: 4096, Timeout: 5*time.Minute}
+	canvasRunner := flow.CanvasWorkflowManagedRunner{Tools: canvasTools, WorkerID: "app-canvas", NodeBudgetMicro: 100000, MaxTokens: 4096, Timeout: 5 * time.Minute}
 	svc.ConfigureCanvasWorkflowRunner(canvasRunner.Run)
 	registerCanvasWorkflowAppRoutes(flowAPI, svc, flowUser)
 	flow.RegisterModelTaskRoutes(flowAPI, db, flowUser)

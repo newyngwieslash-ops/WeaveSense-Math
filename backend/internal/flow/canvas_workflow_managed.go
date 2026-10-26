@@ -233,13 +233,15 @@ func (r CanvasWorkflowManagedRunner) Run(ctx context.Context, executions CanvasW
 		}
 	}()
 	defer func() {
-	 close(stop);wg.Wait()
-	 if retErr!=nil && !errors.Is(retErr,ErrModelUnknownOutcome) {
-	  cleanupCtx,cleanupCancel:=context.WithTimeout(context.Background(),5*time.Second)
-	  cleanupErr:=executions.CloseFailedRun(cleanupCtx,run.UserID,run.ID,worker,token);cleanupCancel()
-	  retErr=errors.Join(retErr,cleanupErr)
-	 }
-	 leases.Release(run.ID,worker,token)
+		close(stop)
+		wg.Wait()
+		if retErr != nil && !errors.Is(retErr, ErrModelUnknownOutcome) {
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			cleanupErr := executions.CloseFailedRun(cleanupCtx, run.UserID, run.ID, worker, token)
+			cleanupCancel()
+			retErr = errors.Join(retErr, cleanupErr)
+		}
+		leases.Release(run.ID, worker, token)
 	}()
 	cp, err := DecodeCanvasWorkflowCheckpoint(run)
 	if err != nil {

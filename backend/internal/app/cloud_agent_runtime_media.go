@@ -462,7 +462,9 @@ func (s *Service) DecideCloudAgentApproval(userID, id, approvalID, decision, rea
 			state.Approval.Reason = reason
 			state.Decisions[approvalID] = decision
 			if state.Approval.Purpose != "" {
-				if state.WorkflowApprovals == nil { state.WorkflowApprovals = map[string]cloudAgentApproval{} }
+				if state.WorkflowApprovals == nil {
+					state.WorkflowApprovals = map[string]cloudAgentApproval{}
+				}
 				state.WorkflowApprovals[approvalID] = *state.Approval
 			}
 			if settings != nil {
