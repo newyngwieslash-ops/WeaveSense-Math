@@ -80,16 +80,16 @@ test("§7.3 evidence stores snippet hash + URL; tampered quote or moved URL fail
   assert.equal(ev.snippet_hash, snippetHash(ev.quote));
   assert.equal(ev.url, "https://one.example/1");
   assert.equal(ev.snippet_ok && ev.url_ok, true);
-  await assert.rejects(rp.saveReport(A, "u", "r0", { title: "x", claims: [{ text: "t", kind: "source_statement", citations: [{ ...cite, snippet_hash: "0".repeat(64) }] }] }), (e: any) => e.status === 422);
-  await assert.rejects(rp.saveReport(A, "u", "r0b", { title: "x", claims: [{ text: "t", kind: "source_statement", citations: [{ ...cite, url: "https://evil.example/" }] }] }), (e: any) => e.status === 422);
-  assert.ok((await rp.saveReport(A, "u", "r1", { title: "ok", claims: [{ text: "t", kind: "source_statement", citations: [{ ...cite, snippet_hash: ev.snippet_hash, url: ev.url }] }] })).report_id);
+  await assert.rejects(rp.saveReport(A, "u", "r0", { title: "x", body: "b", material_scope: { source_ids: [s1.id] }, claims: [{ text: "t", kind: "source_statement", citations: [{ ...cite, snippet_hash: "0".repeat(64) }] }] }), (e: any) => e.status === 422);
+  await assert.rejects(rp.saveReport(A, "u", "r0b", { title: "x", body: "b", material_scope: { source_ids: [s1.id] }, claims: [{ text: "t", kind: "source_statement", citations: [{ ...cite, url: "https://evil.example/" }] }] }), (e: any) => e.status === 422);
+  assert.ok((await rp.saveReport(A, "u", "r1", { title: "ok", body: "b", material_scope: { source_ids: [s1.id] }, claims: [{ text: "t", kind: "source_statement", citations: [{ ...cite, snippet_hash: ev.snippet_hash, url: ev.url }] }] })).report_id);
   await db.query(`UPDATE flow_evidence SET quote='cobalt output RISES' WHERE id=$1`, [cite.evidence_id]);
   const [bad]: any = await rp.resolveEvidence(A, [cite.evidence_id]);
   assert.equal(bad.snippet_ok, false);
-  await assert.rejects(rp.saveReport(A, "u", "r2", { title: "x", claims: [{ text: "t", kind: "source_statement", citations: [cite] }] }), (e: any) => e.status === 422 && /snippet hash/.test(e.message));
+  await assert.rejects(rp.saveReport(A, "u", "r2", { title: "x", body: "b", material_scope: { source_ids: [s1.id] }, claims: [{ text: "t", kind: "source_statement", citations: [cite] }] }), (e: any) => e.status === 422 && /snippet hash/.test(e.message));
   await db.query(`UPDATE flow_evidence SET quote=$2, snippet_hash=$3 WHERE id=$1`, [cite.evidence_id, ev.quote, ev.snippet_hash]);
   await db.query(`UPDATE flow_documents SET url='https://moved.example/1' WHERE id=$1`, [cite.document_id ?? ev.document_id]);
-  await assert.rejects(rp.saveReport(A, "u", "r3", { title: "x", claims: [{ text: "t", kind: "source_statement", citations: [cite] }] }), (e: any) => e.status === 422 && /url mismatch/.test(e.message));
+  await assert.rejects(rp.saveReport(A, "u", "r3", { title: "x", body: "b", material_scope: { source_ids: [s1.id] }, claims: [{ text: "t", kind: "source_statement", citations: [cite] }] }), (e: any) => e.status === 422 && /url mismatch/.test(e.message));
 });
 
 test("§6.3 raw item + digest per revision and per run; raw HTTP response byte archiving; §5 content library shows source and extraction completeness", async () => {
@@ -208,7 +208,7 @@ test("§5.2/§10.3 report export (md/html/json/pdf/docx) is tenant-scoped (A02)"
   feeds = { "https://one.example/f": [item("1", "cobalt output falls 10 percent")] };
   await collect(s1, "c1");
   const r: any = await rp.startResearch(A, "k1", { parent_run_id: "run_r", question: "cobalt" });
-  const saved: any = await rp.saveReport(A, "u", "rep", { title: "Cobalt 钴周报 <weekly>", body: "钴产量摘要 summary", claims: [{ text: "Cobalt 产量下降 10%", kind: "source_statement", citations: [r.output.claims[0].citations[0]] }] });
+  const saved: any = await rp.saveReport(A, "u", "rep", { title: "Cobalt 钴周报 <weekly>", body: "钴产量摘要 summary", material_scope: { source_ids: [s1.id] }, claims: [{ text: "Cobalt 产量下降 10%", kind: "source_statement", citations: [r.output.claims[0].citations[0]] }] });
   const md: any = await rp.exportReport(A, saved.report_id, "md");
   assert.equal(md.content_type, "text/markdown; charset=utf-8");
   assert.match(md.content, /^# Cobalt 钴周报 <weekly>/);
