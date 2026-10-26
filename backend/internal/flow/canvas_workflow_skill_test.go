@@ -220,21 +220,35 @@ func TestCanvasReviewSensitivePayloadNeverPersists(t *testing.T) {
 	for _, scenario := range []string{"prior", "result"} {
 		t.Run(scenario, func(t *testing.T) {
 			output := substanceOutput(t, "regional-wastewater-modeling")
-			if scenario == "result" { output["apiKey"] = "review-secret" }
+			if scenario == "result" {
+				output["apiKey"] = "review-secret"
+			}
 			raw, _ := json.Marshal(output)
 			tools, req, calls := canvasSkillFixture(t, string(raw), 200)
-			if scenario == "prior" { req.PreviousOutput = map[string]any{"apiKey": "review-secret"} }
-			_, err := tools.ExecuteCanvasWorkflowSkill(context.Background(), req)
-			if err == nil { t.Fatal("sensitive payload accepted") }
-			var tasks []model.FlowModelTask
-			if err := tools.DB.Find(&tasks).Error; err != nil { t.Fatal(err) }
-			for _, task := range tasks {
-				if strings.Contains(task.Request+task.Result+task.Context+task.LastError, "review-secret") { t.Fatal("secret persisted") }
+			if scenario == "prior" {
+				req.PreviousOutput = map[string]any{"apiKey": "review-secret"}
 			}
-			if scenario == "prior" && calls.Load() != 0 { t.Fatal("sensitive input sent") }
+			_, err := tools.ExecuteCanvasWorkflowSkill(context.Background(), req)
+			if err == nil {
+				t.Fatal("sensitive payload accepted")
+			}
+			var tasks []model.FlowModelTask
+			if err := tools.DB.Find(&tasks).Error; err != nil {
+				t.Fatal(err)
+			}
+			for _, task := range tasks {
+				if strings.Contains(task.Request+task.Result+task.Context+task.LastError, "review-secret") {
+					t.Fatal("secret persisted")
+				}
+			}
+			if scenario == "prior" && calls.Load() != 0 {
+				t.Fatal("sensitive input sent")
+			}
 			if scenario == "result" {
 				_, _ = tools.ExecuteCanvasWorkflowSkill(context.Background(), req)
-				if calls.Load() != 1 { t.Fatal("paid rejected output retried") }
+				if calls.Load() != 1 {
+					t.Fatal("paid rejected output retried")
+				}
 			}
 		})
 	}
@@ -257,37 +271,65 @@ func TestCanvasReviewReconcileFrozenIdentityPriceAndRevocation(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			var queries atomic.Int32
 			answer := "succeeded"
-			if strings.HasPrefix(scenario, "not_found") || scenario == "wrong_endpoint" { answer = "not_found" }
+			if strings.HasPrefix(scenario, "not_found") || scenario == "wrong_endpoint" {
+				answer = "not_found"
+			}
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				queries.Add(1)
-				if r.URL.Query().Get("idempotency_key") == "" { t.Error("missing task key") }
+				if r.URL.Query().Get("idempotency_key") == "" {
+					t.Error("missing task key")
+				}
 				_ = json.NewEncoder(w).Encode(map[string]any{"status": answer, "total_tokens": 100, "content": `{"late":true}`})
 			}))
 			defer srv.Close()
 			frozenURL := srv.URL
-			if scenario == "wrong_endpoint" { frozenURL += "/original" }
-			if scenario == "missing_endpoint" { frozenURL = "" }
+			if scenario == "wrong_endpoint" {
+				frozenURL += "/original"
+			}
+			if scenario == "missing_endpoint" {
+				frozenURL = ""
+			}
 			tools, req, calls := canvasSkillFixture(t, "", 503, frozenURL)
 			result, err := tools.ExecuteCanvasWorkflowSkill(context.Background(), req)
-			if !errors.Is(err, ErrModelUnknownOutcome) { t.Fatal(err) }
-			if scenario == "frozen_price_revoked" || scenario == "not_found_revoked" { req.Executions.Authority.(*canvasSkillTestAuthority).revoked = true }
+			if !errors.Is(err, ErrModelUnknownOutcome) {
+				t.Fatal(err)
+			}
+			if scenario == "frozen_price_revoked" || scenario == "not_found_revoked" {
+				req.Executions.Authority.(*canvasSkillTestAuthority).revoked = true
+			}
 			tasks := ModelTasks{DB: tools.DB, GW: tools.Model, CanvasExecutions: req.Executions, Status: ModelStatus{URL: srv.URL, MicroPer1KTok: 2000, HTTP: srv.Client()}}
-			if _, err := tasks.Reconcile(context.Background(), 0); err != nil { t.Fatal(err) }
+			if _, err := tasks.Reconcile(context.Background(), 0); err != nil {
+				t.Fatal(err)
+			}
 			task, err := tasks.Get(result.TaskID)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			var reservation model.FlowBudgetReservation
-			if err := tools.DB.First(&reservation, "id = ?", task.ReservationID).Error; err != nil { t.Fatal(err) }
+			if err := tools.DB.First(&reservation, "id = ?", task.ReservationID).Error; err != nil {
+				t.Fatal(err)
+			}
 			switch scenario {
 			case "frozen_price_revoked":
-				if task.Status != "succeeded" || task.CostMicro != 100 || reservation.ConsumedMicro != 100 { t.Fatalf("not frozen: task=%+v reservation=%+v", task, reservation) }
+				if task.Status != "succeeded" || task.CostMicro != 100 || reservation.ConsumedMicro != 100 {
+					t.Fatalf("not frozen: task=%+v reservation=%+v", task, reservation)
+				}
 			case "wrong_endpoint", "missing_endpoint":
-				if queries.Load() != 0 || task.Status != StatusReconciliation { t.Fatalf("queried unrelated endpoint: queries=%d status=%s", queries.Load(), task.Status) }
+				if queries.Load() != 0 || task.Status != StatusReconciliation {
+					t.Fatalf("queried unrelated endpoint: queries=%d status=%s", queries.Load(), task.Status)
+				}
 			case "not_found_revoked":
-				if task.Status == StatusRetryWait || task.Status == "queued" { t.Fatalf("revoked task requeued: %s", task.Status) }
+				if task.Status == StatusRetryWait || task.Status == "queued" {
+					t.Fatalf("revoked task requeued: %s", task.Status)
+				}
 			case "not_found_authorized":
-				if task.Status != StatusRetryWait || reservation.Status != "reserved" { t.Fatalf("authorized retry lost: %s/%s", task.Status, reservation.Status) }
+				if task.Status != StatusRetryWait || reservation.Status != "reserved" {
+					t.Fatalf("authorized retry lost: %s/%s", task.Status, reservation.Status)
+				}
 			}
-			if calls.Load() != 1 { t.Fatalf("reconciliation dispatched model: %d", calls.Load()) }
+			if calls.Load() != 1 {
+				t.Fatalf("reconciliation dispatched model: %d", calls.Load())
+			}
 		})
 	}
 }
@@ -298,14 +340,24 @@ func TestCanvasReviewDeniedQueueDoesNotStarveOrdinaryTask(t *testing.T) {
 	old := time.Now().UTC().Add(-time.Hour)
 	for i := 0; i < 25; i++ {
 		task := model.FlowModelTask{ID: fmt.Sprintf("denied-%02d", i), TenantID: model.PersonalTenantID(req.UserID), IdemKey: fmt.Sprintf("cwn_denied_%d", i), Purpose: "canvas_workflow_node", Status: "queued", NextAttemptAt: old}
-		if err := tools.DB.Create(&task).Error; err != nil { t.Fatal(err) }
+		if err := tools.DB.Create(&task).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	task, err := m.Enqueue(ModelTaskInput{TenantID: model.PersonalTenantID(req.UserID), Key: "ordinary", Purpose: "brief", User: "safe", MaxTokens: 8, BudgetMicro: 1000})
-	if err != nil { t.Fatal(err) }
-	if _, err = m.RunDue(context.Background()); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = m.RunDue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	stored, err := m.Get(task.ID)
-	if err != nil { t.Fatal(err) }
-	if calls.Load() != 1 || stored.Status != StatusReconciliation { t.Fatalf("ordinary task starved: calls=%d status=%s", calls.Load(), stored.Status) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 1 || stored.Status != StatusReconciliation {
+		t.Fatalf("ordinary task starved: calls=%d status=%s", calls.Load(), stored.Status)
+	}
 }
 
 func TestCanvasWorkflowSkillCompleteOutputAndDuplicate(t *testing.T) {

@@ -281,14 +281,14 @@ func compileCanvasAgentTools(req CloudAgentRequest, includeProfileTool bool) []m
 		if req.PermissionMode == "auto" || req.PermissionMode == "request_approval" {
 			add("canvas_run_workflow", "审批并运行具体画布工作流；ops 与 run 共同进入独立审批，批准前不建图、不执行。ops 可为空以运行现有图；修改画布或执行参数后必须重新审批。返回持久 run_id，未知结果应查询而非重复创建。", map[string]any{
 				"expected_revision": map[string]any{"type": "integer", "minimum": 0},
-				"ops": map[string]any{"type": "array", "maxItems": 20, "items": opItem},
+				"ops":               map[string]any{"type": "array", "maxItems": 20, "items": opItem},
 				"run": map[string]any{
 					"type": "object", "additionalProperties": false, "required": []string{"budget_micro"},
 					"properties": map[string]any{
-						"budget_micro": map[string]any{"type": "integer", "minimum": 1},
+						"budget_micro":     map[string]any{"type": "integer", "minimum": 1},
 						"refresh_bindings": map[string]any{"type": "boolean"},
-						"save_report": map[string]any{"type": "boolean"},
-						"report_title": map[string]any{"type": "string"},
+						"save_report":      map[string]any{"type": "boolean"},
+						"report_title":     map[string]any{"type": "string"},
 					},
 				},
 			}, "expected_revision", "ops", "run")

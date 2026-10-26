@@ -454,6 +454,8 @@ func migrations() []tableMigration {
 		migrateTable[model.CreationSubmission]("creation_submissions"),
 		migrateTable[model.Task]("tasks"),
 		migrateTable[model.CloudAgentExecution]("cloud_agent_executions"),
+		migrateTable[model.CanvasWorkflowExecution]("flow_canvas_workflow_executions"),
+		migrateTable[model.CanvasMonitorRunUsage]("flow_canvas_monitor_run_usage"),
 		migrateTable[model.CloudAgentEventRecord]("cloud_agent_event_records"),
 		migrateTable[model.CloudAgentMessageRecord]("cloud_agent_message_records"),
 		migrateTable[model.CloudAgentCanvasMutation]("cloud_agent_canvas_mutations"),

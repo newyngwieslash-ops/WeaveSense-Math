@@ -58,13 +58,16 @@ test("cancel operation: queued job cancelled, not executed; foreign tenant 404",
   assert.equal((await eng.getOperation(A, op.operation_id)).status, "cancelled");
 });
 
-test("evidence rows: idempotent per key, foreign documents skipped, tenant scoped", async () => {
+test("evidence rows: idempotent per key, foreign documents rejected, spans verified, tenant scoped", async () => {
   const { eng, sa, sb } = await setup();
   feed = [{ external_id: "1", title: "Acme", body: "lithium", url: "u", published_at: null }];
   await eng.requestCollection(A, "k", { source_ids: [sa.id] }); await eng.workOnce("w");
   await eng.requestCollection(B, "k", { source_ids: [sb.id] }); await eng.workOnce("w");
   const da = (await eng.listDocuments(A, {}))[0].id, db_ = (await eng.listDocuments(B, {}))[0].id;
-  const items = [{ document_id: da, char_start: 0, char_end: 5, quote: "Acme" }, { document_id: db_, quote: "x" }];
+  // Spans are checked against the revision text ("title\n\nbody"); a foreign document is a 404, never a silent skip.
+  const items = [{ document_id: da, char_start: 0, char_end: 4, quote: "Acme" }];
+  await assert.rejects(eng.createEvidence(A, "ev:foreign", { items: [...items, { document_id: db_, char_start: 0, char_end: 4, quote: "Acme" }] }), (e: any) => e.status === 404);
+  await assert.rejects(eng.createEvidence(A, "ev:bad", { items: [{ document_id: da, char_start: 0, char_end: 5, quote: "Acme" }] }), (e: any) => e.status === 422);
   assert.equal((await eng.createEvidence(A, "ev:c1", { items })).created, 1);
   assert.equal((await eng.createEvidence(A, "ev:c1", { items })).created, 0);
   assert.equal((await eng.listEvidence(A)).length, 1);
