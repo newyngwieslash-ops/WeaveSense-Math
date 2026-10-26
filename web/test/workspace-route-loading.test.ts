@@ -37,15 +37,15 @@ describe("workspace route loading", () => {
         const router = source("../src/router.tsx");
         const navigation = source("../src/components/layout/workspace-sidebar-nav.tsx");
 
-        expect(router).toContainCode('{ path: "/", element: deferred(<CreatePage />) }');
-        expect(router).toContainCode('{ path: "/create", element: deferred(<CreatePage />) }');
+        expect(router).toContainCode('{ path: "/", element: <Navigate to="/intelligence" replace /> }');
+        expect(router).toContainCode('{ path: "/create", element: <RequireFeature feature="shortDramaEnabled">{deferred(<CreatePage />)}</RequireFeature> }');
         expect(router).toContainCode("<RequireAuth allowAnonymous={isGuestWorkspacePath(pathname)}>");
         expect(router).toContainCode('{ path: "/assets", element: <RequireAuth>{deferred(<AssetsPage />)}</RequireAuth> }');
         expect(router).toContainCode('{ path: "/canvas/:id", element: <RequireAuth><CanvasProjectPage /></RequireAuth> }');
         expect(router).not.toContainCode('path: "/home"');
         expect(router).not.toContainCode("HomePage");
-        expect(navigation).toContainCode('{ ...toolItem("create", "/"), id: "home", title: "创作" }');
-        expect(navigation).not.toContainCode('to: "/create"');
+        expect(navigation).toContainCode('{ ...toolItem("intelligence", "/intelligence"), title: "情报中心" }');
+        expect(navigation).toContainCode('{ ...toolItem("canvas", "/canvas"), title: "研判画布" }');
         expect(navigation).not.toContainCode('to: "/home"');
     });
 

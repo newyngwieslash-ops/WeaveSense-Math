@@ -7,6 +7,7 @@ describe("普通画布添加菜单", () => {
         const commands = resolveAddNodeMenuCommands({
             workspaceMode: "professional",
             isProjectLinked: false,
+            shortDramaEnabled: true,
             handlers: {} as AddNodeMenuContext["handlers"],
         });
         const character = commands.find((command) => command.id === "project-character");

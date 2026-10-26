@@ -40,15 +40,15 @@ export type FeatureAvailability = {
 };
 
 export const defaultFeatureAvailability: FeatureAvailability = {
-    welcomeEnabled: true,
-    shortDramaEnabled: true,
+    welcomeEnabled: false,
+    shortDramaEnabled: false,
     taskCenterEnabled: true,
     creditsEnabled: true,
     customChannelsEnabled: true,
     frontendModelsEnabled: false,
     pluginCenterEnabled: true,
     systemPluginsVisibleToUsers: true,
-    inspirationSourcesVisible: true,
+    inspirationSourcesVisible: false,
 };
 
 type UserStore = {

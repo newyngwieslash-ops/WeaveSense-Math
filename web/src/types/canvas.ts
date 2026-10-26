@@ -212,15 +212,49 @@ export type CanvasBatchTableData = {
 
 export type CanvasDataSourceFormat = "json" | "csv" | "txt" | "markdown" | "intel";
 
+export type CanvasDataSourceBindingKind = "static" | "intel_query" | "topic" | "monitor" | "mcp_tool";
+
+export type CanvasDataSourceBinding = {
+    kind: CanvasDataSourceBindingKind;
+    refId?: string;
+    query?: string;
+    sourceIds?: string[];
+    timeWindow?: { kind: "7d" | "30d" | "custom"; timezone: string; from?: string; to?: string };
+    toolName?: string;
+    toolArgs?: Record<string, unknown>;
+    toolVersion?: number;
+    schemaHash?: string;
+    outputSchema?: Record<string, unknown>;
+    windowArguments?: { from: string; to: string };
+    lastSyncedAt?: string;
+};
+
 export type CanvasDataSourceConfig = {
     format: CanvasDataSourceFormat;
     rawText?: string;
     fileName?: string;
+    sourceBinding?: CanvasDataSourceBinding;
 };
 
-export type CanvasLogicOperator = "if_else" | "intersect" | "union" | "difference" | "filter" | "json_extract";
+export type CanvasLogicOperator =
+    | "if_else"
+    | "intersect"
+    | "union"
+    | "difference"
+    | "filter"
+    | "json_extract"
+    | "compute"
+    | "aggregate"
+    | "join"
+    | "sort_limit";
 
 export type CanvasLogicComparator = "contains" | "not_contains" | "equals" | "not_equals" | "gt" | "lt" | "is_empty" | "not_empty" | "regex";
+
+export type CanvasLogicAggregateFn = "count" | "sum" | "avg" | "max" | "min" | "p95";
+
+export type CanvasLogicJoinMode = "inner" | "left";
+
+export type CanvasLogicSortOrder = "asc" | "desc";
 
 export type CanvasLogicConfig = {
     operator: CanvasLogicOperator;
@@ -228,6 +262,43 @@ export type CanvasLogicConfig = {
     comparator?: CanvasLogicComparator;
     compareValue?: string;
     matchKey?: string;
+    /** 指标计算表达式（如污水折算公式或字段四则运算） */
+    expression?: string;
+    /** 按区域、物质和显式基线周期关联，输出百分比及 <outputField>_status。与表达式互斥。 */
+    periodComparison?: {
+        regionField: string;
+        substanceField: string;
+        periodField: string;
+        baselinePeriodField: string;
+        valueField: string;
+    };
+    /** 计算输出字段名 */
+    outputField?: string;
+    /** 空数组表示全局聚合。 */
+    groupBy?: string[];
+    /** count 的空 field 计行数；p95 使用 nearest-rank。 */
+    metrics?: { field: string; fn: CanvasLogicAggregateFn; as: string }[];
+    joinMode?: CanvasLogicJoinMode;
+    joinKeys?: { left: string; right: string }[];
+    /** 排序后去重，缺失任一键的行不参与去重。 */
+    dedupeKeys?: string[];
+    /** 排序字段（为空时回退到 fieldPath） */
+    sortField?: string;
+    /** 排序方向：desc | asc */
+    sortOrder?: CanvasLogicSortOrder;
+    /** Top-N 截断条数 */
+    limit?: number;
+};
+
+export type CanvasNodeRunSnapshot = {
+    runId?: string;
+    executedAt: string;
+    durationMs?: number;
+    inputCount: number;
+    outputCount: number;
+    status: "success" | "error" | "skipped";
+    error?: string;
+    sampleItems?: unknown[];
 };
 
 export type CanvasSkillSnapshot = {
@@ -246,8 +317,22 @@ export type CanvasNodeMetadata = {
     /** Credential-free editable generation contract; submitted recipes live with tasks. */
     /** 低代码数据源节点配置（支持 JSON/CSV/TXT/Markdown/情报结构化输入）。 */
     dataSource?: CanvasDataSourceConfig;
-    /** 低代码逻辑与集合运算节点配置（支持 If/Else、交集、并集、差集、过滤、提取）。 */
+    /** 低代码逻辑与集合运算节点配置（支持 If/Else、交集、并集、差集、过滤、提取、计算、聚合、Join、Top-N）。 */
     logic?: CanvasLogicConfig;
+    /** 最近一次工作流/DAG 节点执行快照。 */
+    lastRunSnapshot?: CanvasNodeRunSnapshot;
+    /** 受管工作流运行的权威输出（仅服务端写入；derived.status=succeeded 时前端不再使用本地预览）。 */
+    computed?: unknown[];
+    computedBranches?: { true?: unknown[]; false?: unknown[] };
+    skillOutput?: unknown;
+    derived?: { runId?: string; canvasRevision?: number; status?: string };
+    /** 情报联动来源元数据（含引用溯源）。 */
+    intelSource?: {
+        kind?: string;
+        id?: string;
+        title?: string;
+        citations?: unknown[];
+    };
     /** Skill 节点轻量配置（支持 Agent 通过 canvas_apply_ops 创建或更新技能节点）。 */
     skillName?: string;
     skillDescription?: string;

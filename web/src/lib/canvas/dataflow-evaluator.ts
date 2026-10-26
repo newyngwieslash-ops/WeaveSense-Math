@@ -57,6 +57,10 @@ export const LOGIC_OPERATOR_LABELS: Record<CanvasLogicOperator, string> = {
     difference: "差集 (A − B)",
     filter: "条件过滤",
     json_extract: "字段提取",
+    compute: "指标计算",
+    aggregate: "分组聚合",
+    join: "关联拼接 (Join)",
+    sort_limit: "排序与 Top-N",
 };
 
 export const LOGIC_COMPARATOR_LABELS: Record<CanvasLogicComparator, string> = {
@@ -96,13 +100,24 @@ export function readNodeLogicConfig(node: CanvasNodeData): CanvasLogicConfig {
         comparator: raw?.comparator || "contains",
         compareValue: raw?.compareValue ?? "",
         matchKey: raw?.matchKey ?? "",
+        expression: raw?.expression ?? "",
+        ...(raw && Object.prototype.hasOwnProperty.call(raw, "periodComparison") ? { periodComparison: raw.periodComparison } : {}),
+        outputField: raw?.outputField ?? "",
+        groupBy: raw?.groupBy === undefined ? [] : raw.groupBy,
+        metrics: raw?.metrics === undefined ? [{ field: "", fn: "count", as: "count" }] : raw.metrics,
+        joinMode: raw?.joinMode === undefined ? "inner" : raw.joinMode,
+        joinKeys: raw?.joinKeys === undefined ? [{ left: "id", right: "id" }] : raw.joinKeys,
+        dedupeKeys: raw?.dedupeKeys === undefined ? [] : raw.dedupeKeys,
+        sortField: raw?.sortField === undefined ? "" : raw.sortField,
+        sortOrder: raw?.sortOrder === undefined ? "desc" : raw.sortOrder,
+        limit: typeof raw?.limit === "number" ? raw.limit : 10,
     };
 }
 
 export function isLogicDualInput(node: CanvasNodeData): boolean {
     if (node.type !== CanvasNodeType.Logic) return false;
     const op = readNodeLogicConfig(node).operator;
-    return op === "intersect" || op === "union" || op === "difference";
+    return op === "intersect" || op === "union" || op === "difference" || op === "join";
 }
 
 export function isLogicDualOutput(node: CanvasNodeData): boolean {
@@ -150,59 +165,49 @@ export function detectDataSourceFormatFromFilename(fileName: string, content = "
 }
 
 function normalizeScalarValue(raw: string): string | number | boolean {
-    const trimmed = raw.trim();
-    if (trimmed === "true") return true;
-    if (trimmed === "false") return false;
-    if (trimmed !== "" && /^-?\d+(?:\.\d+)?$/.test(trimmed)) {
-        const num = Number(trimmed);
-        if (Number.isFinite(num)) return num;
+    if (raw !== raw.trim()) return raw;
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(raw)) {
+        const value = Number(raw);
+        if (Number.isFinite(value) && (!Number.isInteger(value) || Number.isSafeInteger(value))) return value;
     }
-    return trimmed;
+    return raw;
 }
 
-function splitCsvLine(line: string, delimiter: "," | "\t"): string[] {
-    const cells: string[] = [];
-    let current = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i += 1) {
-        const ch = line[i];
-        if (ch === '"') {
-            if (inQuotes && line[i + 1] === '"') {
-                current += '"';
-                i += 1;
-            } else {
-                inQuotes = !inQuotes;
-            }
+export function parseCsvItems(text: string, delimiter: "," | "	" = ","): CanvasDataItem[] {
+    const source = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+    const records: { cells: string[]; line: number }[] = [];
+    let cells: string[] = [], cell = "", quoted = false, closedQuote = false, touched = false, line = 1, startLine = 1;
+    const fail = () => { throw new Error(`CSV/TSV 解析失败：第 ${line} 行引号不合法`); };
+    const finishCell = () => { cells.push(cell); cell = ""; closedQuote = false; };
+    const finishRow = () => {
+        if (touched || cells.length || cell) { finishCell(); records.push({ cells, line: startLine }); }
+        cells = []; cell = ""; touched = false; closedQuote = false; startLine = line + 1;
+    };
+    for (let i = 0; i < source.length; i++) {
+        const ch = source[i];
+        if (quoted) {
+            if (ch === '"') {
+                if (source[i + 1] === '"') { cell += '"'; i++; }
+                else { quoted = false; closedQuote = true; }
+            } else { cell += ch; if (ch === "\n") line++; }
             continue;
         }
-        if (ch === delimiter && !inQuotes) {
-            cells.push(current.trim());
-            current = "";
-            continue;
-        }
-        current += ch;
+        if (ch === delimiter) { finishCell(); touched = true; continue; }
+        if (ch === "\n") { finishRow(); line++; continue; }
+        if (closedQuote) fail();
+        if (ch === '"') { if (cell) fail(); quoted = true; touched = true; }
+        else { cell += ch; touched = true; }
     }
-    cells.push(current.trim());
-    return cells;
-}
-
-export function parseCsvItems(text: string, delimiter: "," | "\t" = ","): CanvasDataItem[] {
-    const lines = (delimiter === "\t" ? text.replace(/^\uFEFF/, "") : text)
-        .split(/\r?\n/)
-        .map((line) => delimiter === "\t" ? line : line.trim())
-        .filter((line) => line.trim());
-    if (!lines.length) return [];
-    if (lines.length === 1) {
-        return splitCsvLine(lines[0], delimiter).filter(Boolean);
-    }
-    const headers = splitCsvLine(lines[0], delimiter).map((h, idx) => h || `col_${idx + 1}`);
-    return lines.slice(1).map((line) => {
-        const cells = splitCsvLine(line, delimiter);
-        const row: Record<string, unknown> = {};
-        headers.forEach((header, idx) => {
-            row[header] = normalizeScalarValue(cells[idx] ?? "");
-        });
-        return row;
+    if (quoted) fail();
+    finishRow();
+    if (!records.length) return [];
+    const headers = records[0].cells.map(header => header.trim());
+    if (headers.some(header => !header) || new Set(headers).size !== headers.length) throw new Error(`CSV/TSV 第 ${records[0].line} 行表头为空或重复`);
+    return records.slice(1).map(record => {
+        if (record.cells.length !== headers.length) throw new Error(`CSV/TSV 第 ${record.line} 行列数不匹配`);
+        return Object.fromEntries(headers.map((header, index) => [header, normalizeScalarValue(record.cells[index])]));
     });
 }
 
@@ -257,25 +262,31 @@ export function parseJsonItems(text: string): { items: CanvasDataItem[]; error?:
     if (!trimmed) return { items: [] };
     try {
         const parsed: unknown = JSON.parse(trimmed);
+        assertFiniteJson(parsed);
         if (Array.isArray(parsed)) {
             return { items: parsed.map(toCanvasDataItem) };
         }
         if (parsed && typeof parsed === "object") {
             const record = parsed as Record<string, unknown>;
-            for (const key of ["items", "rows", "data", "records", "list"]) {
+            for (const key of ["items", "rows", "data", "records", "list", "documents", "results"]) {
                 if (Array.isArray(record[key])) {
                     return { items: (record[key] as unknown[]).map(toCanvasDataItem) };
                 }
             }
             return { items: [record] };
         }
-        return { items: [toCanvasDataItem(parsed)] };
+        return { items: [], error: "JSON 必须是对象或数组" };
     } catch (err) {
         return {
             items: [],
             error: err instanceof Error ? `JSON 解析失败：${err.message}` : "JSON 格式不合法",
         };
     }
+}
+
+function assertFiniteJson(value: unknown): void {
+    if (typeof value === "number" && !Number.isFinite(value)) throw new Error("JSON 数值必须有限");
+    if (value && typeof value === "object") for (const child of Object.values(value)) assertFiniteJson(child);
 }
 
 function toCanvasDataItem(value: unknown): CanvasDataItem {
@@ -297,7 +308,9 @@ export function parseDataSourceNode(node: CanvasNodeData): { items: CanvasDataIt
         for (const [index, line] of sourceText.split(/\r?\n/).entries()) {
             if (!line.trim()) continue;
             try {
-                items.push(toCanvasDataItem(JSON.parse(line.trim())));
+                const parsed: unknown = JSON.parse(line.trim());
+                assertFiniteJson(parsed);
+                items.push(toCanvasDataItem(parsed));
             } catch {
                 return { items: [], format, error: `JSONL 解析失败：第 ${index + 1} 行不是有效 JSON` };
             }
@@ -307,32 +320,15 @@ export function parseDataSourceNode(node: CanvasNodeData): { items: CanvasDataIt
 
     if (format === "json" || format === "intel") {
         const res = parseJsonItems(raw);
-        if (!res.error || format === "json") {
-            return { items: res.items, format, error: res.error };
-        }
-        // 情报文本若不是 JSON，按段落/行拆分为结构化情报条目
-        const lines = raw
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean);
-        return {
-            items: lines.map((line, index) => ({ id: String(index + 1), title: line, text: line })),
-            format,
-        };
+        return { items: res.items, format, error: res.error };
     }
     if (format === "csv") {
-        const delimiter = ds?.fileName?.trim().toLowerCase().endsWith(".tsv") ? "\t" : ",";
-        return { items: parseCsvItems(delimiter === "\t" ? sourceText : raw, delimiter), format };
+        const delimiter = ds?.fileName?.trim().toLowerCase().endsWith(".tsv") ? "	" : ",";
+        try { return { items: parseCsvItems(sourceText, delimiter), format }; }
+        catch (error) { return { items: [], format, error: error instanceof Error ? error.message : "CSV/TSV 解析失败" }; }
     }
     if (format === "markdown") {
         return { items: parseMarkdownItems(raw), format };
-    }
-    // txt：优先尝试 JSON 数组，否则按非空行拆分
-    if ((raw.startsWith("[") && raw.endsWith("]")) || (raw.startsWith("{") && raw.endsWith("}"))) {
-        const jsonAttempt = parseJsonItems(raw);
-        if (!jsonAttempt.error && jsonAttempt.items.length > 0) {
-            return { items: jsonAttempt.items, format };
-        }
     }
     const lines = raw
         .split(/\r?\n/)
@@ -454,11 +450,14 @@ export function readDataItemField(item: CanvasDataItem, fieldPath?: string): unk
     if (!item || typeof item !== "object") {
         return item;
     }
+    const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value) && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+    if (!isRecord(item)) return undefined;
+    if (Object.prototype.hasOwnProperty.call(item, cleanPath)) return item[cleanPath];
     const segments = cleanPath.split(".").map((s) => s.trim()).filter(Boolean);
     let cursor: unknown = item;
     for (const seg of segments) {
-        if (cursor === null || cursor === undefined || typeof cursor !== "object") return undefined;
-        cursor = (cursor as Record<string, unknown>)[seg];
+        if (!isRecord(cursor) || !Object.prototype.hasOwnProperty.call(cursor, seg)) return undefined;
+        cursor = cursor[seg];
     }
     return cursor;
 }
@@ -610,7 +609,452 @@ export function collectDetectedKeys(items: CanvasDataItem[]): string[] {
     return [...keys];
 }
 
+type ArithToken =
+    | { kind: "num"; value: number }
+    | { kind: "ident"; name: string }
+    | { kind: "op"; op: "+" | "-" | "*" | "/" | "(" | ")" };
+
+function tokenizeArithmetic(expr: string): ArithToken[] | null {
+    const tokens: ArithToken[] = [];
+    let i = 0;
+    while (i < expr.length) {
+        const ch = expr[i];
+        if (/\s/.test(ch)) {
+            i += 1;
+            continue;
+        }
+        if (ch === "+" || ch === "-" || ch === "*" || ch === "/" || ch === "(" || ch === ")") {
+            tokens.push({ kind: "op", op: ch });
+            i += 1;
+            continue;
+        }
+        if (/\d/.test(ch) || (ch === "." && /\d/.test(expr[i + 1] || ""))) {
+            let start = i;
+            i += 1;
+            while (i < expr.length && /[\d.]/.test(expr[i])) i += 1;
+            const num = Number(expr.slice(start, i));
+            if (!Number.isFinite(num)) return null;
+            tokens.push({ kind: "num", value: num });
+            continue;
+        }
+        if (/[a-zA-Z_\u4e00-\u9fa5]/.test(ch)) {
+            let start = i;
+            i += 1;
+            while (i < expr.length && /[a-zA-Z0-9_.\u4e00-\u9fa5]/.test(expr[i])) i += 1;
+            tokens.push({ kind: "ident", name: expr.slice(start, i) });
+            continue;
+        }
+        return null;
+    }
+    return tokens;
+}
+
+function computeNumber(raw: unknown, field: string): number {
+    if (typeof raw !== "number" && (typeof raw !== "string" || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(raw.trim()))) {
+        throw new Error(`缺失或非法数值字段：${field}`);
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value)) throw new Error(`非有限数值：${field}`);
+    return value;
+}
+
+function computeField(item: CanvasDataItem, field: string): unknown {
+    if (!field || field.split(".").some((part) => !part.trim()) || !item || typeof item !== "object") {
+        throw new Error(`缺失或非法字段：${field}`);
+    }
+    return readDataItemField(item, field);
+}
+
+function validateFactorSource(item: CanvasDataItem): void {
+    const source = computeField(item, "excretion_factor_source") as Record<string, unknown> | undefined;
+    const citations = source?.citations;
+    if (!source || typeof source.version !== "string" || !source.version.trim() || !Array.isArray(citations) || !citations.length || citations.some((citation) =>
+        !citation || typeof citation.evidence_id !== "string" || !citation.evidence_id.trim() || !Number.isSafeInteger(citation.revision) || citation.revision <= 0)) {
+        throw new Error("excretion_factor_source 必须提供版本及有效证据引用");
+    }
+}
+
+function finiteCompute(value: number): number {
+    if (!Number.isFinite(value)) throw new Error("计算结果非有限");
+    return value;
+}
+
+function roundCompute(value: number): number {
+    finiteCompute(value);
+    // Avoid overflowing a finite large result merely to round decimal places.
+    return Math.abs(value) <= Number.MAX_VALUE / 10000 ? Math.round(value * 10000) / 10000 : value;
+}
+
+export function evaluateNumericExpression(item: CanvasDataItem, expression: string): { value: number; error?: string } {
+    const cleanExpr = expression.trim();
+    const resolvedExpr =
+        cleanExpr === "wbe_consumption_mg_1000p"
+            ? "concentration_ng_l * flow_m3_day * excretion_factor / population"
+            : cleanExpr;
+    const tokens = tokenizeArithmetic(resolvedExpr);
+    if (!tokens || tokens.length === 0) {
+        return { value: 0, error: `计算表达式语法无效：${cleanExpr}` };
+    }
+    let pos = 0;
+
+    const parsePrimary = (): number => {
+        const tok = tokens[pos];
+        if (!tok) throw new Error("表达式意外结束");
+        if (tok.kind === "op" && tok.op === "+") {
+            pos += 1;
+            return parsePrimary();
+        }
+        if (tok.kind === "op" && tok.op === "-") {
+            pos += 1;
+            return -parsePrimary();
+        }
+        if (tok.kind === "op" && tok.op === "(") {
+            pos += 1;
+            const inner = parseAddSub();
+            const close = tokens[pos];
+            if (!close || close.kind !== "op" || close.op !== ")") {
+                throw new Error("缺少右括号");
+            }
+            pos += 1;
+            return inner;
+        }
+        if (tok.kind === "num") {
+            pos += 1;
+            return tok.value;
+        }
+        if (tok.kind === "ident") {
+            pos += 1;
+            if (tok.name === "excretion_factor") validateFactorSource(item);
+            return computeNumber(computeField(item, tok.name), tok.name);
+        }
+        throw new Error("无效的计算因子");
+    };
+
+    const parseMulDiv = (): number => {
+        let left = parsePrimary();
+        while (pos < tokens.length) {
+            const tok = tokens[pos];
+            if (tok.kind === "op" && (tok.op === "*" || tok.op === "/")) {
+                pos += 1;
+                const right = parsePrimary();
+                if (tok.op === "/" && right === 0) throw new Error("除零");
+                left = finiteCompute(tok.op === "*" ? left * right : left / right);
+            } else {
+                break;
+            }
+        }
+        return left;
+    };
+
+    const parseAddSub = (): number => {
+        let left = parseMulDiv();
+        while (pos < tokens.length) {
+            const tok = tokens[pos];
+            if (tok.kind === "op" && (tok.op === "+" || tok.op === "-")) {
+                pos += 1;
+                const right = parseMulDiv();
+                left = finiteCompute(tok.op === "+" ? left + right : left - right);
+            } else {
+                break;
+            }
+        }
+        return left;
+    };
+
+    try {
+        const val = parseAddSub();
+        if (pos < tokens.length) {
+            return { value: 0, error: `计算表达式存在多余符号：${cleanExpr}` };
+        }
+        return { value: roundCompute(val) };
+    } catch (err) {
+        return {
+            value: 0,
+            error: err instanceof Error ? `计算表达式错误：${err.message}` : "计算表达式错误",
+        };
+    }
+}
+
+export function evaluateComputeOperation(
+    items: CanvasDataItem[],
+    config: CanvasLogicConfig,
+): { items: CanvasDataItem[]; error?: string } {
+    const outKey = (config.outputField || "computed_value").trim() || "computed_value";
+    if (items.some((item) => item && typeof item === "object"
+        ? Object.prototype.hasOwnProperty.call(item, outKey)
+        : outKey === "value")) {
+        return { items: [], error: `compute outputField 重复：${outKey}` };
+    }
+    if (Object.prototype.hasOwnProperty.call(config, "periodComparison")) {
+        return evaluatePeriodComparison(items, config, outKey);
+    }
+    const expr = (config.expression || config.fieldPath || "").trim();
+    if (!expr) return { items: [], error: "compute expression 必须明确指定" };
+    const outputItems: CanvasDataItem[] = [];
+    for (const item of items) {
+        const { value, error } = evaluateNumericExpression(item, expr);
+        if (error) return { items: [], error };
+        if (item && typeof item === "object" && !Array.isArray(item)) {
+            outputItems.push({
+                ...(item as Record<string, unknown>),
+                [outKey]: value,
+            });
+        } else {
+            outputItems.push({
+                value: item,
+                [outKey]: value,
+            });
+        }
+    }
+    return { items: outputItems };
+}
+
+function evaluatePeriodComparison(items: CanvasDataItem[], config: CanvasLogicConfig, outKey: string): { items: CanvasDataItem[]; error?: string } {
+    try {
+        const comparison = config.periodComparison;
+        const fields = ["regionField", "substanceField", "periodField", "baselinePeriodField", "valueField"] as const;
+        if (!comparison || typeof comparison !== "object" || Array.isArray(comparison) || Object.keys(comparison).length !== fields.length ||
+            fields.some((key) => typeof comparison[key] !== "string" || !comparison[key].trim() || comparison[key].split(".").some((part) => !part.trim())) ||
+            config.expression?.trim() || config.fieldPath?.trim()) throw new Error("periodComparison 配置非法或与表达式冲突");
+        const statusKey = `${outKey}_status`;
+        const key = (item: CanvasDataItem, periodField: string) => JSON.stringify([comparison.regionField, comparison.substanceField, periodField].map((field) => {
+            const value = computeField(item, field);
+            if ((typeof value !== "string" || !value.trim()) && (typeof value !== "number" || !Number.isFinite(value))) throw new Error(`缺失或非法关联字段：${field}`);
+            return value;
+        }));
+        const index = new Map<string, number>();
+        for (const item of items) {
+            if (Object.prototype.hasOwnProperty.call(item, outKey) || Object.prototype.hasOwnProperty.call(item, statusKey)) throw new Error("compute outputField 重复");
+            const identity = key(item, comparison.periodField);
+            if (index.has(identity)) throw new Error("periodComparison 重复区域/物质/周期基线");
+            index.set(identity, computeNumber(computeField(item, comparison.valueField), comparison.valueField));
+        }
+        const output = items.map((item) => {
+            const baseline = index.get(key(item, comparison.baselinePeriodField));
+            const current = computeNumber(computeField(item, comparison.valueField), comparison.valueField);
+            const status = baseline === undefined ? "missing_baseline" : baseline === 0 ? "zero_baseline" : "ok";
+            const value = baseline === undefined || baseline === 0 ? null : roundCompute(finiteCompute(finiteCompute(current - baseline) / baseline) * 100);
+            return { ...(item as Record<string, unknown>), [outKey]: value, [statusKey]: status };
+        });
+        return { items: output };
+    } catch (error) {
+        return { items: [], error: error instanceof Error ? error.message : "periodComparison 计算错误" };
+    }
+}
+
+const PROVENANCE_KEYS = ["citations", "evidence", "metadata"];
+const missingAnalyticValue = (value: unknown) => value == null || (typeof value === "string" && !value.trim());
+
+function analyticKeys(raw: unknown, name: string): string[] {
+    if (!Array.isArray(raw) || raw.some(key => typeof key !== "string" || !key.trim() || key !== key.trim()) || new Set(raw).size !== raw.length) {
+        throw new Error(`${name} 必须是非空且不重复的字段名数组`);
+    }
+    return raw;
+}
+
+function analyticField(item: CanvasDataItem, key: string): unknown {
+    return item && typeof item === "object" ? readDataItemField(item, key) : undefined;
+}
+
+function analyticIdentity(item: CanvasDataItem, keys: string[], requireComplete: boolean): string | undefined {
+    const values = keys.map(key => analyticField(item, key));
+    if (requireComplete && values.some(missingAnalyticValue)) return undefined;
+    for (const value of values) {
+        if (value != null && !["string", "number", "boolean"].includes(typeof value)) throw new Error("分组/关联/去重键必须是标量");
+        if (typeof value === "number" && !Number.isFinite(value)) throw new Error("键必须是有限数值");
+    }
+    return JSON.stringify(values.map(value => [value == null ? "missing" : typeof value, value ?? null]));
+}
+
+function compareCodepoints(left: string, right: string): number {
+    const a = Array.from(left, char => char.codePointAt(0)!), b = Array.from(right, char => char.codePointAt(0)!);
+    for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+    return a.length - b.length;
+}
+
+function canonicalProvenance(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonicalProvenance).join(",")}]`;
+    if (value && typeof value === "object") return `{${Object.keys(value).sort(compareCodepoints).map(key => `${JSON.stringify(key)}:${canonicalProvenance((value as Record<string, unknown>)[key])}`).join(",")}}`;
+    return JSON.stringify(value) ?? "null";
+}
+
+function cleanProvenance(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        const seen = new Set<string>();
+        return value.filter(item => item != null).map(cleanProvenance).filter(item => { const key = canonicalProvenance(item); if (seen.has(key)) return false; seen.add(key); return true; });
+    }
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, cleanProvenance(child)]));
+    return value;
+}
+
+// Preserve provenance without interpreting evidence authenticity. Scalars with conflicts become arrays.
+function mergeProvenanceValue(left: unknown, right: unknown): unknown {
+    left = cleanProvenance(left); right = cleanProvenance(right);
+    if (left == null) return right;
+    if (right == null) return left;
+    if (canonicalProvenance(left) === canonicalProvenance(right)) return left;
+    if (left && right && typeof left === "object" && typeof right === "object" && !Array.isArray(left) && !Array.isArray(right)) {
+        const merged = { ...left } as Record<string, unknown>;
+        for (const [key, value] of Object.entries(right)) Object.defineProperty(merged, key, { value: mergeProvenanceValue(merged[key], value), enumerable: true, writable: true, configurable: true });
+        return merged;
+    }
+    const values = [...(Array.isArray(left) ? left : [left]), ...(Array.isArray(right) ? right : [right])];
+    const seen = new Set<string>();
+    return values.filter(value => { const key = canonicalProvenance(value); if (seen.has(key)) return false; seen.add(key); return true; });
+}
+
+function mergeProvenance(rows: CanvasDataItem[]): Record<string, unknown> {
+    const merged: Record<string, unknown> = {};
+    for (const row of rows) if (row && typeof row === "object") {
+        for (const key of PROVENANCE_KEYS) if (Object.prototype.hasOwnProperty.call(row, key) && row[key] != null) merged[key] = mergeProvenanceValue(merged[key], row[key]);
+    }
+    return merged;
+}
+
+export function evaluateAggregateOperation(items: CanvasDataItem[], config: CanvasLogicConfig): CanvasDataItem[] {
+    const groupFields = analyticKeys(config.groupBy === undefined ? [] : config.groupBy, "groupBy");
+    const metrics = config.metrics === undefined ? [{ field: "", fn: "count", as: "count" }] : config.metrics;
+    const aliases = new Set([...groupFields, ...PROVENANCE_KEYS]);
+    if (groupFields.some(key => PROVENANCE_KEYS.includes(key))) throw new Error("groupBy 与证据字段冲突");
+    if (!Array.isArray(metrics) || !metrics.length) throw new Error("metrics 不能为空");
+    for (const metric of metrics) {
+        if (!metric || !["count", "sum", "avg", "max", "min", "p95"].includes(metric.fn) || typeof metric.field !== "string" || metric.field !== metric.field.trim() || (metric.fn !== "count" && !metric.field) || typeof metric.as !== "string" || !metric.as.trim() || metric.as !== metric.as.trim() || aliases.has(metric.as)) throw new Error("metrics 函数、字段或别名非法/重复");
+        aliases.add(metric.as);
+    }
+    const groups = new Map<string, CanvasDataItem[]>();
+    if (!groupFields.length) groups.set("[]", []);
+    for (const item of items) {
+        const key = analyticIdentity(item, groupFields, false)!;
+        const bucket = groups.get(key) ?? [];
+        bucket.push(item); groups.set(key, bucket);
+    }
+    return [...groups.values()].map(rows => {
+        const entries: [string, unknown][] = groupFields.map(key => [key, analyticField(rows[0], key) ?? null]);
+        for (const metric of metrics) {
+            const present = metric.field ? rows.map(row => analyticField(row, metric.field)).filter(value => !missingAnalyticValue(value)) : rows;
+            let value: number | null = rows.length;
+            if (metric.fn !== "count") {
+                const numbers = present.map(raw => computeNumber(raw, metric.field)).sort((a, b) => a - b);
+                value = null;
+                if (numbers.length) {
+                    if (metric.fn === "min") value = numbers[0];
+                    else if (metric.fn === "max") value = numbers[numbers.length - 1];
+                    else if (metric.fn === "p95") value = numbers[Math.ceil(numbers.length * 0.95) - 1];
+                    else {
+                        value = numbers.reduce((sum, n) => { const next = sum + n; if (!Number.isFinite(next)) throw new Error("聚合结果非有限数值"); return next; }, 0);
+                        if (metric.fn === "avg") value /= numbers.length;
+                    }
+                    value = roundCompute(value);
+                }
+            }
+            entries.push([metric.as, value]);
+        }
+        return { ...Object.fromEntries(entries), ...mergeProvenance(rows) };
+    });
+}
+
+function analyticPaths(record: Record<string, unknown>, prefix = ""): string[] {
+    const paths: string[] = [];
+    for (const [key, value] of Object.entries(record)) {
+        const path = prefix + key; paths.push(path);
+        if (value && typeof value === "object" && !Array.isArray(value)) paths.push(...analyticPaths(value as Record<string, unknown>, path + "."));
+    }
+    return paths;
+}
+
+export function evaluateJoinOperation(
+    itemsA: CanvasDataItem[],
+    itemsB: CanvasDataItem[],
+    config: CanvasLogicConfig,
+): CanvasDataItem[] {
+    const pairs = config.joinKeys === undefined ? [{ left: "id", right: "id" }] : config.joinKeys;
+    const joinMode = config.joinMode === undefined ? "inner" : config.joinMode;
+    if (!["inner", "left"].includes(joinMode) || !Array.isArray(pairs) || !pairs.length || pairs.some(pair => !pair)) throw new Error("joinMode/joinKeys 非法");
+    const leftKeys = analyticKeys(pairs.map(pair => pair.left), "joinKeys.left");
+    const rightKeys = analyticKeys(pairs.map(pair => pair.right), "joinKeys.right");
+    const record = (item: CanvasDataItem, side: string): Record<string, unknown> => item && typeof item === "object" ? item : { [side + "Value"]: item };
+    const leftFields = new Set(itemsA.flatMap(item => analyticPaths(record(item, "left"))));
+    const rightFields = [...new Set(itemsB.flatMap(item => Object.keys(record(item, "right"))))].sort(compareCodepoints);
+    const used = new Set([...leftFields, ...itemsB.flatMap(item => analyticPaths(record(item, "right")))]);
+    const names = new Map(rightFields.map(key => {
+        let name = key;
+        if (leftFields.has(key)) { do { name = `right.${name}`; } while (used.has(name)); }
+        used.add(name); return [key, name];
+    }));
+    const rightIndex = new Map<string, Record<string, unknown>[]>();
+    for (const item of itemsB) {
+        const key = analyticIdentity(item, rightKeys, true);
+        if (key === undefined) continue;
+        const bucket = rightIndex.get(key) ?? []; bucket.push(record(item, "right")); rightIndex.set(key, bucket);
+    }
+    const joined: CanvasDataItem[] = [];
+    for (const item of itemsA) {
+        const key = analyticIdentity(item, leftKeys, true);
+        const left = record(item, "left");
+        const matches = key === undefined ? undefined : rightIndex.get(key);
+        if (matches?.length) {
+            for (const right of matches) joined.push({ ...left, ...Object.fromEntries(Object.entries(right).map(([key, value]) => [names.get(key)!, value])), ...mergeProvenance([left, right]) });
+        } else if (joinMode === "left") joined.push({ ...left });
+    }
+    return joined;
+}
+
+export function evaluateSortLimitOperation(items: CanvasDataItem[], config: CanvasLogicConfig): CanvasDataItem[] {
+    if (config.sortField !== undefined && typeof config.sortField !== "string") throw new Error("sortField 非法");
+    const sortField = config.sortField || config.fieldPath || "value";
+    if (typeof sortField !== "string" || !sortField.trim() || sortField !== sortField.trim()) throw new Error("sortField 非法");
+    const sortOrder = config.sortOrder === undefined ? "desc" : config.sortOrder;
+    const limit = config.limit === undefined ? 10 : config.limit;
+    if (!["asc", "desc"].includes(sortOrder) || !Number.isSafeInteger(limit) || limit <= 0) throw new Error("sortOrder/limit 非法");
+    const keys = analyticKeys(config.dedupeKeys === undefined ? [] : config.dedupeKeys, "dedupeKeys");
+    const multiplier = sortOrder === "asc" ? 1 : -1;
+    const sortValues = items.map(item => {
+        const value = readDataItemField(item, sortField);
+        if (!missingAnalyticValue(value) && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") throw new Error("排序值必须是标量");
+        if (typeof value === "number" && !Number.isFinite(value)) throw new Error("排序值必须是有限数值");
+        return value;
+    });
+    const sorted = items.map((item, index) => ({ item, index })).sort((a, b) => {
+        const rawA = sortValues[a.index], rawB = sortValues[b.index];
+        const missingA = missingAnalyticValue(rawA), missingB = missingAnalyticValue(rawB);
+        if (missingA || missingB) return missingA === missingB ? a.index - b.index : missingA ? 1 : -1;
+        const numeric = (raw: unknown) => (typeof raw === "number" || typeof raw === "string" && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(raw.trim())) && Number.isFinite(Number(raw));
+        const numericA = numeric(rawA), numericB = numeric(rawB);
+        let order: number;
+        if (numericA && numericB) order = Number(rawA) < Number(rawB) ? -1 : Number(rawA) > Number(rawB) ? 1 : 0;
+        else if (numericA !== numericB) order = numericA ? -1 : 1;
+        else { const sa = `${typeof rawA}:${String(rawA)}`, sb = `${typeof rawB}:${String(rawB)}`; order = compareCodepoints(sa, sb); }
+        return order * multiplier || a.index - b.index;
+    });
+    const seen = new Map<string, number>();
+    const output: CanvasDataItem[] = [];
+    for (const { item } of sorted) {
+        const key = keys.length ? analyticIdentity(item, keys, true) : undefined;
+        const previous = key === undefined ? undefined : seen.get(key);
+        if (previous !== undefined) {
+            const winner = output[previous];
+            if (winner && typeof winner === "object") output[previous] = { ...winner, ...mergeProvenance([winner, item]) };
+        } else {
+            if (key !== undefined) seen.set(key, output.length);
+            output.push(item);
+        }
+    }
+    return output.slice(0, limit);
+}
+
 export function evaluateLogicNode(node: CanvasNodeData, inputA: CanvasDataItem[], inputB: CanvasDataItem[]): DataflowNodeResult {
+    const raw = node.metadata?.logic;
+    let contractError: string | undefined;
+    if (raw && Object.prototype.hasOwnProperty.call(raw, "operator") &&
+        (typeof raw.operator !== "string" || !Object.prototype.hasOwnProperty.call(LOGIC_OPERATOR_LABELS, raw.operator))) {
+        contractError = "未知或非法 operator";
+    } else if (raw?.operator === "sort_limit" && Object.prototype.hasOwnProperty.call(raw, "limit") &&
+        (typeof raw.limit !== "number" || !Number.isSafeInteger(raw.limit) || raw.limit <= 0)) {
+        contractError = "sort_limit limit 必须是正整数";
+    }
+    if (contractError) {
+        return { nodeId: node.id, inputA, inputB, outputItems: [], trueItems: [], falseItems: [], detectedKeys: collectDetectedKeys([...inputA, ...inputB]), error: contractError };
+    }
     const config = readNodeLogicConfig(node);
     const { operator, fieldPath, comparator = "contains", compareValue = "", matchKey } = config;
     const allInputs = [...inputA, ...inputB];
@@ -627,6 +1071,30 @@ export function evaluateLogicNode(node: CanvasNodeData, inputA: CanvasDataItem[]
             trueItems: outputItems,
             falseItems: [],
             detectedKeys,
+        };
+    }
+
+    if (operator === "join" || operator === "aggregate" || operator === "sort_limit") {
+        try {
+            const outputItems = operator === "join" ? evaluateJoinOperation(inputA, inputB, config) : operator === "aggregate" ? evaluateAggregateOperation(allInputs, config) : evaluateSortLimitOperation(allInputs, config);
+            return { nodeId: node.id, operator, inputA, inputB, outputItems, trueItems: outputItems, falseItems: [], detectedKeys: collectDetectedKeys(outputItems) };
+        } catch (error) {
+            return { nodeId: node.id, operator, inputA, inputB, outputItems: [], trueItems: [], falseItems: [], detectedKeys, error: error instanceof Error ? error.message : "算子合同错误" };
+        }
+    }
+
+    if (operator === "compute") {
+        const { items: outputItems, error } = evaluateComputeOperation(allInputs, config);
+        return {
+            nodeId: node.id,
+            operator,
+            inputA: allInputs,
+            inputB: [],
+            outputItems,
+            trueItems: outputItems,
+            falseItems: [],
+            detectedKeys: collectDetectedKeys(outputItems),
+            error,
         };
     }
 
@@ -732,6 +1200,28 @@ export function evaluateCanvasDataflow(nodes: CanvasNodeData[], connections: Can
         return sourceResult.outputItems;
     };
 
+    // A node whose managed workflow run succeeded carries the server's
+    // authoritative output in metadata (including an explicit empty array).
+    // Local prompt previews and stale local content must yield to it.
+    const applyManagedRunOutput = (node: CanvasNodeData, res: DataflowNodeResult): DataflowNodeResult => {
+        const derived = node.metadata?.derived;
+        if (derived?.status !== "succeeded" || !derived.runId) return res;
+        const computed = node.metadata?.computed;
+        if (!Array.isArray(computed)) return res;
+        const items = computed as CanvasDataItem[];
+        const branches = node.metadata?.computedBranches;
+        const dualBranch = node.type === CanvasNodeType.Logic && isLogicDualOutput(node);
+        const trueItems = dualBranch && Array.isArray(branches?.true) ? (branches!.true as CanvasDataItem[]) : items;
+        const falseItems = dualBranch && Array.isArray(branches?.false) ? (branches!.false as CanvasDataItem[]) : res.falseItems;
+        return {
+            ...res,
+            outputItems: items,
+            trueItems,
+            falseItems,
+            detectedKeys: collectDetectedKeys(items),
+        };
+    };
+
     const evaluateNode = (nodeId: string): DataflowNodeResult => {
         const cached = results.get(nodeId);
         if (cached) return cached;
@@ -814,7 +1304,7 @@ export function evaluateCanvasDataflow(nodes: CanvasNodeData[], connections: Can
                 return cycleRes;
             }
 
-            const evaluated = evaluateLogicNode(node, inputA, inputB);
+            const evaluated = applyManagedRunOutput(node, evaluateLogicNode(node, inputA, inputB));
             visitState.set(nodeId, "visited");
             results.set(nodeId, evaluated);
             return evaluated;
@@ -886,14 +1376,15 @@ export function evaluateCanvasDataflow(nodes: CanvasNodeData[], connections: Can
                     falseItems: [],
                     detectedKeys: collectDetectedKeys(inputA),
                 };
+                const authoritative = applyManagedRunOutput(node, skillRes);
                 visitState.set(nodeId, "visited");
-                results.set(nodeId, skillRes);
-                return skillRes;
+                results.set(nodeId, authoritative);
+                return authoritative;
             }
         }
 
         const parsed = extractNodeItems(node);
-        const nodeResult: DataflowNodeResult = {
+        const localResult: DataflowNodeResult = {
             nodeId,
             format: parsed.format,
             inputA: [],
@@ -904,6 +1395,7 @@ export function evaluateCanvasDataflow(nodes: CanvasNodeData[], connections: Can
             detectedKeys: collectDetectedKeys(parsed.items),
             error: parsed.error,
         };
+        const nodeResult = applyManagedRunOutput(node, localResult);
         visitState.set(nodeId, "visited");
         results.set(nodeId, nodeResult);
         return nodeResult;

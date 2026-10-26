@@ -103,7 +103,7 @@ describe("图片上传占位", () => {
         expect(create).toContain("fileUpload: undefined");
         const replace = hook.slice(hook.indexOf("const replaceNodeMedia"), hook.indexOf("const pasteSystemClipboard"));
         expect(replace).toContain("await createFileNode(file, currentNode.position, nodeId)");
-        expect(create).toContain("original?.metadata?.content");
+        expect(create).toContain("rollbackUploadReplacement(item, replacementBefore, replacementPending)");
         expect(read("components/canvas/canvas-upload-modal.tsx")).toContain("onClose();\n            await pendingUpload;");
         expect(read("styles/globals.css")).toContain("prefers-reduced-motion: reduce");
     });

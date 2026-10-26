@@ -47,6 +47,17 @@ test("rejects the whole file and reports the original physical line on malformed
     expect(parse('{\n  "title":"跨行对象"\n}').items).toEqual([]);
 });
 
+test("JSON and intel share object/array/envelope contracts without bad-text fallback", () => {
+    for (const format of ["json", "intel"] as const) {
+        for (const key of ["items", "rows", "data", "records", "list", "documents", "results"]) expect(parse(JSON.stringify({ [key]: [{ id: "001", value: 23 }] }), "rows.json", format).items).toEqual([{ id: "001", value: 23 }]);
+        expect(parse('\uFEFF{"id":"001","value":27.6}', "rows.json", format).items).toEqual([{ id: "001", value: 27.6 }]);
+        for (const text of ["null", "42", "false", '"text"', "{broken", '[{"a":1},]', '{"v":1e999}']) {
+            const result = parse(text, "rows.json", format); expect(result.error).toBeTruthy(); expect(result.items).toEqual([]);
+        }
+    }
+    expect(parse('{"v":1}\n\n{"v":1e999}').error).toMatch(/第\s*3\s*行/);
+});
+
 test("preserves strict JSON and respects an explicit non-JSON format despite a JSONL filename", () => {
     const lines = '{"id":"a"}\n{"id":"b"}';
     expect(parse(lines, "ordinary.json").error).toBeDefined();
@@ -56,6 +67,6 @@ test("preserves strict JSON and respects an explicit non-JSON format despite a J
     expect(parse('{"items":[{"id":"a"}]}', "ordinary.json").items).toEqual([{ id: "a" }]);
     expect(parse("id,title\na,中文", "rows.jsonl", "csv").items).toEqual([{ id: "a", title: "中文" }]);
     expect(parse("第一行\n第二行", "rows.jsonl", "txt").items).toEqual(["第一行", "第二行"]);
-    expect(parse("情报甲\n情报乙", "rows.jsonl", "intel").items).toHaveLength(2);
+    expect(parse("情报甲\n情报乙", "rows.jsonl", "intel").error).toBeTruthy();
     expect(parse("# 章甲\n正文甲\n# 章乙\n正文乙", "rows.jsonl", "markdown").items).toHaveLength(2);
 });

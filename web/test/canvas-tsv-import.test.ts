@@ -18,10 +18,10 @@ test("splits a Chinese TSV into independent fields and typed records", () => {
     ]);
 });
 
-test("preserves empty edge columns with BOM, CRLF and uppercase TSV filenames", () => {
-    expect(parse("\uFEFF\r\n\ttitle\tflag\t\r\n \r\n\t甲\ttrue\t\r\nq\t\tfalse\r\n", " ROWS.TSV ").items).toEqual([
-        { col_1: "", title: "甲", flag: true, col_4: "" },
-        { col_1: "q", title: "", flag: false, col_4: "" },
+test("preserves empty edge cells with BOM, CRLF and uppercase TSV filenames", () => {
+    expect(parse("\uFEFF\r\nid\ttitle\tflag\tlast\r\n\r\n\t甲\ttrue\t\r\nq\t\tfalse\t\r\n", " ROWS.TSV ").items).toEqual([
+        { id: "", title: "甲", flag: true, last: "" },
+        { id: "q", title: "", flag: false, last: "" },
     ]);
 });
 
@@ -31,10 +31,23 @@ test("keeps quoted tabs, commas and escaped quotes inside a TSV cell", () => {
     ]);
 });
 
-test("retains the existing single-line cell list and empty-input behavior", () => {
-    expect(parse("\t甲\t乙\t").items).toEqual(["甲", "乙"]);
+test("requires unique nonempty headers and treats a header-only file as no records", () => {
+    expect(parse("甲\t乙").items).toEqual([]);
     expect(parse("").items).toEqual([]);
-    expect(parse("\uFEFF\r\n \t\r\n").items).toEqual([]);
+    expect(parse("\uFEFF\r\n").items).toEqual([]);
+    for (const text of ["\t甲\t乙\t", "a\ta\n1\t2", "a\t a \n1\t2", "a\tb\n1", "a\tb\n1\t2\t3", 'a\tb\n"unclosed\tx', 'a\tb\nx"bad\ty', 'a\tb\n"x"bad\ty']) {
+        const result = parse(text); expect(result.error).toBeTruthy(); expect(result.items).toEqual([]);
+    }
+});
+
+test("CSV and TSV support multiline quoted cells and retain leading-zero IDs", () => {
+    for (const [delimiter, name] of [[",", "rows.csv"], ["\t", "rows.tsv"]]) {
+        const text = `\uFEFFid${delimiter}note${delimiter}value${delimiter}empty\r\n001${delimiter}"line1\r\nline2${delimiter}""quoted"""${delimiter}23${delimiter}\r\n002${delimiter}" padded "${delimiter}27.6${delimiter}\r\n`;
+        const result = parse(text, name);
+        expect(result.error).toBeUndefined();
+        expect(result.items).toEqual([{ id: "001", note: `line1\nline2${delimiter}"quoted"`, value: 23, empty: "" }, { id: "002", note: " padded ", value: 27.6, empty: "" }]);
+        expect(parse(`id${delimiter}v\n1${delimiter}2\n3`, name).error).toMatch(/3/);
+    }
 });
 
 test("keeps comma defaults and respects non-CSV formats despite a TSV filename", () => {

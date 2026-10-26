@@ -45,6 +45,7 @@ import {
     type CloudAgentPendingSubmission,
     type CloudAgentMessagePresentation,
 } from "@/services/cloud-agent-conversations";
+import { decodeChannelModel } from "@/stores/config-model-options";
 import { logicalModelIDForConfig, modelOptionName, resolveModelRequestConfig, selectableModelsByCapability, useConfigStore, useEffectiveConfig } from "@/stores/use-config-store";
 import { selectImageInspectionModel } from "@/lib/canvas/image-to-previs-agent";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
@@ -490,9 +491,9 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, se
                 if (!active) return;
                 const current = document.conversations.find((conversation) => conversation.id === document.activeId) || document.conversations[0];
                 let initialSkillIds = current?.skillIds || [];
-                if (!document.conversations.length) {
+                if (!document.conversations.length && useUserStore.getState().features.shortDramaEnabled) {
                     try {
-                        const defaults = await ensureDefaultCanvasAgentSkill();
+                        const defaults = await ensureDefaultCanvasAgentSkill({}, true);
                         if (!active) return;
                         setSkills(defaults.skills);
                         initialSkillIds = defaults.skills.some((skill) => skill.skillId === DEFAULT_CANVAS_AGENT_SKILL_ID && skill.isAdded) ? [DEFAULT_CANVAS_AGENT_SKILL_ID] : [];
@@ -510,8 +511,12 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, se
                     if (current.model) setModel(current.model);
                     const pending = await loadCloudAgentPendingSubmission(canvasId, current.id);
                     if (!active) return;
-                    pendingSubmission.current = pending;
-                    if (pending?.request) setPrompt(pending.displayText || pending.request.prompt);
+                    // A pending request without a managed model can never be reconciled by
+                    // replaying it. Drop it so the next send uses the current model selection.
+                    const replayable = pending?.request && (pending.request.logicalModelId || pending.request.channelId && pending.request.channelModelKey) ? pending : null;
+                    if (pending && !replayable) await clearCloudAgentPendingSubmission(canvasId, current.id).catch(() => undefined);
+                    pendingSubmission.current = replayable;
+                    if (replayable?.request) setPrompt(replayable.displayText || replayable.request.prompt);
                 } else {
                     const initialConversationId = nanoid();
                     const now = new Date().toISOString();
@@ -681,15 +686,17 @@ export function CanvasCloudAgentPanel({ canvasId, domainProjectId, nodeCount, se
                 await saveRemoteUserDataNow();
                 if (currentScope.current !== scope) return;
                 const agentConfig = { ...config, model: effectiveModel };
-                const requestConfig = resolveModelRequestConfig(agentConfig, effectiveModel);
-                const logicalModelId = logicalModelIDForConfig(agentConfig);
+                const selectedChannel = decodeChannelModel(effectiveModel);
+                const requestConfig = selectedChannel ? resolveModelRequestConfig(agentConfig, effectiveModel) : null;
+                const logicalModelId = selectedChannel ? logicalModelIDForConfig(agentConfig) : "";
+                if (!logicalModelId && requestConfig?.channelId !== selectedChannel?.channelId) throw new Error("请先在输入框左侧选择文本模型。Agent 只能使用管理后台配置的受管文本模型，当前没有可选项时请管理员在「系统渠道」添加并启用一个文本模型");
                 const input = {
                     canvasId,
                     prompt: value,
                     reasoningMode,
                     profileRevision: profileView.revision,
                     model: modelOptionName(effectiveModel) || undefined,
-                    ...(logicalModelId ? { logicalModelId } : requestConfig.channelId ? { channelId: requestConfig.channelId, channelModelKey: modelOptionName(effectiveModel) || undefined } : {}),
+                    ...(logicalModelId ? { logicalModelId } : requestConfig?.channelId ? { channelId: requestConfig.channelId, channelModelKey: modelOptionName(effectiveModel) || undefined } : {}),
                     skillIds: [...new Set([...selectedSkillIds, ...resolveSkillMentions(value, installedSkills).map((skill) => skill.skillId)])],
                     focusNodeIds: selectedNodeIds.length <= 8 ? selectedNodeIds : [],
                     permissionMode,

@@ -116,9 +116,9 @@ export const router = createBrowserRouter([
         element: <AuthenticatedWorkspaceLayout />,
         errorElement: <RouteErrorPage />,
         children: [
-            { path: "/", element: deferred(<CreatePage />) },
-            { path: "/create", element: deferred(<CreatePage />) },
-            { path: "/inspirations", element: deferred(<InspirationsPage />) },
+            { path: "/", element: <Navigate to="/intelligence" replace /> },
+            { path: "/create", element: <RequireFeature feature="shortDramaEnabled">{deferred(<CreatePage />)}</RequireFeature> },
+            { path: "/inspirations", element: <RequireFeature feature="shortDramaEnabled">{deferred(<InspirationsPage />)}</RequireFeature> },
             {
                 path: "/tasks",
                 element: (

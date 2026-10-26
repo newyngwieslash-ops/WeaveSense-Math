@@ -39,22 +39,31 @@ function toolItem(slug: NavigationToolSlug, to: string): WorkspaceNavItem {
     return { id: slug, title: tool?.label ?? slug, icon: tool?.icon, to };
 }
 
-function buildNav(features: FeatureAvailability): { groups: WorkspaceNavGroup[]; footer: WorkspaceNavItem[] } {
+export function buildNav(features: FeatureAvailability): { groups: WorkspaceNavGroup[]; footer: WorkspaceNavItem[] } {
     const groups: WorkspaceNavGroup[] = [
         {
             items: [
-                { ...toolItem("create", "/"), id: "home", title: "创作" },
-                { ...toolItem("inspirations", "/inspirations"), title: "灵感" },
-                { ...toolItem("intelligence", "/intelligence"), title: "情报" },
-                { ...toolItem("projects", "/projects"), title: "短剧 Agent" },
-                { ...toolItem("canvas", "/canvas"), title: "自由画布" },
+                { ...toolItem("intelligence", "/intelligence"), title: "情报中心" },
+                { ...toolItem("canvas", "/canvas"), title: "研判画布" },
+                {
+                    ...toolItem("skills", "/skills"), title: "行业包与技能",
+                    children: [
+                        { id: "industry-packs", title: "行业包", to: "/intelligence/packs" },
+                        ...(features.pluginCenterEnabled ? [toolItem("plugins", "/plugins")] : []),
+                    ],
+                },
+                { ...toolItem("assets", "/assets"), title: "数据资产" },
+                ...(features.taskCenterEnabled ? [{ ...toolItem("tasks", "/tasks"), title: "任务记录", icon: HistoryIcon }] : []),
             ],
         },
-        {
-            heading: "资源与工具",
-            items: [{ ...toolItem("assets", "/assets"), title: "资产" }, { ...toolItem("skills", "/skills"), title: "技能" }, ...(features.pluginCenterEnabled ? [{ ...toolItem("plugins", "/plugins"), title: "插件" }] : [])],
-        },
-        ...(features.taskCenterEnabled ? [{ items: [{ ...toolItem("tasks", "/tasks"), title: "创作历史", icon: HistoryIcon }] }] : []),
+        ...(features.shortDramaEnabled ? [{
+            heading: "短剧创作",
+            items: [
+                toolItem("create", "/create"),
+                toolItem("inspirations", "/inspirations"),
+                { ...toolItem("projects", "/projects"), title: "短剧 Agent" },
+            ],
+        }] : []),
     ];
 
     // 管理、设置和退出登录不再占据参考站式侧栏底部，而是通过用户卡片菜单进入。
@@ -103,7 +112,7 @@ function WorkspaceSidebarProfile({ collapsed, user, onExpand, onCollapse }: { co
                         {!collapsed ? (
                             <span className="app-workspace-sidebar-profile-copy">
                                 <strong>{profileName}</strong>
-                                <span>创作工作台</span>
+                                <span>情报与研判工作台</span>
                             </span>
                         ) : null}
                     </button>
@@ -153,7 +162,7 @@ function WorkspaceSwitcher({ collapsed, onNavigate }: { collapsed: boolean; onNa
                     />
                     <span className="flex min-w-0 flex-col">
                         <span className="app-workspace-brand-wordmark truncate text-[var(--fs-body)] leading-none font-semibold">{appearance.brandName}</span>
-                        <span className="mt-1 truncate text-[var(--fs-label)] leading-none text-foreground/60">创作工作台</span>
+                        <span className="mt-1 truncate text-[var(--fs-label)] leading-none text-foreground/60">情报与研判工作台</span>
                     </span>
                 </span>
             </Link>
@@ -178,7 +187,7 @@ function NavItem({
     level?: number;
     collapsed?: boolean;
 }) {
-    const isActive = activeId === item.id || (item.id === "settings" && activeId.startsWith("settings:"));
+    const isActive = activeId === item.id || item.children?.some((child) => child.id === activeId) || (item.id === "settings" && activeId.startsWith("settings:"));
     const hasChildren = Boolean(item.children?.length);
     const [isOpen, setIsOpen] = useState(false);
     const reducedMotion = useReducedMotion();
@@ -334,7 +343,7 @@ export function WorkspaceSidebarNav({ collapsed, onNavigate, onOpenSearch, onExp
     const { handleLogout } = useWorkspaceLogout();
     const { groups, footer } = useMemo(() => buildNav(features), [features]);
 
-    const slug = pathname.split("/").filter(Boolean)[0] || "home";
+    const slug = pathname === "/intelligence/packs" ? "industry-packs" : pathname.split("/").filter(Boolean)[0] || "intelligence";
     const section = searchParams.get("section");
     const activeId = slug === "settings" && section ? `settings:${section}` : slug;
 

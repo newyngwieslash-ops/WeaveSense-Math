@@ -12,6 +12,7 @@ import { createCanvasNode } from "@/lib/canvas/canvas-project-domain";
 import { isAudioFile } from "@/lib/canvas/canvas-project-generation";
 import { fitNodeSize, VIDEO_NODE_MAX_SIZE } from "@/lib/canvas/canvas-node-size";
 import { CANVAS_UPLOAD_ACCEPT, createFileUploadPlaceholder, uploadNodeType, uploadPercent } from "@/lib/canvas/canvas-file-upload";
+import { readDataSourceFile } from "@/lib/canvas/data-source-file";
 import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
 import { uploadMediaFile } from "@/services/file-storage";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
@@ -161,20 +162,23 @@ export function useCanvasUpload({ canvasId, domainProjectId, nodesRef, selectedN
             const id = replaceId || `upload-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
             activeUploadsRef.current.add(id);
             const progress = startUploadStatus(replaceId ? "替换文件" : "上传文件", "读取文件信息", domainProjectId ? 4 : 3);
+            let replacementBefore: CanvasNodeData | undefined;
+            let replacementPending: CanvasNodeData | undefined;
             try {
                 const placeholder = await createFileUploadPlaceholder(id, file, position);
                 setNodes((current) =>
                     replaceId
-                        ? current.map((item) =>
-                              item.id === id
-                                  ? {
-                                        ...item,
-                                        width: placeholder.width,
-                                        height: placeholder.height,
-                                        metadata: { ...item.metadata, fileUpload: "uploading", fileUploadProgress: undefined, status: undefined, size: undefined, errorDetails: undefined },
-                                    }
-                                  : item,
-                          )
+                        ? current.map((item) => {
+                              if (item.id !== id) return item;
+                              replacementBefore = item;
+                              replacementPending = {
+                                  ...item,
+                                  width: placeholder.width,
+                                  height: placeholder.height,
+                                  metadata: { ...item.metadata, fileUpload: "uploading", fileUploadProgress: undefined, status: undefined, size: undefined, errorDetails: undefined },
+                              };
+                              return replacementPending;
+                          })
                         : [...current, placeholder],
                 );
                 selectInsertedNode(id, "close");
@@ -183,13 +187,22 @@ export function useCanvasUpload({ canvasId, domainProjectId, nodesRef, selectedN
                     const percent = uploadPercent(loaded, total);
                     if (percent === undefined || percent === lastPercent) return;
                     lastPercent = percent;
-                    setNodes((current) => current.map((item) => (item.id === id ? { ...item, metadata: { ...item.metadata, fileUploadProgress: percent } } : item)));
+                    setNodes((current) => current.map((item) => {
+                        if (item.id !== id) return item;
+                        if (replacementPending && (item.metadata?.fileUpload !== "uploading" || item.metadata?.fileUploadProgress !== replacementPending.metadata?.fileUploadProgress)) return item;
+                        if (replacementPending) replacementPending = { ...replacementPending, metadata: { ...replacementPending.metadata, fileUploadProgress: percent } };
+                        return { ...item, metadata: { ...item.metadata, fileUploadProgress: percent } };
+                    }));
                     progress.update(percent === 100 ? "文件已传输，正在保存与处理" : `已上传 ${percent}%`, 2);
                 };
                 progress.update("上传文件并同步资源", 2);
                 let metadata: CanvasNodeData["metadata"];
                 if (placeholder.type === CanvasNodeType.Image) {
                     metadata = imageMetadata(await uploadImage(file, onProgress));
+                } else if (placeholder.type === CanvasNodeType.DataSource) {
+                    const dataSource = await readDataSourceFile(file);
+                    const resource = await uploadResourceFile(file, "file", { fileName: file.name }, onProgress);
+                    metadata = { content: dataSource.rawText, dataSource, storageKey: resourceStorageKey(resource.id), mimeType: file.type, bytes: file.size, status: "success" };
                 } else if (placeholder.type === CanvasNodeType.Text) {
                     const content = await file.text();
                     const resource = await uploadResourceFile(file, "file", { fileName: file.name }, onProgress);
@@ -244,8 +257,9 @@ export function useCanvasUpload({ canvasId, domainProjectId, nodesRef, selectedN
                     },
                 };
                 setNodes((current) => current.map((item) => (item.id === id ? { ...item, type: node.type, metadata: node.metadata } : item)));
-                if (domainProjectId) progress.update("写入项目资产", 4);
-                const persisted = await persistMediaNode(node);
+                const isDataSource = node.type === CanvasNodeType.DataSource;
+                if (domainProjectId && !isDataSource) progress.update("写入项目资产", 4);
+                const persisted = isDataSource || await persistMediaNode(node);
                 const localOnly = metadata.storageKey && !resourceIdFromStorageKey(metadata.storageKey);
                 progress.done(localOnly ? "已保存在本机，尚未上传到服务器" : persisted ? "文件已添加到画布" : "文件已添加，项目资产待重试");
                 if (localOnly) message.warning("文件已保存在本机，尚未上传到服务器");
@@ -256,13 +270,8 @@ export function useCanvasUpload({ canvasId, domainProjectId, nodesRef, selectedN
                     current.map((item) =>
                         item.id !== id
                             ? item
-                            : original?.metadata?.content
-                              ? {
-                                    ...item,
-                                    width: original.width,
-                                    height: original.height,
-                                    metadata: original.metadata,
-                                }
+                            : original
+                              ? replacementBefore && replacementPending ? rollbackUploadReplacement(item, replacementBefore, replacementPending) : item
                               : { ...item, metadata: { ...item.metadata, fileUpload: "error", fileUploadProgress: undefined, errorDetails: details } },
                     ),
                 );
@@ -521,7 +530,7 @@ export function useCanvasUpload({ canvasId, domainProjectId, nodesRef, selectedN
         async (nodeId: string, file: File) => {
             const currentNode = nodesRef.current.find((node) => node.id === nodeId);
             if (!currentNode || !uploadNodeType(file)) return false;
-            const typedNode = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text].includes(currentNode.type as CanvasNodeType);
+            const typedNode = [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text, CanvasNodeType.DataSource].includes(currentNode.type as CanvasNodeType);
             if (typedNode && uploadNodeType(file) !== currentNode.type) return false;
             return Boolean(await createFileNode(file, currentNode.position, nodeId));
         },
@@ -603,7 +612,7 @@ export function useCanvasUpload({ canvasId, domainProjectId, nodesRef, selectedN
                 if (!file || !uploadNodeType(file)) return;
                 if (target?.nodeId) {
                     const targetNode = nodesRef.current.find((node) => node.id === target.nodeId);
-                    const compatible = targetNode && (targetNode.type === uploadNodeType(file) || ![CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text].includes(targetNode.type as CanvasNodeType));
+                    const compatible = targetNode && (targetNode.type === uploadNodeType(file) || ![CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio, CanvasNodeType.Text, CanvasNodeType.DataSource].includes(targetNode.type as CanvasNodeType));
                     if (!compatible) {
                         message.warning("请选择与当前节点相同类型的媒体文件");
                         return;
@@ -899,6 +908,25 @@ export function useCanvasUpload({ canvasId, domainProjectId, nodesRef, selectedN
         uploadModalOpen,
         uploadStatus,
         uploadTimelineMedia,
+    };
+}
+
+// Restore only fields still owned by this upload; unrelated or later edits win.
+function rollbackUploadReplacement(current: CanvasNodeData, before: CanvasNodeData, pending: CanvasNodeData): CanvasNodeData {
+    const metadata = { ...current.metadata };
+    for (const key of ["fileUpload", "fileUploadProgress", "status", "size", "errorDetails"] as const) {
+        if (!Object.is(metadata[key], pending.metadata?.[key])) continue;
+        if (before.metadata && Object.prototype.hasOwnProperty.call(before.metadata, key)) {
+            Object.assign(metadata, { [key]: before.metadata[key] });
+        } else {
+            delete metadata[key];
+        }
+    }
+    return {
+        ...current,
+        width: current.width === pending.width ? before.width : current.width,
+        height: current.height === pending.height ? before.height : current.height,
+        metadata: !before.metadata && !Object.keys(metadata).length ? undefined : metadata,
     };
 }
 

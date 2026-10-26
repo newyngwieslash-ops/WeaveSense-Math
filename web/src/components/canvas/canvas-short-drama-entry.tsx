@@ -154,7 +154,12 @@ function CanvasEntryFilmMark() {
     );
 }
 
-export function CanvasFreeformEmptyState({ commands }: { commands: CanvasCreateCommand[] }) {
+export function CanvasFreeformEmptyState({ commands, onOpenAgent, onImportLedger, onOpenTopics }: {
+    commands: CanvasCreateCommand[];
+    onOpenAgent: () => void;
+    onImportLedger: () => void;
+    onOpenTopics: () => void;
+}) {
     const theme = canvasThemes[useActiveTheme()];
     const [createOpen, setCreateOpen] = useState(false);
     const createCommands = commands.map((command) => ({
@@ -171,9 +176,25 @@ export function CanvasFreeformEmptyState({ commands }: { commands: CanvasCreateC
                 data-canvas-no-zoom
                 style={{ background: theme.node.fill, borderColor: theme.node.edge, boxShadow: theme.node.shadow, color: theme.node.text }}
             >
-                <h2 className="text-base font-semibold">自由空白画布</h2>
+                <h2 className="text-base font-semibold">研判画布</h2>
                 <p className="mt-1 text-xs" style={{ color: theme.node.muted }}>
-                    不预设流程，从任意一种素材开始创作。
+                    从研究问题、台账数据或情报专题开始建模。
+                </p>
+                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                    {[
+                        { label: "Agent 建模", action: onOpenAgent },
+                        { label: "台账导入", action: onImportLedger },
+                        { label: "专题流", action: onOpenTopics },
+                    ].map(({ label, action }) => (
+                        <button key={label} type="button" onClick={action}
+                            className="rounded-[var(--r-md)] border px-3 py-2 text-xs outline-none focus-visible:ring-2"
+                            style={{ background: theme.toolbar.panel, borderColor: theme.node.edge, "--tw-ring-color": theme.accent.primary } as CSSProperties}>
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                <p className="mt-3 text-[var(--fs-label)]" style={{ color: theme.node.muted }}>
+                    台账导入先创建数据源，再点击节点内「导入」；专题流进入专题页，选择专题后投送到画布。
                 </p>
                 <Popover
                     arrow={false}
@@ -197,7 +218,7 @@ export function CanvasFreeformEmptyState({ commands }: { commands: CanvasCreateC
                     </button>
                 </Popover>
                 <p className="mt-4 text-[var(--fs-label)]" style={{ color: theme.node.muted }}>
-                    点击 + 添加文本、图片、视频、音频或导入素材
+                    点击 + 添加数据源、算子、图表、简报或通用节点
                 </p>
             </div>
         </div>

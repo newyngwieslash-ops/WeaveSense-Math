@@ -2,11 +2,14 @@ import { fitNodeSize } from "@/lib/canvas/canvas-node-size";
 import { NODE_DEFAULT_SIZE } from "@/constant/canvas";
 import { CanvasNodeType, type CanvasNodeData, type Position } from "@/types/canvas";
 
-export const CANVAS_UPLOAD_ACCEPT = "image/*,video/*,audio/*,.mp3,.wav,text/plain,text/markdown,.txt,.md,.markdown";
+import { dataSourceFileKind } from "@/lib/canvas/data-source-file";
+
+export const CANVAS_UPLOAD_ACCEPT = "image/*,video/*,audio/*,.mp3,.wav,text/plain,text/markdown,.txt,.md,.markdown,.csv,.tsv,.jsonl,.json,text/csv,text/tab-separated-values,application/csv,application/json,application/jsonl,application/x-jsonlines,application/ndjson,application/x-ndjson";
 export function isTextUploadFile(file: Pick<File, "name" | "type">) {
-    return /\.(txt|md|markdown)$/i.test(file.name) || file.type === "text/plain" || file.type === "text/markdown";
+    return !dataSourceFileKind(file) && (/\.(txt|md|markdown)$/i.test(file.name) || file.type === "text/plain" || file.type === "text/markdown");
 }
 export function uploadNodeType(file: Pick<File, "name" | "type">) {
+    if (dataSourceFileKind(file)) return CanvasNodeType.DataSource;
     if (file.type.startsWith("image/")) return CanvasNodeType.Image;
     if (file.type.startsWith("video/")) return CanvasNodeType.Video;
     if (file.type.startsWith("audio/") || /\.(mp3|wav)$/i.test(file.name)) return CanvasNodeType.Audio;

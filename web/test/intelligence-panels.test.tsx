@@ -527,6 +527,8 @@ describe("Views (OverviewView, KeywordsView, LibraryView, JobsView, PacksView) a
         expect(reportDraft.citations).toHaveLength(1);
         expect(reportDraft.citations?.[0]).toEqual({
             document_id: "doc_1",
+            evidence_id: "ev_1",
+            revision: 1,
             title: "投放周报",
             snippet: "反转完播率 +45%",
         });

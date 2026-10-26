@@ -69,7 +69,7 @@ export const deleteMessage = (id: string, msgId: string) => http.delete<FlowMess
 export const callTool = (id: string, callId: string, name: string, args: Record<string, unknown>) => http.post<ToolResult>(`/agent/conversations/${encodeURIComponent(id)}/tool-calls`, { callId, name, arguments: args });
 export const listMonitors = (workspaceId: string) => http.get<IntelMonitor[]>("/intelligence/monitors", { headers: { "X-Workspace-Id": workspaceId } });
 
-export type ReportCitation = { evidence_id: string; document_id: string; source_id: string; title?: string; revision: number; chunk_index: number; quote: string; truncated: boolean; chunk_text?: string | null };
+export type ReportCitation = { evidence_id: string; document_id: string; source_id: string; title?: string; revision: number; chunk_index: number; quote: string; truncated: boolean; chunk_text?: string | null; char_start?: number; char_end?: number };
 export type ReportClaim = { idx: number; text: string; kind: "source_statement" | "cross_source_verified" | "model_inference"; citations: ReportCitation[] };
 export type ReportCoverage = { truncated?: boolean; truncated_citations?: string[]; source_failures?: { source_id: string; error: string }[]; conflicting_evidence?: { document_id: string; revision: number; note: string }[] };
 export type ReportSummary = { id: string; kind: "report" | "brief"; title: string; coverage: ReportCoverage; claims: number; created_at: string; scheduled_at?: string };
@@ -282,6 +282,8 @@ export const downloadMedia = (workspaceId: string, documentId: string, objectKey
 export type CanvasHandoffKind = "report" | "brief" | "topic" | "document" | "analysis";
 export type CanvasHandoffCitation = {
     document_id: string;
+    evidence_id?: string;
+    revision?: number;
     title?: string;
     url?: string;
     snippet?: string;

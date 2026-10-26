@@ -26,16 +26,16 @@ import {
     UserRound,
 } from "lucide-react";
 
-import { CanvasCreateMenu, type CanvasCreateCommand } from "@/components/canvas/canvas-create-menu";
+import { CanvasCreateMenu } from "@/components/canvas/canvas-create-menu";
+import { useCanvasCreateCommands } from "@/components/canvas/use-canvas-create-commands";
 import { ASSET_CATEGORY_OPTIONS } from "@/lib/asset-category";
 import { aceternityMotion } from "@/lib/aceternity-motion";
 import { SpotlightSurface } from "@/components/ui/aceternity/spotlight-surface";
 import { canvasThemes } from "@/lib/canvas-theme";
 import { canvasNodeAssetCategory } from "@/lib/canvas/canvas-node-asset";
 import { isCanvasFolderNode } from "@/lib/canvas/canvas-frame";
-import { resolveAddNodeMenuCommands, type AddNodeMenuContext } from "@/lib/canvas/tool-registry";
+import type { AddNodeMenuContext } from "@/lib/canvas/tool-registry";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
-import { usePluginStore } from "@/stores/use-plugin-store";
 import { CanvasNodeType, type CanvasNodeData, type CanvasNodeTypeId, type CanvasWorkspaceMode, type ContextMenuState, type Position } from "@/types/canvas";
 
 type CanvasAssetCategory = NonNullable<NonNullable<CanvasNodeData["metadata"]>["assetCategory"]>;
@@ -334,13 +334,10 @@ function AddNodeContextMenu({
     onOpenProjectCharacters: () => void;
 }) {
     const theme = canvasThemes[useActiveTheme()];
-    const installations = usePluginStore((state) => state.installations);
-    const pluginStates = usePluginStore((state) => state.pluginStates);
     const left = getSubmenuLeft(parentPosition.left);
     const createContext: AddNodeMenuContext = {
         workspaceMode,
         isProjectLinked,
-        enabledPluginIds: new Set(installations.filter((item) => pluginStates[item.manifest.id]?.effectiveEnabled ?? item.enabled).map((item) => item.manifest.id)),
         handlers: {
             onAddText: () => onAddNode(CanvasNodeType.Text),
             onAddImage: () => onAddNode(CanvasNodeType.Image),
@@ -359,14 +356,7 @@ function AddNodeContextMenu({
             onOpenProjectCharacters,
         },
     };
-    const commands: CanvasCreateCommand[] = resolveAddNodeMenuCommands(createContext).map((command) => ({
-        id: command.id,
-        label: command.label,
-        icon: command.icon,
-        badge: command.badge,
-        section: command.section,
-        onClick: () => command.run(createContext),
-    }));
+    const commands = useCanvasCreateCommands(createContext);
 
     return (
         <SpotlightSurface

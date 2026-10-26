@@ -45,11 +45,16 @@ export function buildReportHandoffDraft(detail: ReportDetail): CanvasHandoffDraf
     const citations: CanvasHandoffCitation[] = [];
     for (const claim of detail.claims ?? []) {
         for (const cit of claim.citations ?? []) {
-            const key = `${cit.document_id}:${cit.quote || ""}`;
+            // 同一文档同一证据片段（不同 evidence_id 指向同一段）在画布草稿里只保留一条。
+            const key = JSON.stringify([cit.revision, cit.document_id, cit.char_start, cit.char_end, cit.quote]);
             if (seen.has(key)) continue;
             seen.add(key);
             citations.push({
                 document_id: cit.document_id,
+                ...(cit.evidence_id !== undefined ? { evidence_id: cit.evidence_id } : {}),
+                ...(cit.revision !== undefined ? { revision: cit.revision } : {}),
+                ...(cit.char_start !== undefined ? { char_start: cit.char_start } : {}),
+                ...(cit.char_end !== undefined ? { char_end: cit.char_end } : {}),
                 title: cit.title || cit.document_id,
                 snippet: cit.quote,
             });
@@ -61,7 +66,7 @@ export function buildReportHandoffDraft(detail: ReportDetail): CanvasHandoffDraf
         title: detail.title,
         content: sections.filter(Boolean).join("\n\n"),
         citations,
-        defaultPrompt: "请基于该情报报告节点，拆解 3~6 个核心分镜脚本并生成配套视觉画面节点",
+        defaultPrompt: "请基于该情报报告节点，在画布构建「数据源 → 指标计算/过滤 → 区域聚合 → 趋势图表与研判简报」分析模型",
     };
 }
 
@@ -82,7 +87,7 @@ export function buildTopicHandoffDraft(topic: IntelTopic): CanvasHandoffDraft {
         title: topic.title,
         content: parts.join("\n\n") || topic.title,
         citations: [],
-        defaultPrompt: "请围绕该研究专题节点策划角色设定、视觉风格参考与分镜大纲节点",
+        defaultPrompt: "请围绕该研究专题节点构建多源交叉关联（Join）、指标折算（Compute）与高风险 Top-N 研判模型",
     };
 }
 
@@ -105,7 +110,7 @@ export function buildDocumentHandoffDraft(doc: LibraryDocument): CanvasHandoffDr
                 url: doc.url,
             },
         ],
-        defaultPrompt: "请提炼该情报素材的叙事看点，在画布上生成分镜脚本与视觉画面节点",
+        defaultPrompt: "请提取该情报素材中的监测指标与异常实体，在画布上建立结构化建模算子与图表节点",
     };
 }
 
@@ -146,7 +151,7 @@ export function buildIntelHandoffAgentPrefill(options: {
 
     const reference = intelNodeId ? options.references.find((item) => item.nodeId === intelNodeId) : undefined;
     const mention = reference ? canvasResourceMentionToken(reference) : "";
-    const instruction = intelPrompt || (reference ? "请基于该情报节点拆解分镜脚本与视觉画面节点" : "");
+    const instruction = intelPrompt || (reference ? "请基于该情报数据源节点构建计算、聚合与图表研判模型" : "");
     const prefillText = [mention, instruction].filter(Boolean).join(" ");
 
     const cleanedSearchParams = new URLSearchParams(options.searchParams);
@@ -184,7 +189,7 @@ export function CanvasHandoffModal({
     const [nodeTitle, setNodeTitle] = useState(draft?.title ?? "");
     const [content, setContent] = useState(draft?.content ?? "");
     const [openAgent, setOpenAgent] = useState(true);
-    const [agentPrompt, setAgentPrompt] = useState(draft?.defaultPrompt ?? "请基于该情报节点拆解分镜脚本与视觉画面节点");
+    const [agentPrompt, setAgentPrompt] = useState(draft?.defaultPrompt ?? "请基于该情报节点构建数据源、计算、聚合与图表研判模型");
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
@@ -194,7 +199,7 @@ export function CanvasHandoffModal({
         setNodeTitle(draft.title);
         setContent(draft.content);
         setOpenAgent(true);
-        setAgentPrompt(draft.defaultPrompt ?? "请基于该情报节点拆解分镜脚本与视觉画面节点");
+        setAgentPrompt(draft.defaultPrompt ?? "请基于该情报节点构建数据源、计算、聚合与图表研判模型");
         void listRemoteCanvasProjects()
             .then((r) => {
                 const list = r.projects ?? [];
@@ -247,7 +252,7 @@ export function CanvasHandoffModal({
     return (
         <AppModal
             open={!!draft}
-            title="投送到画布继续创作"
+            title="投送到画布继续研判"
             onOk={() => void submit()}
             onCancel={onClose}
             confirmLoading={submitting}
@@ -283,7 +288,7 @@ export function CanvasHandoffModal({
                             />
                         </Form.Item>
                     )}
-                    <Form.Item label="画布文本节点标题">
+                    <Form.Item label="画布情报源节点标题">
                         <Input value={nodeTitle} onChange={(e) => setNodeTitle(e.target.value)} />
                     </Form.Item>
                     <Form.Item label="节点正文（投送时将自动附加情报来源与证据引用脚标）">
@@ -295,15 +300,15 @@ export function CanvasHandoffModal({
                         </Checkbox>
                     </Form.Item>
                     {openAgent && (
-                        <Form.Item label="画布 Pi Agent 预填创作指令">
+                        <Form.Item label="画布 Pi Agent 预填研判指令">
                             <Input.TextArea
                                 rows={2}
                                 value={agentPrompt}
                                 onChange={(e) => setAgentPrompt(e.target.value)}
-                                placeholder="例如：基于该情报节点拆解分镜脚本与视觉画面节点"
+                                placeholder="例如：基于该情报节点构建数据源、计算与图表研判模型"
                             />
                             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                进入画布后将自动关联 @情报节点 并填入上述指令，供你确认后发起分镜或视觉生成。
+                                进入画布后将自动关联 @情报节点 并填入上述指令，供你确认后发起建模与研判。
                             </Typography.Text>
                         </Form.Item>
                     )}

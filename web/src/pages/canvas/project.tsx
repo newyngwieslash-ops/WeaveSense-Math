@@ -9,7 +9,7 @@ import { canCancelGenerationTask } from "@/lib/generation-task-display";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { loadAssetsForUse } from "@/services/user-data-sync";
 import { canvasAssetHandoffIds } from "@/lib/canvas/canvas-asset-handoff";
 import { useEffectiveConfig } from "@/stores/use-config-store";
@@ -32,7 +32,10 @@ import { flushCanvasStorePersistence } from "@/stores/canvas/use-canvas-store";
 import { ensureCanvasNodeAsset } from "@/services/project-asset-sync";
 import { useCanvasThemeStore, useCanvasThemeScope } from "@/stores/canvas/use-canvas-theme-store";
 import { useUserStore } from "@/stores/use-user-store";
-import { App, Button } from "antd";
+import { App, Button, Dropdown, Select } from "antd";
+import { appendIndustryBlueprint, INDUSTRY_BLUEPRINTS, type IndustryBlueprintId } from "@/lib/canvas/canvas-industry-blueprints";
+import { listIntelWorkspaces, listSkills as listIndustrySkills } from "@/services/api/intelligence";
+import type { CanvasCreateCommand } from "@/components/canvas/canvas-create-menu";
 import { ArrowLeftRight } from "lucide-react";
 import { AppModal } from "@/components/ui/product/app-modal";
 import { getNodeSpec } from "@/constant/canvas";
@@ -112,6 +115,11 @@ import { CanvasOperationChangeToast, CanvasMergeStatusToast, CanvasUploadStatusT
 import { getGenerationCount } from "@/lib/canvas/canvas-project-generation";
 import { cancelGenerationTask } from "@/services/api/task-center";
 import { CanvasTopBar } from "./canvas-project-top-bar";
+import { CanvasWorkflowRunStatus } from "./canvas-workflow-run-status";
+import { MarkdownReportContext, type MarkdownManagedReport } from "@/components/canvas/nodes/markdown-node";
+import { getCanvasWorkflowRun, retryCanvasWorkflowSave } from "@/services/api/canvas-workflow";
+import { useCanvasWorkflowRun } from "./use-canvas-workflow-run";
+import { refreshCanvasAfterAgent } from "@/services/user-data-sync";
 import { CanvasSyncStatus } from "./canvas-sync-status";
 import { LibTVImportDialog } from "./components/libtv-import-dialog";
 import { TapNowImportDialog } from "./components/tapnow-import-dialog";
@@ -207,6 +215,7 @@ function CanvasViewportPage() {
     const { message, modal } = App.useApp();
     const queryClient = useQueryClient();
     const params = useParams<{ id: string }>();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const projectId = params.id || "";
     const canvasStorageScope = getActiveUserScope();
@@ -402,6 +411,10 @@ function CanvasViewportPage() {
         cleanupAssetImages,
         cleanupCanvasFiles,
     });
+    const canvasWorkflow = useCanvasWorkflowRun(projectId || undefined, (snapshot) => {
+        // 服务端已把权威输出写回画布；拉取云端结果并保护未保存的本地编辑。
+        if (snapshot.status === "succeeded" || snapshot.status === "partial") void refreshCanvasAfterAgent(projectId);
+    });
 
     const openAgent = useCallback(() => {
         openAssistant();
@@ -543,6 +556,7 @@ function CanvasViewportPage() {
     const nodeGraphContext = useMemo<CanvasNodeGraphContextValue>(
         () => ({
             getUpstreamNodes: (nodeId: string) => getContextResourceNodes(nodeId, nodes, connections),
+            connections,
             dataflow: evaluateCanvasDataflow(nodes, connections),
         }),
         [connections, nodes],
@@ -2534,6 +2548,45 @@ function CanvasViewportPage() {
         }
         focusCanvasNode(styleNode.id);
     }, [focusCanvasNode, message, nodesRef]);
+    const [industryBlueprintId, setIndustryBlueprintId] = useState<IndustryBlueprintId | null>(null);
+    const [industryWorkspaceSelection, setIndustryWorkspaceSelection] = useState<{ scope: string; id: string } | null>(null);
+    const industryUserScope = useUserStore((state) => state.user?.id || "");
+    const industryWorkspaceId = industryWorkspaceSelection?.scope === industryUserScope ? industryWorkspaceSelection.id : "";
+    const industryWorkspaces = useQuery({
+        queryKey: ["industry-blueprint-workspaces", industryUserScope],
+        queryFn: listIntelWorkspaces,
+        enabled: Boolean(industryBlueprintId && industryUserScope),
+    });
+    const industrySkills = useQuery({
+        queryKey: ["industry-blueprint-installed-skills", industryUserScope, industryWorkspaceId],
+        queryFn: () => listIndustrySkills(industryWorkspaceId),
+        enabled: Boolean(industryBlueprintId && industryUserScope && industryWorkspaceId),
+        staleTime: 0,
+    });
+    const insertIndustryBlueprint = () => {
+        if (!industryBlueprintId) return;
+        const result = appendIndustryBlueprint({
+            blueprintId: industryBlueprintId,
+            nodes: nodesRef.current,
+            connections: connectionsRef.current,
+            workspaceId: industryWorkspaceId,
+            installedSkills: industrySkills.isSuccess && !industrySkills.isFetching ? industrySkills.data.installed : [],
+            origin: getCanvasCenter(),
+        });
+        setNodes(result.nodes);
+        setConnections(result.connections);
+        setSelectedNodeIds(new Set(result.handoff.nodeIds));
+        setIndustryBlueprintId(null);
+        focusCanvasNode(result.handoff.nodeIds[0]);
+        message.info(result.handoff.blockers.includes("skill-installation-required") ? "已追加示例。所需 Skill 需安装或核验；禁止受管试跑。" : "已追加示例及固定引用；受管试跑待接入 T12/T17，不可发布报告。");
+    };
+    const industryBlueprintCommands: CanvasCreateCommand[] = INDUSTRY_BLUEPRINTS.map((blueprint) => ({
+        id: `industry-${blueprint.id}`,
+        label: `${blueprint.label}（示例）`,
+        icon: <ArrowLeftRight size={16} />,
+        section: "workflow",
+        onClick: () => setIndustryBlueprintId(blueprint.id),
+    }));
     const freeformCreateCommands = useCanvasCreateCommands({
         workspaceMode,
         isProjectLinked: Boolean(shortDramaEnabled && currentProject?.projectId),
@@ -2563,7 +2616,12 @@ function CanvasViewportPage() {
     });
     const emptyCanvasState =
         emptyStateKind === "freeform" ? (
-            <CanvasFreeformEmptyState commands={freeformCreateCommands} />
+            <CanvasFreeformEmptyState
+                commands={[...freeformCreateCommands, ...industryBlueprintCommands]}
+                onOpenAgent={openAgent}
+                onImportLedger={() => createNode(CanvasNodeType.DataSource)}
+                onOpenTopics={() => navigate("/intelligence/topics")}
+            />
         ) : emptyStateKind === "linked" ? (
             <CanvasLinkedProjectEmptyState
                 projectName={linkedProjectQuery.data?.project.name || currentProject?.title || "项目画布"}
@@ -2588,6 +2646,43 @@ function CanvasViewportPage() {
                 onAddScript={() => createNode(CanvasNodeType.Script)}
             />
         ) : null;
+    const workflowReportSnapshot = canvasWorkflow.state.snapshot;
+    const markdownReports = useMemo<Record<string, MarkdownManagedReport | undefined>>(() => {
+        const reports: Record<string, MarkdownManagedReport | undefined> = {};
+        const result = workflowReportSnapshot?.result;
+        if (workflowReportSnapshot?.run_id && result?.report_node_id && result.report_payload) {
+            reports[result.report_node_id] = {
+                runId: workflowReportSnapshot.run_id,
+                nodeId: result.report_node_id,
+                body: result.report_payload.body || "",
+                claims: result.report_payload.claims || [],
+                material_scope: result.report_payload.material_scope || {},
+                structured: result.report_payload.structured || {},
+                reportId: workflowReportSnapshot.report_id || result.report_id,
+                status: workflowReportSnapshot.report_id || result.report_id ? "succeeded" : result.status === "partial" ? "partial" : "ready",
+                error: result.error || workflowReportSnapshot.error,
+            };
+        }
+        return reports;
+    }, [workflowReportSnapshot]);
+    // 仅保存重试走真实接口；冻结的 run 不会重跑模型。
+    const saveMarkdownReport = useCallback(async (runId: string): Promise<{ status: "partial" | "succeeded"; report_id?: string; error?: string }> => {
+        await retryCanvasWorkflowSave(projectId, runId);
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            try {
+                const snapshot = await getCanvasWorkflowRun(projectId, runId);
+                const reportId = snapshot.report_id || snapshot.result?.report_id;
+                if (reportId) return { status: "succeeded", report_id: reportId };
+                if (snapshot.status === "failed") return { status: "partial", error: snapshot.error || snapshot.result?.error || "报告保存失败" };
+            } catch {
+                // 轮询请求失败时继续等待下一次；保存重试仍以服务端状态为准。
+            }
+        }
+        return { status: "partial", error: "报告保存仍在进行，可稍后重试保存（不会重跑模型）" };
+    }, [projectId]);
+    const markdownReportContext = useMemo(() => ({ reports: markdownReports, saveReport: (runId: string) => saveMarkdownReport(runId) }), [markdownReports, saveMarkdownReport]);
+
     if (!projectLoaded && loadError)
         return (
             <main className="flex h-full flex-col items-center justify-center gap-4">
@@ -2599,7 +2694,7 @@ function CanvasViewportPage() {
     if (!projectLoaded) return <CanvasRefreshShell />;
 
     return (
-        <>
+        <MarkdownReportContext.Provider value={markdownReportContext}>
             <a
                 href="#canvas-main"
                 className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[var(--z-toast)] focus:rounded-md focus:border focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:shadow-lg"
@@ -2666,7 +2761,7 @@ function CanvasViewportPage() {
                                     onRedo={redoCanvas}
                                     onShare={() => setShareModalOpen(true)}
                                     shortcutRequestNonce={shortcutRequestNonce}
-                                    syncIcon={<CanvasSyncStatus projectId={projectId} />}
+                                    syncIcon={<><CanvasSyncStatus projectId={projectId} /><CanvasWorkflowRunStatus workflow={canvasWorkflow} revision={currentProject?.revision} /></>}
                                     onOpenSearch={() => setNodeSearchOpen(true)}
                                     projectContext={
                                         shortDramaEnabled && currentProject?.projectId
@@ -2682,6 +2777,30 @@ function CanvasViewportPage() {
                                 />
                             ) : null}
 
+                            {!focusMode ? (
+                                <div data-canvas-no-zoom className="flex items-center gap-3 border-b border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                                    <Dropdown menu={{ items: industryBlueprintCommands.map(command => ({ key: command.id, label: command.label, onClick: command.onClick })) }} trigger={["click"]}>
+                                        <Button size="small">行业蓝图（示例）</Button>
+                                    </Dropdown>
+                                    <span>追加到当前画布，不清空；受管试跑待接入 T12/T17</span>
+                                </div>
+                            ) : null}
+                            <AppModal title="追加行业蓝图示例" open={Boolean(industryBlueprintId)} onCancel={() => setIndustryBlueprintId(null)} onOk={insertIndustryBlueprint} okText="追加示例（不运行）" confirmLoading={industrySkills.isFetching}>
+                                <p>示例 fixture，非真实数据或证据，不可发布报告。已有节点和连线将保留。受管试跑待接入 T12/T17，不会运行模型或绕过审批。</p>
+                                <p>选择实际工作区以冻结已安装 Skill 的版本和哈希；未选择、未安装或读取失败时只创建需安装的草稿，不允许受管试跑。</p>
+                                <Select
+                                    aria-label="行业蓝图 Skill 工作区"
+                                    className="w-full"
+                                    allowClear
+                                    placeholder="选择已授权工作区（不默认选择）"
+                                    value={industryWorkspaceId || undefined}
+                                    loading={industryWorkspaces.isFetching}
+                                    options={industryWorkspaces.data?.map(workspace => ({ value: workspace.id, label: workspace.name }))}
+                                    onChange={(id) => setIndustryWorkspaceSelection(id ? { scope: industryUserScope, id } : null)}
+                                />
+                                {industryWorkspaces.isError || industrySkills.isError ? <p role="alert">安装库读取失败；不会使用目录版本或伪造哈希替代。可追加未绑定草稿，或重新选择工作区。</p> : null}
+                                <p><Link to="/intelligence/packs">查看行业包与安装状态</Link></p>
+                            </AppModal>
                             <CanvasNodeSearchModal
                                 open={nodeSearchOpen}
                                 nodes={nodes}
@@ -2834,7 +2953,7 @@ function CanvasViewportPage() {
 
                                     {focusMode ? (
                                         <CanvasFocusModeBar
-                                            syncIcon={<CanvasSyncStatus projectId={projectId} />}
+                                            syncIcon={<><CanvasSyncStatus projectId={projectId} /><CanvasWorkflowRunStatus workflow={canvasWorkflow} revision={currentProject?.revision} /></>}
                                             dockRevealed={focusDockRevealed}
                                             zoomPercent={viewport.k}
                                             onToggleDock={() => setFocusDockRevealed((value) => !value)}
@@ -3465,6 +3584,6 @@ function CanvasViewportPage() {
                     </div>
                 </CanvasOverlayLayerProvider>
             </main>
-        </>
+        </MarkdownReportContext.Provider>
     );
 }
