@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import { LessonEditor } from "@/components/edu/lesson-editor";
 import { ReviewChecklist } from "@/components/edu/review-checklist";
@@ -56,6 +57,7 @@ function useJob(scope: EduScope, jobId: string) {
 
 export default function TeacherAuthoring() {
     const [workspaces, setWorkspaces] = useState<IntelWorkspace[]>([]);
+    const [params] = useSearchParams();
     const [ws, setWs] = useState("");
     const scope = useMemo(() => ({ workspace: ws }), [ws]);
     const [family, setFamily] = useState("SOLID-ANGLE-02");
@@ -81,9 +83,10 @@ export default function TeacherAuthoring() {
     useEffect(() => {
         void listIntelWorkspaces().then((l) => {
             setWorkspaces(l);
-            setWs(l[0]?.id || "");
+            const want = params.get("ws");
+            setWs(want && l.some((w) => w.id === want) ? want : l[0]?.id || "");
         });
-    }, []);
+    }, [params]);
     useEffect(() => {
         if (!ws) return;
         void edu<{ id: string; name: string }[]>("get", "/classes", scope).then((r) => r.ok && setClasses(r.data));
@@ -112,6 +115,19 @@ export default function TeacherAuthoring() {
     useEffect(() => {
         if (lj?.lessonRevisionId) openLesson(lj.lessonRevisionId);
     }, [lj?.lessonRevisionId, openLesson]);
+    // 从教师首页进入：?lesson= 打开指定讲解修订；?sample= 预填原创示例题（标题标明“示例”）。
+    useEffect(() => {
+        const id = params.get("lesson");
+        if (ws && id) openLesson(id);
+    }, [ws, params, openLesson]);
+    useEffect(() => {
+        const f = params.get("sample");
+        if (f && FAMILY_TEMPLATES[f]) {
+            setFamily(f);
+            setJson(JSON.stringify(FAMILY_TEMPLATES[f].structured, null, 2));
+            setTitle(`示例：${FAMILY_TEMPLATES[f].label}`);
+        }
+    }, [params]);
 
     const pickFamily = (f: string) => {
         setFamily(f);

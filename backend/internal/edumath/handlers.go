@@ -37,6 +37,7 @@ func (h *API) Register(api *gin.RouterGroup) {
 	h.registerRegrade(g)
 	h.registerCourses(g)
 	h.registerRoster(g)
+	h.registerHome(g)
 	g.GET("/me", h.me)
 	g.POST("/roles", h.bindRole)
 	g.POST("/roles/revoke", h.revokeRole)
