@@ -1,6 +1,7 @@
 package edumath
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 
@@ -74,6 +75,36 @@ func runTeacherHome(t *testing.T, h *harness) {
 			t.Fatalf("home carries the answer")
 		}
 	}
+	// Catalog (DEV-081): search by title text and family, published filter, no answers.
+	cat := func(u, query string, hdr ...string) (int, []any, []byte) {
+		c, out, raw, _ := h.call(u, "GET", "/api/edu/catalog"+query, nil, hdr...)
+		d := data(out)
+		if d == nil || d["items"] == nil {
+			return c, nil, raw
+		}
+		return c, d["items"].([]any), raw
+	}
+	var prob model.EduProblem
+	h.db.Raw("SELECT p.* FROM edu_problems p JOIN edu_problem_revisions r ON r.problem_id = p.id WHERE r.id = ?", l0.ProblemRevisionID).Scan(&prob)
+	word := []rune(prob.Title)
+	if c, items, raw := cat("u_alice", ""); c != 200 || len(items) != 2 {
+		t.Fatalf("catalog all: %d %s", c, raw)
+	}
+	if c, items, raw := cat("u_alice", "?state=published"); c != 200 || len(items) != 1 || items[0].(map[string]any)["publicationId"] != pubID {
+		t.Fatalf("catalog published: %d %s", c, raw)
+	}
+	if c, items, raw := cat("u_alice", "?q="+url.QueryEscape(string(word[:min(2, len(word))]))+"&family="+prob.FamilyID); c != 200 || len(items) != 2 {
+		t.Fatalf("catalog by title and family: %d %s", c, raw)
+	}
+	if c, items, raw := cat("u_alice", "?q=%25%25"); c != 200 || len(items) != 0 {
+		t.Fatalf("catalog wildcard must be literal: %d %s", c, raw)
+	}
+	if c, _, raw := cat("u_alice", "?state=bogus"); c != 400 {
+		t.Fatalf("catalog bad state: %d %s", c, raw)
+	}
+	if _, _, raw := cat("u_alice", ""); tl.Answer.Exact != "" && strings.Contains(string(raw), tl.Answer.Exact) {
+		t.Fatalf("catalog carries the answer")
+	}
 	// Under second_reviewer the author cannot review her own lesson, so it leaves her queue.
 	h.db.Save(&model.EduOrgPolicy{TenantID: tenant, ReviewMode: "second_reviewer"})
 	if _, d, raw = home("u_alice"); len(d["pendingReview"].([]any)) != 0 {
@@ -89,6 +120,15 @@ func runTeacherHome(t *testing.T, h *harness) {
 	}
 	if c, _, raw = home("u_carol", "X-Workspace-Id", model.PersonalWorkspaceID("u_alice")); c < 400 {
 		t.Fatalf("carol naming alice's workspace: %d %s", c, raw)
+	}
+	if c, items, raw := cat("u_carol", ""); c != 200 || len(items) != 0 || strings.Contains(string(raw), pendingID) {
+		t.Fatalf("carol catalog: %d %s", c, raw)
+	}
+	if c, _, raw := cat("u_carol", "", "X-Workspace-Id", model.PersonalWorkspaceID("u_alice")); c < 400 {
+		t.Fatalf("carol catalog naming alice's workspace: %d %s", c, raw)
+	}
+	if c, _, raw := cat("u_bob", "", stu...); c < 400 {
+		t.Fatalf("student catalog: %d %s", c, raw)
 	}
 	if c, _, raw = home("u_bob", stu...); c < 400 {
 		t.Fatalf("student home: %d %s", c, raw)

@@ -34,3 +34,22 @@ export function authorLink(ws: string, opts: { lesson?: string; sample?: string 
     if (opts.sample) q.set("sample", opts.sample);
     return `/edu/author?${q.toString()}`;
 }
+
+export type CatalogItem = { lessonRevisionId: string; problemId: string; title: string; familyId: string; state: string; publicationId?: string; publicationState?: string; mine: boolean; createdAt: string };
+
+/** 检索参数（DEV-081）：空值不发送，检索词至多 60 字。 */
+export function catalogQuery(q: string, family: string, state: string): string {
+    const p = new URLSearchParams();
+    const t = q.trim().slice(0, 60);
+    if (t) p.set("q", t);
+    if (family) p.set("family", family);
+    if (state) p.set("state", state);
+    const s = p.toString();
+    return s ? `/catalog?${s}` : "/catalog";
+}
+
+export function catalogStateLabel(it: CatalogItem): string {
+    if (it.publicationState === "published") return "已发布";
+    if (it.publicationState === "withdrawn") return "已撤回";
+    return LESSON_STATE_LABEL[it.state] || it.state;
+}

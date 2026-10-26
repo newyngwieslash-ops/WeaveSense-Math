@@ -33,7 +33,10 @@ type homeClass struct {
 	UrgentHelp        int64  `json:"urgentHelp"`
 }
 
-func (h *API) registerHome(g *gin.RouterGroup) { g.GET("/home", h.home) }
+func (h *API) registerHome(g *gin.RouterGroup) {
+	g.GET("/home", h.home)
+	g.GET("/catalog", h.catalog)
+}
 
 func (h *API) home(c *gin.Context) {
 	a, tx, ok := h.staff(c)

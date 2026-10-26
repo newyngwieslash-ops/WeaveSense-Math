@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
-import { authorLink, JOB_STATUS_LABEL, LESSON_STATE_LABEL, todoLines, type HomeView } from "@/components/edu/home-logic";
+import { authorLink, catalogQuery, catalogStateLabel, JOB_STATUS_LABEL, LESSON_STATE_LABEL, todoLines, type CatalogItem, type HomeView } from "@/components/edu/home-logic";
 import { edu } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 
@@ -18,6 +18,14 @@ export default function EduTeacherHome() {
     const scope = useMemo(() => ({ workspace: ws }), [ws]);
     const [view, setView] = useState<HomeView | null>(null);
     const [msg, setMsg] = useState("");
+    const [q, setQ] = useState("");
+    const [cstate, setCstate] = useState("");
+    const [items, setItems] = useState<CatalogItem[] | null>(null);
+    const search = () =>
+        void edu<{ items: CatalogItem[] }>("get", catalogQuery(q, "", cstate), scope).then((r) => {
+            if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+            setItems(r.data.items);
+        });
 
     useEffect(() => {
         void listIntelWorkspaces().then((l) => {
@@ -143,6 +151,41 @@ export default function EduTeacherHome() {
                         ) : (
                             <p className="text-sm text-stone-500">还没有班级。</p>
                         )}
+                    </section>
+                    <section className={box}>
+                        <h2 className="mb-2 font-semibold">检索与复用</h2>
+                        <div className="flex flex-wrap gap-2">
+                            <input aria-label="检索词" className="h-9 rounded-md border px-2" maxLength={60} value={q} onChange={(e) => setQ(e.target.value)} placeholder="按题目标题检索" />
+                            <select aria-label="状态" className="h-9 rounded-md border px-2" value={cstate} onChange={(e) => setCstate(e.target.value)}>
+                                <option value="">全部</option>
+                                <option value="published">已发布</option>
+                                <option value="approved">已通过</option>
+                                <option value="review">待审核</option>
+                                <option value="rejected">已退回</option>
+                            </select>
+                            <button type="button" className={btn} onClick={search}>
+                                检索
+                            </button>
+                        </div>
+                        {items ? (
+                            items.length ? (
+                                <ul className="mt-2 text-sm">
+                                    {items.map((it) => (
+                                        <li key={it.lessonRevisionId}>
+                                            <Link className="underline" to={authorLink(ws, { lesson: it.lessonRevisionId })}>
+                                                {it.title || it.familyId}
+                                            </Link>{" "}
+                                            <span className="text-stone-500">
+                                                {it.familyId} {catalogStateLabel(it)}
+                                                {it.mine ? "（我的）" : ""}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="mt-2 text-sm text-stone-500">没有匹配的讲解。</p>
+                            )
+                        ) : null}
                     </section>
                     <section className={box}>
                         <h2 className="mb-2 font-semibold">运行中的任务</h2>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { authorLink, todoLines, type HomeView } from "../src/components/edu/home-logic";
+import { authorLink, catalogQuery, catalogStateLabel, todoLines, type HomeView } from "../src/components/edu/home-logic";
 
 const base: HomeView = {
     myLessons: [],
@@ -24,5 +24,18 @@ describe("teacher home (DEV-067)", () => {
     test("author links carry the workspace", () => {
         expect(authorLink("ws1", { lesson: "elr_1" })).toBe("/edu/author?ws=ws1&lesson=elr_1");
         expect(authorLink("ws1", { sample: "SOLID-ANGLE-02" })).toBe("/edu/author?ws=ws1&sample=SOLID-ANGLE-02");
+    });
+});
+
+describe("catalog search (DEV-081)", () => {
+    test("query string omits empty filters and caps the text", () => {
+        expect(catalogQuery("  ", "", "")).toBe("/catalog");
+        expect(catalogQuery("四棱锥", "SOLID-ANGLE-02", "published")).toBe("/catalog?q=%E5%9B%9B%E6%A3%B1%E9%94%A5&family=SOLID-ANGLE-02&state=published");
+        expect(new URLSearchParams(catalogQuery("x".repeat(80), "", "").split("?")[1]).get("q")).toHaveLength(60);
+    });
+    test("publication state wins over the lesson state", () => {
+        const it = { lessonRevisionId: "l", problemId: "p", title: "t", familyId: "f", state: "approved", mine: true, createdAt: "" };
+        expect(catalogStateLabel(it)).toBe("已通过");
+        expect(catalogStateLabel({ ...it, publicationState: "published" })).toBe("已发布");
     });
 });
