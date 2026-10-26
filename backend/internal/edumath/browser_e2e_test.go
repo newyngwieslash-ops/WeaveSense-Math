@@ -88,6 +88,13 @@ func TestServeBrowserE2E(t *testing.T) {
 			close(done)
 		}
 	})
+	// The web shell confirms the login session before rendering any route and blocks the page when
+	// /api/auth/session fails. The E2E backend has no platform auth, so answer as the platform does for
+	// a browser without a session cookie (user null); edu identity still comes from X-Test-User below.
+	mux.HandleFunc("/api/auth/session", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"data":{"user":null},"msg":"ok"}`))
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/edu/student/") || strings.HasPrefix(r.URL.Path, "/api/edu/files/") {
 			r.Header.Set("X-Test-User", "u_bob")
