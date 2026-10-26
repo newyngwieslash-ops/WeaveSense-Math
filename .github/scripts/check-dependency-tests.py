@@ -64,6 +64,8 @@ REQUIRED = {
     ("edumath", "TestPGReviewChecklist"),
     ("edumath", "TestTeacherHome"),
     ("edumath", "TestPGTeacherHome"),
+    ("edumath", "TestDemoClass"),
+    ("edumath", "TestPGDemoClass"),
     ("edumath", "TestPGAgentMathTools"),
 }
 

@@ -12,6 +12,7 @@ export type HomeView = {
     reviewMode: string;
     sample: { sample: boolean; familyId: string; title: string; note: string };
     firstRun: boolean;
+    demoClass?: { demo: true; label: string; id: string; name: string; students: number } | null;
 };
 
 export const LESSON_STATE_LABEL: Record<string, string> = { ready_for_review: "待审核", approved: "已通过", rejected: "已退回" };
@@ -52,4 +53,26 @@ export function catalogStateLabel(it: CatalogItem): string {
     if (it.publicationState === "published") return "已发布";
     if (it.publicationState === "withdrawn") return "已撤回";
     return LESSON_STATE_LABEL[it.state] || it.state;
+}
+
+/** 示例班级（DEV-067）：服务端每个响应都带 demo:true 与标注；前端再次核对，缺少标注时不展示。 */
+export type DemoRecord = { id: string; studentName: string; kind: string; item: string; result?: string; hintLevel?: number; message?: string };
+export type DemoView = {
+    demo: true;
+    label: string;
+    class: { demo: true; id: string; name: string } | null;
+    students?: string[];
+    records?: DemoRecord[];
+    dashboard?: { students: number; attempted: number; correct: number; hintUsers: number; hintsByLevel: Record<string, number>; results: Record<string, number>; commonErrors: string[]; openHelp: number };
+};
+
+export function isLabeledDemo(v: unknown): v is DemoView {
+    const d = v as DemoView | null;
+    return !!d && d.demo === true && typeof d.label === "string" && d.label.includes("演示数据") && (d.class === null || d.class?.demo === true);
+}
+
+export function demoSummaryLines(v: DemoView): string[] {
+    const d = v.dashboard;
+    if (!v.class || !d) return [];
+    return [`${d.students} 名虚构学生，${d.attempted} 人已作答，${d.correct} 人正确`, `${d.hintUsers} 人用过提示`, `${d.openHelp} 条虚构提问待回复`];
 }

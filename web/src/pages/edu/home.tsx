@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
+import { DemoClassPanel } from "@/components/edu/demo-class";
 import { authorLink, catalogQuery, catalogStateLabel, JOB_STATUS_LABEL, LESSON_STATE_LABEL, todoLines, type CatalogItem, type HomeView } from "@/components/edu/home-logic";
 import { edu } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
@@ -152,6 +153,7 @@ export default function EduTeacherHome() {
                             <p className="text-sm text-stone-500">还没有班级。</p>
                         )}
                     </section>
+                    <DemoClassPanel scope={scope} />
                     <section className={box}>
                         <h2 className="mb-2 font-semibold">检索与复用</h2>
                         <div className="flex flex-wrap gap-2">

@@ -504,7 +504,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -828,3 +828,34 @@ type EduRosterEntry struct {
 }
 
 func (EduRosterEntry) TableName() string { return "edu_roster_entries" }
+
+// EduDemoClass is the per-workspace demo class of the teacher home (DEV-067). It lives in its own
+// tables, separate from edu_classes, enrollments and attempts, so it can never reach real classes,
+// students, usage, operating metrics, ledger, dashboards or exports. Every name in it is fictional.
+type EduDemoClass struct {
+	ID          string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID    string    `json:"tenantId" gorm:"size:40;not null;uniqueIndex:ux_edu_demo_ws,priority:1"`
+	WorkspaceID string    `json:"workspaceId" gorm:"size:40;not null;uniqueIndex:ux_edu_demo_ws,priority:2"`
+	Name        string    `json:"name" gorm:"size:80;not null"`
+	SeedVersion int       `json:"seedVersion" gorm:"not null"`
+	CreatedBy   string    `json:"createdBy" gorm:"size:40"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+func (EduDemoClass) TableName() string { return "edu_demo_classes" }
+
+// EduDemoRecord is one fictional learning record of a demo class (attempt, hint or question).
+type EduDemoRecord struct {
+	ID          string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID    string    `json:"tenantId" gorm:"size:40;not null;index"`
+	DemoClassID string    `json:"demoClassId" gorm:"size:40;not null;index"`
+	StudentName string    `json:"studentName" gorm:"size:40;not null"`
+	Kind        string    `json:"kind" gorm:"size:16;not null"` // attempt | hint | help
+	Item        string    `json:"item" gorm:"size:40"`
+	Result      string    `json:"result,omitempty" gorm:"size:24"`
+	HintLevel   int       `json:"hintLevel,omitempty"`
+	Message     string    `json:"message,omitempty" gorm:"size:300"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+func (EduDemoRecord) TableName() string { return "edu_demo_records" }

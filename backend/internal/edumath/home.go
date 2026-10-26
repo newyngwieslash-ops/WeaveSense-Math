@@ -36,6 +36,7 @@ type homeClass struct {
 func (h *API) registerHome(g *gin.RouterGroup) {
 	g.GET("/home", h.home)
 	g.GET("/catalog", h.catalog)
+	h.registerDemo(g)
 }
 
 func (h *API) home(c *gin.Context) {
@@ -106,5 +107,6 @@ func (h *API) home(c *gin.Context) {
 		"reviewMode":    h.Svc.policy(tx, a.TenantID),
 		"sample":        gin.H{"sample": true, "familyId": "SOLID-ANGLE-02", "title": "示例：正四棱锥侧棱与底面所成角", "note": "原创示例题，仅用于熟悉流程，不计入使用与经营指标"},
 		"firstRun":      len(rows) == 0 && len(ks) == 0,
+		"demoClass":     demoSummary(tx, a), // separate from classes; never counted above
 	}, "ok")
 }
