@@ -190,3 +190,29 @@ go -C backend test ./internal/flow/... ./internal/canvas/capability/... ./intern
 | T22 | 通过（平台 Inbox/Outbox/本地 dispatcher/原子消费/周期绑定权威/多周期幂等；服务端端到端） | G |
 | T23 | 完成（消除 `pending-test.mdx` 前后矛盾并与本台账最终验证状态对齐） | H2 |
 | T24 | 部分（工程级全绿+真实 PG；真实登录页面/两条用户级闭环阻塞于登录态与 IAB 限制，如实保留） | H1 |
+
+### 2026-10-26 收尾门禁与对账结果（Task 1–5）
+
+- **本轮收尾提交（Task 1–4）**：
+  - `0ea600f`（`0ea600fa`）：`feat(canvas): 节点运行快照 - 在数据源/逻辑/图表/报告节点展示 lastRunSnapshot 与样本抽屉`（补齐 T12/T18 四类节点 `NodeRunSnapshotBar`）
+  - `915177c`（`915177cd`）：`test(flow): 证据链传播 - 补齐受管 DAG 多源 Join/Aggregate 全图证据链传递端到端测试`（补齐 T14 `TestT14ManagedDAGEndToEndEvidencePropagation`）
+  - `a4ca09b`（`a4ca09bf`）：`test(flow): 行业蓝图试跑 - 补齐三套禁毒与新精神活性物质蓝图受管 DAG 集成测试`（补齐 T20 `TestT20IndustryBlueprintsManagedRun`）
+  - `e879011`（`e879011c`）：`docs(progress): 行业研判画布对账 - 同步 T00-T24 最终验证状态并消除文档前后矛盾`（补齐 T23 对账与证据矩阵同步）
+- **前端构建与专项测试门禁（Step 1）**：
+  - `cd web; bun run lint`（`eslint src test`）：退出码 `0`。
+  - `bun test test/canvas-node-run-snapshot.test.tsx test/canvas-dataflow.test.ts test/canvas-logic-t03-t04.test.tsx test/canvas-chart-t07.test.tsx test/canvas-source-binding-t18.test.tsx test/canvas-workflow-run.test.ts test/canvas-industry-blueprints.test.ts test/canvas-markdown-report-t16.test.tsx test/t19-product-entry.test.tsx test/canvas-data-source-upload.test.tsx test/intelligence-panels.test.tsx test/canvas-character-menu.test.ts test/workspace-route-loading.test.ts`：`191 pass / 0 fail / 1395 expect() calls`，共 13 个测试文件全部通过（耗时 `7.86s`）。
+  - `bun run build`（`tsc --noEmit && vite build`）：`15536 modules transformed`，生产构建成功（`✓ built in 11.32s`，退出码 `0`）。
+- **后端构建与受管工作流专项门禁（Step 2）**：
+  - `cd backend; go build ./...`：退出码 `0`。
+  - `go test ./internal/flow ./internal/canvas/capability -count=1`：
+    - `ok yingce/backend/internal/flow 42.344s`
+    - `ok yingce/backend/internal/canvas/capability 0.650s`
+  - `go test ./internal/app -run "TestCloudAgent|TestT08|TestT17|TestT21|TestT22|TestFeatureAvailability" -count=1`：
+    - `ok yingce/backend/internal/app 107.438s`
+- **T24 真实登录态浏览器验收 5 项清单（待具备真实登录会话、外部模型网关与完整浏览器环境时人工复核）**：
+  1. **产品默认入口与短剧开关回归（T19）**：登录新账号验证根路径 `/` 自动进入 `/intelligence`、一级导航仅展示 5 个情报与研判入口（情报中心/研判画布/行业包与技能/数据资产/任务记录）；在设置中显式开启短剧功能后再验证 `/create`、`/inspirations`、`/projects` 及画布分镜/媒体节点菜单恢复显示。
+  2. **真实文件选择器与全局拖放导入（T05）**：在非 IAB 标准桌面浏览器中通过节点内文件选择器与画布全局拖放导入真实 `.csv`、`.tsv`、`.jsonl`、`.json` 文件，验证自动创建 `data-source` 节点、保留前导零编码与多行引号字段，且坏行/超限文件精确报错不回退为普通文本节点。
+  3. **三套行业蓝图插入与受管工作流试跑（T18/T20）**：在画布空态或追加菜单中依次插入「污水监测」「新精神活性物质（NPS）筛查」「易制毒前体关联」三套行业蓝图，通过顶栏 `CanvasWorkflowRunStatus` 发起工作流申请、完成审批（或拒绝/取消/版本冲突恢复），验证四类节点顶栏 `NodeRunSnapshotBar` 正确显示运行状态、耗时、输入→输出条数与最多 5 条样本展开抽屉，且明暗主题、键盘焦点与画布缩放/滚轮边界正常。
+  4. **手动/Agent 触发真实模型网关与正式报告闭环（T14/T15/T16/T17）**：在已配置真实模型网关与 Loom Engine 的环境下，由画布 Agent（`canvas_run_workflow`）或顶栏手动运行触发含四项禁毒 Skill 的画布工作流，验证真实模型调用计费结算、全图证据链（`citations`）传递至终端 Markdown 报告节点、`intel_save_report → /v1/reports` 正式报告落库打开，以及 `saving_report` 部分完成状态下点击“仅重试保存”不重跑模型。
+  5. **真实 Loom 采集完成事件驱动画布自动运行闭环（T21/T22）**：在绑定了画布长期运行授权（Monitor → Schedule）的真实监控任务上触发一次采集完成（`collection.completed`），验证 `GET /v1/monitors/:id/hits` 命中拉取、平台 Inbox/Outbox 事务投递、本地 `CommandDispatcher` 周期绑定授权与原子预算扣减、画布快照与正式报告自动更新，以及重复投递或撤权后不再重复执行扣费。
+
