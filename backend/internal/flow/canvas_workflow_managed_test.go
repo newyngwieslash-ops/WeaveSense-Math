@@ -376,3 +376,411 @@ func TestT14ManagedDAGEndToEndEvidencePropagation(t *testing.T) {
 		}
 	}
 }
+
+func managedSkillBlueprintFixture(t *testing.T, skillID string, doc map[string]any) (CanvasWorkflowManagedRunner, CanvasWorkflowExecutions, model.CanvasWorkflowExecution) {
+	t.Helper()
+	outputRaw, err := json.Marshal(substanceOutput(t, skillID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, req, _ := canvasSkillFixture(t, string(outputRaw), http.StatusOK)
+	executions := *req.Executions
+	scope := Scope{TenantID: model.PersonalTenantID(req.UserID), WorkspaceID: model.PersonalWorkspaceID(req.UserID)}
+	sk, ok := FindSkill(skillID, "")
+	if !ok {
+		t.Fatalf("skill %s not found", skillID)
+	}
+	if _, err := InstallSkill(tools.DB, scope, req.UserID, sk.ID, sk.Version); err != nil {
+		t.Fatal(err)
+	}
+	authority := executions.Authority.(*canvasSkillTestAuthority)
+	authority.skill = sk.Ref()
+
+	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/evidence/resolve":
+			yes := true
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code": 0,
+				"data": []CanvasWorkflowEvidence{
+					{ResolvedEvidence: ResolvedEvidence{EvidenceID: "fixture-monitor", Revision: 2, DocumentID: "fixture-document", SourceID: "monitor", SnippetOK: &yes, URLOK: &yes}, CharEnd: 1},
+					{ResolvedEvidence: ResolvedEvidence{EvidenceID: "fixture-factor", Revision: 1, DocumentID: "fixture-document", SourceID: "factor", SnippetOK: &yes, URLOK: &yes}, CharEnd: 1},
+					{ResolvedEvidence: ResolvedEvidence{EvidenceID: "fixture-precursor", Revision: 1, DocumentID: "fixture-document", SourceID: "precursor", SnippetOK: &yes, URLOK: &yes}, CharEnd: 1},
+					{ResolvedEvidence: ResolvedEvidence{EvidenceID: "fixture-policy", Revision: 1, DocumentID: "fixture-document", SourceID: "policy", SnippetOK: &yes, URLOK: &yes}, CharEnd: 1},
+				},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(engine.Close)
+	tools.Engine = EngineClient{Cfg: Config{EngineURL: engine.URL, SigningKey: key, Issuer: "flow-platform", Audience: "loom-engine", TTL: MaxTokenTTL}}
+
+	for _, raw := range doc["nodes"].([]any) {
+		node := raw.(map[string]any)
+		if node["type"] == "skill" {
+			meta := ensureMap(node, "metadata")
+			meta["skillId"] = sk.ID
+			meta["skillVersion"] = sk.Version
+			meta["skillHash"] = sk.Hash
+		}
+	}
+	rawDoc, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canvasID := "blueprint-" + skillID
+	if err := tools.DB.Create(&model.CanvasProject{
+		ID:          canvasID,
+		UserID:      req.UserID,
+		Revision:    1,
+		PayloadJSON: string(rawDoc),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	rev := int64(1)
+	run, err := executions.Admit(context.Background(), CanvasWorkflowAdmission{
+		UserID:           req.UserID,
+		TenantID:         scope.TenantID,
+		WorkspaceID:      scope.WorkspaceID,
+		CanvasID:         canvasID,
+		ExpectedRevision: &rev,
+		ExecutionKey:     "t20-" + skillID,
+		BudgetMicro:      1_000_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return CanvasWorkflowManagedRunner{
+		Tools:     tools,
+		WorkerID:  "t20-" + skillID,
+		MaxTokens: 4096,
+		Timeout:   5 * time.Second,
+	}, executions, run
+}
+
+func committedManagedNodes(t *testing.T, executions CanvasWorkflowExecutions, canvasID string) map[string]map[string]any {
+	t.Helper()
+	var project model.CanvasProject
+	if err := executions.DB.First(&project, "id = ?", canvasID).Error; err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(project.PayloadJSON), &doc); err != nil {
+		t.Fatal(err)
+	}
+	nodes := map[string]map[string]any{}
+	for _, raw := range doc["nodes"].([]any) {
+		node := raw.(map[string]any)
+		nodes[node["id"].(string)] = node
+	}
+	return nodes
+}
+
+func TestT20IndustryBlueprintsManagedRun(t *testing.T) {
+	t.Run("wastewater", func(t *testing.T) {
+		measurementsRaw := `[
+			{"region_code":"fixture-region-A","substance_name":"fixture-substance","period":"2026-02","baseline_period":"2026-01","period_role":"current","concentration_ng_l":50,"flow_m3_day":100000,"population":500000,"excretion_factor":2.3,"excretion_factor_source":{"version":"fixture-v1","citations":[{"evidence_id":"fixture-not-real-evidence","revision":1}]}},
+			{"region_code":"fixture-region-B","substance_name":"fixture-substance","period":"2026-02","baseline_period":"2026-01","period_role":"current","concentration_ng_l":60,"flow_m3_day":100000,"population":500000,"excretion_factor":2.3,"excretion_factor_source":{"version":"fixture-v1","citations":[{"evidence_id":"fixture-not-real-evidence","revision":1}]}},
+			{"region_code":"fixture-region-C","substance_name":"fixture-substance","period":"2026-02","baseline_period":"2026-01","period_role":"current","concentration_ng_l":70,"flow_m3_day":100000,"population":500000,"excretion_factor":2.3,"excretion_factor_source":{"version":"fixture-v1","citations":[{"evidence_id":"fixture-not-real-evidence","revision":1}]}}
+		]`
+		baselineRaw := `[
+			{"region_code":"fixture-region-A","substance_name":"fixture-substance","period":"2026-01","baseline_period":"2025-12","period_role":"baseline","consumption":10,"excretion_factor_source":{"version":"fixture-v1","citations":[{"evidence_id":"fixture-not-real-evidence","revision":1}]}},
+			{"region_code":"fixture-region-B","substance_name":"fixture-substance","period":"2026-01","baseline_period":"2025-12","period_role":"baseline","consumption":0,"excretion_factor_source":{"version":"fixture-v1","citations":[{"evidence_id":"fixture-not-real-evidence","revision":1}]}}
+		]`
+		measurements := managedSource("measurements", measurementsRaw)
+		baseline := managedSource("baseline", baselineRaw)
+		compute := map[string]any{
+			"id":   "compute",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator":    "compute",
+					"expression":  "concentration_ng_l * flow_m3_day * excretion_factor / population",
+					"outputField": "consumption",
+				},
+			},
+		}
+		aggregate := map[string]any{
+			"id":   "aggregate",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator": "aggregate",
+					"groupBy":  []any{"region_code", "substance_name", "period", "baseline_period", "period_role", "excretion_factor_source.version"},
+					"metrics":  []any{map[string]any{"field": "consumption", "fn": "avg", "as": "consumption"}},
+				},
+			},
+		}
+		comparison := map[string]any{
+			"id":   "comparison",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator":    "compute",
+					"outputField": "change_pct",
+					"periodComparison": map[string]any{
+						"regionField":         "region_code",
+						"substanceField":      "substance_name",
+						"periodField":         "period",
+						"baselinePeriodField": "baseline_period",
+						"valueField":          "consumption",
+					},
+				},
+			},
+		}
+		current := map[string]any{
+			"id":   "current",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator":     "filter",
+					"fieldPath":    "period_role",
+					"comparator":   "equals",
+					"compareValue": "current",
+				},
+			},
+		}
+		rank := map[string]any{
+			"id":   "rank",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator":   "sort_limit",
+					"sortField":  "consumption",
+					"sortOrder":  "desc",
+					"limit":      10,
+					"dedupeKeys": []any{"region_code", "substance_name", "period", "excretion_factor_source.version"},
+				},
+			},
+		}
+		chart := managedSink("chart")
+		md := managedSink("markdown")
+		md["type"] = "markdown"
+
+		doc := map[string]any{
+			"nodes": []any{measurements, baseline, compute, aggregate, comparison, current, rank, chart, md},
+			"connections": []any{
+				managedEdge("e1", "measurements", "compute"),
+				managedEdge("e2", "compute", "aggregate"),
+				managedEdge("e3", "aggregate", "comparison"),
+				managedEdge("e4", "baseline", "comparison"),
+				managedEdge("e5", "comparison", "current"),
+				managedEdge("e6", "current", "rank"),
+				managedEdge("e7", "rank", "chart"),
+				managedEdge("e8", "rank", "markdown"),
+			},
+		}
+		runner, executions, run := managedFixture(t, doc)
+		if err := runner.Run(context.Background(), executions, run); err != nil {
+			t.Fatalf("wastewater blueprint run failed: %v", err)
+		}
+		nodes := committedManagedNodes(t, executions, run.CanvasID)
+		for _, sinkID := range []string{"chart", "markdown"} {
+			meta := nodes[sinkID]["metadata"].(map[string]any)
+			rows, ok := meta["computed"].([]any)
+			if !ok || len(rows) != 3 {
+				t.Fatalf("%s expected 3 ranked rows, got %+v", sinkID, meta["computed"])
+			}
+			byRegion := map[string]map[string]any{}
+			for _, raw := range rows {
+				row := raw.(map[string]any)
+				byRegion[row["region_code"].(string)] = row
+			}
+			if rows[0].(map[string]any)["region_code"] != "fixture-region-C" || rows[1].(map[string]any)["region_code"] != "fixture-region-B" || rows[2].(map[string]any)["region_code"] != "fixture-region-A" {
+				t.Fatalf("%s unexpected ranking order: %+v", sinkID, rows)
+			}
+			rowA := byRegion["fixture-region-A"]
+			if rowA["change_pct"] != float64(130) || rowA["change_pct_status"] != "ok" {
+				t.Fatalf("fixture-region-A unexpected change_pct: %+v", rowA)
+			}
+			rowB := byRegion["fixture-region-B"]
+			if rowB["change_pct"] != nil || rowB["change_pct_status"] != "zero_baseline" {
+				t.Fatalf("fixture-region-B expected nil + zero_baseline, got %+v", rowB)
+			}
+			rowC := byRegion["fixture-region-C"]
+			if rowC["change_pct"] != nil || rowC["change_pct_status"] != "missing_baseline" {
+				t.Fatalf("fixture-region-C expected nil + missing_baseline, got %+v", rowC)
+			}
+		}
+	})
+
+	t.Run("nps", func(t *testing.T) {
+		inputJSON, err := json.Marshal([]any{substanceInput(t, "nps-substitution-screening")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputNode := managedSource("input", string(inputJSON))
+		skillNode := map[string]any{
+			"id":       "skill",
+			"type":     "skill",
+			"metadata": map[string]any{},
+		}
+		extractNode := map[string]any{
+			"id":   "extract",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator":  "json_extract",
+					"fieldPath": "emerging_substances",
+				},
+			},
+		}
+		aggregateNode := map[string]any{
+			"id":   "aggregate",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator": "aggregate",
+					"groupBy":  []any{"substance_name", "category"},
+					"metrics":  []any{map[string]any{"field": "substance_name", "fn": "count", "as": "record_count"}},
+				},
+			},
+		}
+		chartNode := managedSink("chart")
+		mdNode := managedSink("markdown")
+		mdNode["type"] = "markdown"
+
+		doc := map[string]any{
+			"nodes": []any{inputNode, skillNode, extractNode, aggregateNode, chartNode, mdNode},
+			"connections": []any{
+				managedEdge("e1", "input", "skill"),
+				managedEdge("e2", "skill", "extract"),
+				managedEdge("e3", "extract", "aggregate"),
+				managedEdge("e4", "aggregate", "chart"),
+				managedEdge("e5", "aggregate", "markdown"),
+			},
+		}
+		runner, executions, run := managedSkillBlueprintFixture(t, "nps-substitution-screening", doc)
+		if err := runner.Run(context.Background(), executions, run); err != nil {
+			t.Fatalf("nps blueprint run failed: %v", err)
+		}
+		nodes := committedManagedNodes(t, executions, run.CanvasID)
+		for _, sinkID := range []string{"chart", "markdown"} {
+			meta := nodes[sinkID]["metadata"].(map[string]any)
+			rows, ok := meta["computed"].([]any)
+			if !ok || len(rows) != 1 {
+				t.Fatalf("%s expected 1 aggregated row, got %+v", sinkID, meta["computed"])
+			}
+			row := rows[0].(map[string]any)
+			if row["substance_name"] != "fixture-analyte" || row["category"] != "unconfirmed" || row["record_count"] != float64(1) {
+				t.Fatalf("%s unexpected nps aggregated row: %+v", sinkID, row)
+			}
+		}
+	})
+
+	t.Run("precursor", func(t *testing.T) {
+		precursorSource := map[string]any{
+			"id":   "precursor",
+			"type": "data-source",
+			"metadata": map[string]any{
+				"dataSource": map[string]any{
+					"format":  "intel",
+					"rawText": `[{"region_code":"fixture-region","precursor_name":"fixture-precursor","related_substance":"fixture-substance","period":"2026-02","event_at":"2026-02-03T08:00:00Z","quantity":120,"quantity_unit":"kg","anomaly_type":"fixture-anomaly","citations":[{"evidence_id":"fixture-precursor","revision":1}]}]`,
+				},
+			},
+		}
+		monitoringSource := map[string]any{
+			"id":   "monitoring",
+			"type": "data-source",
+			"metadata": map[string]any{
+				"dataSource": map[string]any{
+					"format":  "intel",
+					"rawText": `[{"region_code":"fixture-region","substance_name":"fixture-substance","period":"2026-02","observed_at":"2026-02-10T00:00:00Z","concentration_ng_l":50,"citations":[{"evidence_id":"fixture-monitor","revision":2}]}]`,
+				},
+			},
+		}
+		joinNode := map[string]any{
+			"id":   "join",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator": "join",
+					"joinMode": "left",
+					"joinKeys": []any{
+						map[string]any{"left": "region_code", "right": "region_code"},
+						map[string]any{"left": "related_substance", "right": "substance_name"},
+						map[string]any{"left": "period", "right": "period"},
+					},
+				},
+			},
+		}
+		coChart := managedSink("co-chart")
+
+		inputJSON, err := json.Marshal([]any{substanceInput(t, "precursor-substance-correlation")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputNode := managedSource("input", string(inputJSON))
+		skillNode := map[string]any{
+			"id":       "skill",
+			"type":     "skill",
+			"metadata": map[string]any{},
+		}
+		extractNode := map[string]any{
+			"id":   "extract",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator":  "json_extract",
+					"fieldPath": "correlations",
+				},
+			},
+		}
+		rankNode := map[string]any{
+			"id":   "rank",
+			"type": "logic",
+			"metadata": map[string]any{
+				"logic": map[string]any{
+					"operator":   "sort_limit",
+					"sortField":  "lag_days",
+					"sortOrder":  "desc",
+					"limit":      10,
+					"dedupeKeys": []any{},
+				},
+			},
+		}
+		chartNode := managedSink("chart")
+		mdNode := managedSink("markdown")
+		mdNode["type"] = "markdown"
+
+		doc := map[string]any{
+			"nodes": []any{precursorSource, monitoringSource, joinNode, coChart, inputNode, skillNode, extractNode, rankNode, chartNode, mdNode},
+			"connections": []any{
+				map[string]any{"id": "e1", "fromNodeId": "precursor", "toNodeId": "join", "toHandleId": "input_a"},
+				map[string]any{"id": "e2", "fromNodeId": "monitoring", "toNodeId": "join", "toHandleId": "input_b"},
+				managedEdge("e3", "join", "co-chart"),
+				managedEdge("e4", "input", "skill"),
+				managedEdge("e5", "skill", "extract"),
+				managedEdge("e6", "extract", "rank"),
+				managedEdge("e7", "rank", "chart"),
+				managedEdge("e8", "rank", "markdown"),
+			},
+		}
+		runner, executions, run := managedSkillBlueprintFixture(t, "precursor-substance-correlation", doc)
+		if err := runner.Run(context.Background(), executions, run); err != nil {
+			t.Fatalf("precursor blueprint run failed: %v", err)
+		}
+		nodes := committedManagedNodes(t, executions, run.CanvasID)
+		coMeta := nodes["co-chart"]["metadata"].(map[string]any)
+		coRows, ok := coMeta["computed"].([]any)
+		if !ok || len(coRows) != 1 {
+			t.Fatalf("co-chart expected 1 joined row, got %+v", coMeta["computed"])
+		}
+		coRow := coRows[0].(map[string]any)
+		if coRow["region_code"] != "fixture-region" || coRow["precursor_name"] != "fixture-precursor" || coRow["concentration_ng_l"] != float64(50) {
+			t.Fatalf("co-chart unexpected joined row: %+v", coRow)
+		}
+		for _, sinkID := range []string{"chart", "markdown"} {
+			meta := nodes[sinkID]["metadata"].(map[string]any)
+			rows, ok := meta["computed"].([]any)
+			if !ok || len(rows) != 1 {
+				t.Fatalf("%s expected 1 correlation row, got %+v", sinkID, meta["computed"])
+			}
+			row := rows[0].(map[string]any)
+			if row["region_code"] != "R1" || row["precursor_name"] != "fixture-precursor" || row["related_substance"] != "fixture-analyte" || row["lag_days"] != float64(0) {
+				t.Fatalf("%s unexpected precursor correlation row: %+v", sinkID, row)
+			}
+		}
+	})
+}
