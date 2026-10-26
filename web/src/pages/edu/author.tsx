@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 
+import { Classroom } from "@/components/edu/classroom";
 import { LessonEditor } from "@/components/edu/lesson-editor";
 import { ReviewChecklist } from "@/components/edu/review-checklist";
 import { VariantSetPanel } from "@/components/edu/variant-set";
@@ -58,6 +59,7 @@ function useJob(scope: EduScope, jobId: string) {
 export default function TeacherAuthoring() {
     const [workspaces, setWorkspaces] = useState<IntelWorkspace[]>([]);
     const [params] = useSearchParams();
+    const [classroom, setClassroom] = useState(false);
     const [ws, setWs] = useState("");
     const scope = useMemo(() => ({ workspace: ws }), [ws]);
     const [family, setFamily] = useState("SOLID-ANGLE-02");
@@ -277,7 +279,11 @@ export default function TeacherAuthoring() {
                             <button className={btn} disabled={lesson.state !== "approved" || !!publicationId} onClick={() => void publish()}>
                                 {publicationId ? "已发布" : "发布"}
                             </button>
+                            <button className={btn} onClick={() => setClassroom(!classroom)}>
+                                {classroom ? "关闭课堂演示" : "课堂演示"}
+                            </button>
                         </div>
+                        {classroom ? <Classroom key={lesson.id} scope={scope} lessonId={lesson.id} onClose={() => setClassroom(false)} /> : null}
                         {lesson.blockingErrors ? null : (
                             <details className="mt-3">
                                 <summary className="cursor-pointer text-sm font-medium">修改讲解（生成新修订）</summary>
