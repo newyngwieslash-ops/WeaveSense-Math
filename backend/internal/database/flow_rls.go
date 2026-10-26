@@ -12,6 +12,17 @@ var flowRLSTables = []string{
 	"flow_mcp_secrets", "flow_capability_snapshots", "flow_run_capabilities",
 	"flow_topics", "flow_event_inbox", "flow_operation_projections", "flow_billing_accounts", "flow_skill_run_pins",
 	"flow_command_outbox", "flow_canvas_workflow_executions",
+	// Education math workbench (schema v68).
+	"edu_org_policies", "edu_role_bindings", "edu_classes", "edu_teaching_assignments", "edu_enrollments", "edu_problems",
+	"edu_problem_revisions", "edu_math_jobs", "edu_stage_runs", "edu_artifacts", "edu_solution_revisions", "edu_lesson_revisions",
+	"edu_review_records", "edu_publications", "edu_assignments", "edu_audit_events",
+	"edu_class_invites", "edu_consent_records",
+	"edu_attempts", "edu_hint_unlocks", "edu_self_tests", "edu_review_items", "edu_help_requests", "edu_help_replies",
+	"edu_predictions", "edu_figure_interactions", "edu_variant_sets", "edu_variant_reviews", "edu_assignment_extensions", "edu_lesson_edits",
+	"edu_ledger_anomalies",
+	"edu_job_events",
+	"edu_math_events", "edu_budgets", "edu_budget_alerts", "edu_support_costs", "edu_content_incidents", "edu_assignment_migrations", "edu_source_assets", "edu_regrades", "edu_courses", "edu_course_alignments", "edu_roster_entries",
+	"edu_demo_classes", "edu_demo_records",
 }
 
 // flowSystemOnlyTables are platform-wide tables with no tenant_id (managed

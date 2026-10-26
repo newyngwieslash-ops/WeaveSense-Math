@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 68
+const CurrentSchemaVersion int64 = 84
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -264,7 +264,124 @@ var schemaMigrations = []migration{
 		}
 		return applyFlowRLS(tx)
 	}},
-	{version: 68, name: "canvas_workflow_execution", checksum: "sha256:canvas-workflow-execution-v68", apply: func(tx *gorm.DB) error {
+	{version: 68, name: "edu_math_workbench_v68", checksum: "sha256:edu-math-workbench-v68-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: education identity, problem/solution/lesson revisions,
+		// math jobs + stage settlement, private artifacts, review/publication + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 69, name: "edu_classes_consent_v69", checksum: "sha256:edu-classes-consent-v69-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: class invites + guardian consent (FR-I01/I05), consent_mode policy column, FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 70, name: "edu_student_learning_v70", checksum: "sha256:edu-student-learning-v70-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: assignment policy columns, attempts, hint unlocks, self-tests, review items (FR-S01..S10) + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 71, name: "edu_help_v71", checksum: "sha256:edu-help-v71-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: student help requests and grouped teacher replies (FR-S11, FR-T13) + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 72, name: "edu_figure_interaction_v72", checksum: "sha256:edu-figure-interaction-v72-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: prediction records and aggregated figure use (FR-S05, AC-25/26) + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 73, name: "edu_variant_sets_extensions_v73", checksum: "sha256:edu-variant-sets-extensions-v73-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: reviewed variant sets, per student extensions, job options (AC-21/22) + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 74, name: "edu_lesson_edits_v74", checksum: "sha256:edu-lesson-edits-v74-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: structured lesson edits with an optimistic head lock, lesson lineage, review inheritance rule (AC-17/18) + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 75, name: "edu_job_price_book_v75", checksum: "sha256:edu-job-price-book-v75-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: freeze the price book on each math job so stage settlement never reprices (DEV-061, AC-46/48).
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 76, name: "edu_ledger_anomalies_v76", checksum: "sha256:edu-ledger-anomalies-v76-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: ledger reconciliation findings with owner and handling status (DEV-063) + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 77, name: "edu_job_events_v77", checksum: "sha256:edu-job-events-v77-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: job event outbox (DEV-057) and signed math event inbox (DEV-056) + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 78, name: "edu_budgets_v78", checksum: "sha256:edu-budgets-v78-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: organization budgets, fairness limits and exhaustion alerts (DEV-064), support cost records (DEV-065) + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 79, name: "edu_content_incidents_v79", checksum: "sha256:edu-content-incidents-v79-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: content incidents and withdrawal chain (DEV-027, AC-34), assignment migrations (DEV-025) + FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 80, name: "edu_roles_sources_v80", checksum: "sha256:edu-roles-sources-v80-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: role binding expiry, workspace scope and revoke trail (DEV-013);
+		// source assets and rights records (DEV-026, edu_source_assets, edu_problems.source_asset_id).
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 81, name: "edu_regrades_courses_roster_v81", checksum: "sha256:edu-regrades-courses-roster-v81-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: regrading (DEV-025) and course configuration with teacher-confirmed alignment (DEV-014) and roster import (DEV-016).
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 82, name: "edu_review_checklist_v82", checksum: "sha256:edu-review-checklist-v82-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: review checklist and located rejection findings (DEV-076); columns only.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 83, name: "edu_demo_class_v83", checksum: "sha256:edu-demo-class-v83-20261026", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: per-workspace demo class with fictional learning records (DEV-067), isolated tables under FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	// Canvas workflow executions (行业研判工作流). First shipped as v68 on WeaveSense-Math main; renumbered to
+	// v84 when the math workbench (v68 to v83, already on WeaveSense-Flow main) was merged in. AutoMigrate is
+	// idempotent, so a database that already has the table only records v84. See docs/math-workbench/07.
+	{version: 84, name: "canvas_workflow_execution", checksum: "sha256:canvas-workflow-execution-v84", apply: func(tx *gorm.DB) error {
 		if err := tx.AutoMigrate(&model.CanvasWorkflowExecution{}); err != nil {
 			return err
 		}

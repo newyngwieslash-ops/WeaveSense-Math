@@ -52,6 +52,12 @@ const PluginsPage = lazy(() => import("@/pages/plugins"));
 const EagleLibraryPage = lazy(() => import("@/pages/plugins/eagle"));
 const TasksPage = lazy(() => import("@/pages/tasks"));
 const IntelligencePage = lazy(() => import("@/pages/intelligence"));
+const EduStudentHome = lazy(() => import("@/pages/edu/student").then((module) => ({ default: module.StudentHome })));
+const EduStudentAssignment = lazy(() => import("@/pages/edu/student").then((module) => ({ default: module.StudentAssignment })));
+const EduTeacherClassroom = lazy(() => import("@/pages/edu/teacher"));
+const EduTeacherAuthoring = lazy(() => import("@/pages/edu/author"));
+const EduAdmin = lazy(() => import("@/pages/edu/admin"));
+const EduTeacherHome = lazy(() => import("@/pages/edu/home"));
 const McpConnectionsPage = lazy(() => import("@/pages/intelligence/mcp"));
 const ProjectsPage = lazy(loadProjectsPage);
 const ProjectDetailPage = lazy(loadProjectDetailPage);
@@ -97,6 +103,8 @@ function devRoutes() {
     return [
         { path: "/dev/folders", element: fullScreenDeferred(<FolderPreviewLab />), errorElement: <RouteErrorPage /> },
         { path: "/dev/previs-repro", element: fullScreenDeferred(<PrevisReproLab />), errorElement: <RouteErrorPage /> },
+        // 学生作业页的浏览器 E2E 入口（scripts/edu-chrome-e2e.mjs）；身份由测试后端注入，生产构建不包含。
+        { path: "/dev/edu-learn/:id", element: fullScreenDeferred(<EduStudentAssignment />), errorElement: <RouteErrorPage /> },
     ];
 }
 
@@ -128,6 +136,12 @@ export const router = createBrowserRouter([
                 ),
             },
             { path: "/assets", element: <RequireAuth>{deferred(<AssetsPage />)}</RequireAuth> },
+            { path: "/edu/learn", element: <RequireAuth>{deferred(<EduStudentHome />)}</RequireAuth> },
+            { path: "/edu/learn/:id", element: <RequireAuth>{deferred(<EduStudentAssignment />)}</RequireAuth> },
+            { path: "/edu/teach", element: <RequireAuth>{deferred(<EduTeacherClassroom />)}</RequireAuth> },
+            { path: "/edu/author", element: <RequireAuth>{deferred(<EduTeacherAuthoring />)}</RequireAuth> },
+            { path: "/edu/admin", element: <RequireAuth>{deferred(<EduAdmin />)}</RequireAuth> },
+            { path: "/edu/home", element: <RequireAuth>{deferred(<EduTeacherHome />)}</RequireAuth> },
             { path: "/intelligence", element: <RequireAuth>{deferred(<IntelligencePage />)}</RequireAuth> },
             { path: "/intelligence/mcp", element: <RequireAuth>{deferred(<McpConnectionsPage />)}</RequireAuth> },
             { path: "/intelligence/:view", element: <RequireAuth>{deferred(<IntelligencePage />)}</RequireAuth> },
