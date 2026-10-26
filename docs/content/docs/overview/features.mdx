@@ -5,6 +5,36 @@ description: 当前项目已实现的核心工作台能力与使用入口
 
 # 功能清单
 
+## 行业研判画布（阶段能力，尚未整体验收）
+
+本节是 T23 对当前实现的同步，不表示 T17 手动/Agent 审批、T21 长期自动授权、T22 多来源周期汇合已经交付。部分实施因 provider 配额中断，当前整体未完成：公开 `canvas_run_workflow` schema、长期批准与平台自动 Dispatcher 尚未闭环。REST 已有独立路由注册，不等于真实运行通过。局部测试、示例数据和早期部署截图均不能替代本轮真实闭环验收。
+
+| 层次 | 当前能力与限制 |
+| --- | --- |
+| 本地预览（preview） | 数据源解析、逻辑求值、分支及图表可在浏览器计算；不请求受管模型，不生成服务端运行回执，不证明远端已保存。Skill 模板与输入拼装只是预览，不是实际 Skill 输出。 |
+| 服务端执行（server） | 已有持久准入/检查点、受管 runner、source/Skill/report adapter；冻结图、权限、预算、模型任务、结果与报告分阶段处理。REST/Agent/Monitor 三入口仍在接线与验证，不宣传一键运行或无人值守闭环已可用。 |
+| 行业示例（example） | 污水负荷、NPS 替代筛查、前体关联三套蓝图复用现有节点与连线，可向非空画布追加；带示例身份和合成数据。fixture 引用不是可提交正式报告的真实证据，受管试跑尚待验收。 |
+| 证据（evidence） | 真实材料引用必须有可解析的 `evidence_id`、revision 和当前范围；区分来源陈述、分析判断、模型假设。标题、链接、示例数字、模型输出及“有引用”标签都不能代替证据校验。 |
+
+### 算子与严格输入
+
+保留 `if_else`、`intersect`、`union`、`difference`、`filter`、`json_extract`，增加/完善 `compute`、`aggregate`、`join`、`sort_limit` 合同，不新增节点枚举或工作流引擎。
+
+- compute 拒绝缺字段、非数、非有限结果、除零和残缺表达式。污水示例公式是 `concentration_ng_l × flow_m3_day × excretion_factor ÷ population`；50、100000、2.3、500000 得 23，示例区域均值 27.6。`excretion_factor` 是有版本与引用来源的回推校正乘数，不能默认为 1；环同比需要按周期关联，缺失/零基线不得伪造增长率。
+- aggregate 使用 `groupBy: string[]` 与 `metrics: { field, fn, as }[]`；支持行数 count、sum/avg/max/min 与 nearest-rank p95，别名不得重复。分组键区分类型，缺测不视为零。
+- join 使用 `input_a/input_b`、Left/Inner 和 `joinKeys: { left, right }[]`；缺键不匹配，一对多保留结果，同名字段保留双方信息。sort_limit 按稳定排序、去重、Top-N 顺序处理，缺值置后，显式非法 limit 或去重键拒绝。
+- CSV/TSV 解析支持 BOM、CRLF、引号内换行、转义引号和数据空单元格，保留前导零编码；空/重复表头、错列数和坏引号拒绝，不回退为成功文本。JSON/intel 接受对象、数组和约定数组信封；JSONL 按物理行报错，坏行不留下部分成功。选择文件及全局上传共用 DataSource 入口与大小边界。解析器更新的最终跨端回归仍待统一验证，下方旧 TSV/JSONL 章节保留的是此前验收记录，不能覆盖本轮严格合同。
+
+图表从连接的真实端口读取当前数据，支持 `xKey/series`，当前空结果优先于旧 content；五行运行样本不代表全量数据。算子保留/合并来源引用，完整派生值溯源与真实 Skill 结构化输出贯通仍待端到端确认。
+
+### 行业包、Skill 与报告
+
+`substance-precursor-intel` 源包与四个固定版本 1.1.0 Skill 已有输入合同、output_schema、证据/失败条件及评估样例：`regional-wastewater-modeling`、`nps-substitution-screening`、`precursor-substance-correlation`、`regional-drug-situation-brief`。阈值和基线来自外部配置，管制材料需有适用物质与版本；无证据、错版本、跨周期、无基线或法律状态未知时不得编造确定结论。包定义与自动导出一致性不等于四个 Skill 已在真实模型闭环通过。
+
+受管 Skill adapter 经既有 ModelTasks 处理固定安装版本/hash、原始输入、历史输出、预算和 JSON/schema/引用校验。报告 adapter 走正式 `intel_save_report` 与 Loom Reports 保存，不创建专题冒充报告；正文、claims、覆盖范围和完整结构化输出分开保留。画布写回成功但报告失败应显示部分完成，恢复仅保存报告而不重跑模型；Markdown 重试/打开及真实运行仍在[待测试](/docs/progress/pending-test)中。
+
+入口已调整为情报与研判工作台：根路径转向情报中心，导航覆盖情报中心、研判画布、行业包与技能、数据资产、任务记录；短剧默认关闭，但显式开启及历史数据保留。真实登录态下的明暗主题、导入、三蓝图、审批、运行状态、取消与报告体验尚待主控协调用户验收。
+
 ## 画布待同步编辑的可信基线
 
 脏缓存重开和Agent刷新仅在取回的远端正文哈希精确匹配本地上次确认哈希时恢复可信基线；显式保存也先核对基线，不再把脏缓存与自身比较后当作零修改成功。未确认mutation仍沿用原请求重放，新编辑继续提交；缺基线/冲突仍保留并拒绝猜测覆盖。专项与18088新图验证见待测试；用户已接受无独立Verifier的有限结果并单独确认本地归档，Native done/archived、当前分支保留。原F03历史图仍缺可信基线、恢复阻塞，完整回归与发布门槛未解除。

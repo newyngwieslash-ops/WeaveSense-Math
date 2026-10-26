@@ -1,5 +1,7 @@
 # Release, deploy, backup and restore
 
+当前验收与授权边界见[待验收账](pending-acceptance.md)和[项目任务盘点](2026-10-23-095706-project-progress-prd-handoff.md)。本页是部署操作参考，不代表当前发布门槛已通过，也不自动授权推送、合并、发布、外发或生产迁移。现有18088隔离环境应保留数据；真实旧库与PG16业务副本仍须单独验证。
+
 ## Topology (`docker-compose.flow.yml`)
 
 | Service | Role |
@@ -16,14 +18,14 @@
 2. Tag the release with `git tag vX.Y.Z <main-sha> && git push origin vX.Y.Z`. `publish-images.yml` builds the images.
 3. Take a backup before migrating (see below).
 4. Deploy with `docker compose -f docker-compose.flow.yml --env-file .env.flow pull && … up -d`.
-   - The platform runs versioned migrations at start. P5 adds schema v55 (billing/orgs) and v56 (run leases and canvas conversations).
-   - `loom-engine` runs engine migrations 0001–0006. 0005 adds grant re-check; 0006 adds RLS.
+   - 平台当前源码要求 schema v67（`backend/internal/database/migrations.go` 的 `CurrentSchemaVersion`）。迁移与启动行为取决于所用 Compose 和 `CANVAS_AUTO_MIGRATE`；既有18088隔离部署关闭自动迁移，不应为验收重新打开。
+   - Flow Engine 使用 `services/loom-engine/flow/migrations/0001–0018`，其中0005为grant重验、0006为RLS；不要混用旧Loom根目录的另一套迁移。发布时核对候选文件、数据库实际记录与健康状态，不只看历史版本号。
    - `loom-scheduler` runs with `LOOM_AUTO_MIGRATE=false`.
 5. Smoke test:
    - `GET /api/intelligence/workspaces` returns 200 when logged in.
    - `GET /api/internal/flow/events` through the public port returns **404**.
    - The engine `/healthz` returns `{ok:true}` from inside the network.
-6. Roll back by redeploying the previous image tag. Migrations are additive (new tables and columns), so the previous version keeps working. To roll back data, restore the pre-deploy backup.
+6. 回退前核对旧镜像支持的schema及Engine合同；平台会拒绝高于自身支持版本的数据库，不能假定所有迁移均允许直接降级镜像。需要回退数据时先将部署前备份恢复到独立空目标并验证业务，再按明确批准的切换方案操作，保留原卷与回退入口。
 
 ## Required configuration (`.env.flow`, server-side only)
 

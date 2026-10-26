@@ -5,6 +5,51 @@ description: 信封、错误码与 OpenAPI
 
 # HTTP API 合同
 
+## 行业研判画布：稳定合同与接线边界（T23 阶段同步）
+
+本节描述当前落盘合同，不是 T17 REST/审批、T21 长期授权或 T22 自动执行的完成声明。最终路径、状态码、取消及恢复语义须在这些任务收口后按真实路由重新对账；已有 Agent、报告读取和情报接口继续遵守各自合同。
+
+### 执行准入与结果
+
+- `CanvasWorkflowExecutions` 已提供持久准入、读取、租约、节点任务身份和检查点能力。请求身份包含用户、租户、工作区、画布、`expected_revision`、`execution_key` 和显式 `budget_micro`；冻结能力、Skill、模型路线与价格，并在重放和派发前重新检查当前授权。冻结不是永久授权。
+- 同一租户/工作区/画布下同键同参复用记录，同键异参冲突；首次运行校验画布 revision，写回使用 revision CAS。执行键、节点任务键、画布 operations 的 `mutationId` 和报告保存键是不同层次的幂等身份，不可互换。
+- 旧 `CanvasWorkflowRunOptions` 解码器拒绝未知字段、第二个 JSON 值及非空 `target_node_id`；这不表示所有入口已拒绝重复 JSON 键或所有可选 `null`。受管准入另有预算及授权要求，不能拿旧结构体直接当作新 REST 请求示例。
+- 受管结果结构使用 `run_id`、`canvas_id`、`revision`、`status`、`node_snapshots`、`nodes` 和可选 `report_id`。节点快照内是 `runId`、`executedAt`、耗时、输入/输出数量、状态、错误与最多五项 `sampleItems`；全量输出和证据保存在受管节点结果中，五项样本不是下游输入全集。旧 runner 的 `saved_report_id` 不代表新接口字段。
+- 最新 REST 在 `backend/cmd/server/canvas_workflow_routes.go` 独立注册，由 main 调用；旧 `registerCanvasWorkflowRoutes` 为空不代表所有 REST 缺失。以下是实际落盘路由，尚非运行验收结论；公开 `canvas_run_workflow` 工具 schema 仍未接通，T17 审批/恢复不能标完成。
+
+| 当前路由（登录态、租户中间件） | 已落盘响应边界 |
+| --- | --- |
+| `POST /api/canvas-workflows/:canvasId/approvals` | 调用 `RequestCanvasWorkflowApproval`，成功 HTTP 201；具体审批请求及服务层接线仍须最终核验，不提供推测 payload。 |
+| `POST /api/canvas-workflows/:canvasId/run` | 接收 `{ agent_run_id, approval_id }`，成功 HTTP 202，data 为 `run_id/status/revision`；受理不代表完成。 |
+| `GET /api/canvas-workflows/:canvasId/runs/:runId` | 调用受管读取，成功 HTTP 200；最终投影须与服务层核对。 |
+| `POST /api/canvas-workflows/:canvasId/runs/:runId/retry-save` | 成功 HTTP 202，data 为 `run_id/accepted`；不等于报告已经保存。 |
+| `POST /api/canvas-workflows/:canvasId/runs/:runId/cancel` | 先校验运行归属再请求取消，成功 HTTP 202，data 为 `run_id/accepted`；取消终态及结算待验。 |
+
+路由 JSON 解码上限 128 KiB，拒绝未知结构字段及第二个 JSON 值；不扩称所有 JSON 严格性均已覆盖。错误沿 `CanvasWorkflowHTTPStatus` / AppError 返回真实 HTTP status，当前 reason 分为 `canvas_approval_required`、`canvas_revision_conflict`、`canvas_permission_denied`、`invalid_canvas_workflow` 和兜底 `canvas_workflow_failed`。具体预算/缺失/取消错误映射、编译及实际 HTTP 行为仍待最终对账，不能把路由源码视作已运行证据。
+
+### 数据源、配置与证据
+
+`metadata.dataSource.sourceBinding` 的配置种类为 `static`、`intel_query`、`topic`、`monitor`、`mcp_tool`。配置可表达不等于每种来源已接通：
+
+| 来源 | 当前服务层边界 |
+| --- | --- |
+| `static` | 读取 `rawText`，不以旧计算 content 替代原输入；声明的机器证据必须重新解析校验。 |
+| `intel_query` / `topic` | 查询并读取真实材料；topic 使用当前专题问题、关键词及来源条件，不把专题备注当采集结果。分页、材料读取和时间窗带 coverage；达到上限必须标截断。 |
+| `monitor` | 真实命中历史适配仍待 T22 汇合；当前 source adapter 返回 `monitor_hits_unavailable`，不能以 Monitor 配置或 preview 冒充 hits。 |
+| `mcp_tool` | 经既有 MCPGateway 校验连接、授权、工具/schema 版本及输出合同；字段为 `toolName`、`toolArgs`、正整数 `toolVersion`、`schemaHash`、`outputSchema`、可选 `windowArguments`，不接受旧字符串版本兼容。 |
+
+时间窗支持 `7d`、`30d` 和带时区的 `custom`，倒置或非法窗口拒绝。适配器返回 items、行级证据、coverage、错误及候选 `lastSyncedAt`；失败清空候选结果且不更新时间，截断不标完整同步，零命中保持真实空数组。候选同步时间只有随成功写回才成为持久事实。
+
+情报 handoff 生成 `type=data-source`、`format=intel`：topic 为动态绑定，document/report/brief 为静态来源快照。展示用标题、链接和 footer 不自动成为证据；机器引用要求真实 `evidence_id`、正 revision、材料范围及解析验证。算子保留或合并引用不等于重新证明引用真实性，派生公式、输入证据与运行版本的端到端追踪仍须最终验收。
+
+### Skill 与正式报告
+
+服务层 Skill adapter 读取获准安装的固定 id/version/hash，通过既有 ModelTasks 和预算体系执行受限批量；模板、原始输入和历史输出分开传递。输出须满足 JSON/schema、有限数值及本轮输入引用范围；模型任务成功但输出不合法仍为 `output_invalid`，不能作为可消费结果或用新任务重复收费。完整结构化结果可供下游使用；浏览器模板预览不是模型执行。
+
+正式报告保存链路已落盘为 `CanvasReportSaver → intel_save_report → Loom POST /v1/reports → Reports.saveReport`，不再用 CreateTopic 代替。正文、claims、固定 Skill、material_scope、coverage 和 structured 分开保存；行级及嵌套因子/阈值来源也参与引用校验。报告保存键绑定 run/node，冻结 payload 的同键重放复用报告，异参返回冲突；未知结果先通过 Loom 内部 `GET /v1/reports/by-key` 对账。`/v1` 是服务间接口，不是浏览器新增 API；现有平台 `GET /api/intelligence/reports` 和 `GET /api/intelligence/reports/:id` 仍是报告读取入口。
+
+画布结果已写回但报告失败时，受管 runner 保留 `saving_report` 检查点和 `partial` 结果；设计要求恢复只保存冻结报告、不重跑模型。Markdown 保存/打开、HTTP 错误与机器 reason、审批拒绝无副作用、取消后预算结算和重启恢复仍列入[待测试](/docs/progress/pending-test)，不把服务层实现或拒绝路径当作用户闭环已验收。
+
 ## 前端跨标签认证失效边界
 
 现有认证和业务端点不变。客户端跨标签消息只传失效nonce，`GET /auth/session`仍是身份依据；该请求不复用失效前的在途结果。账号失效期间认证恢复请求保持可用，其他经`http`的业务请求被阻断，原请求取消仍以`AbortError`向调用方传播，不当成保存成功。

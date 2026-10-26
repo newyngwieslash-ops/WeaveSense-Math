@@ -5,6 +5,34 @@ description: 源铭振跃后端核心持久化表与状态边界
 
 # 后端数据库
 
+## 画布工作流准入检查点（Schema 68）
+
+`flow_canvas_workflow_executions` 是准入回执及有界检查点，不是新队列或执行引擎。唯一键为 `(tenant_id, workspace_id, canvas_id, execution_key)`，确定性运行 ID 对同一范围稳定；`request_hash` 区分重复请求和参数冲突。记录保存所有者、原始 revision、冻结画布正文、预算 reservation ID、capability snapshot ID、状态、CAS revision 与最大 512 KiB 的阶段检查点。检查点包括节点 task ID/key/request hash、结果、错误及报告保存阶段/报告引用。PostgreSQL 按 tenant_id 启用 FORCE RLS。
+
+不能复用 `cloud_agent_executions.state_json`：该模型没有 kind 分流，Agent 恢复器按状态扫描并解码专属结构。新记录复用 `FlowOperationProjection`、`FreezeCapabilitySnapshot`、`RunLeases`、`ModelTasks` 和 `Billing`。模型子 reservation 由既有 ModelTasks 结算，终态检查点只结算根 reservation 的累计消费并退还余额，未结算子预算阻止终态提交。
+
+当前 `CanvasProject` 无工作区外键，准入仅允许所有者既有个人工作区；每次访问与写检查点都重新验证活跃租户/成员、工作区运行写能力及画布所有权，不使用会话文档证明归属。首次准入要求 expected revision，重复 key 返回持久状态且仍重验撤权；同 key 异参返回冲突。没有显式预算、既有账务账户或服务端 `CanvasWorkflowAuthority` 时拒绝，不合成额度或审批。
+
+接线边界：`CanvasWorkflowExecutions.Admit/Get/Acquire/PrepareModelNode/Checkpoint` 为 runner 共用接口；本阶段未接通 REST、Agent、调度三入口，真实审批/模型授权仍须由 app 实现 Authority。`PrepareModelNode` 冻结节点请求键并保留调用方 Context 于外层 `payload`，`canvas_workflow` 包含 run/node/snapshot/request hash；它不代表允许模型派发。现有自动 ModelTasks worker 尚无画布当前撤权及冻结 route 强制绑定，接通外部调用前必须补齐；测试只验证结构与本地账务，不请求外部模型。
+
+### T23 双库补充与接线状态
+
+上节保留 T12 交付时的 Schema 68 合同及接线限制。后续 `canvas_workflow_managed.go`、Skill adapter 和 app Authority 已有实现增量，但 T17 REST/审批、T21 长期 grant、T22 周期汇合仍在整合，不能把上节的阶段限制理解为最终结论，也不能据新增代码宣布三入口完成。最终对账需同时核实运行入口、自动 ModelTasks worker 的 Authority 注入及真实撤权行为。
+
+| 所属库与迁移 | 持久结构 | 字段、约束与索引 |
+| --- | --- | --- |
+| 平台库，Schema 68 `canvas_workflow_execution` | `flow_canvas_workflow_executions` | 主键 `id`；`ux_canvas_workflow_key` 唯一覆盖 `(tenant_id, workspace_id, canvas_id, execution_key)`；tenant/user 各有查询索引。`request_hash/request_json` 固定请求，`canvas_revision/canvas_json` 固定画布，`budget_micro/reservation_id/capability_snapshot_id` 关联预算与能力，`status/revision/checkpoint_json` 保存执行状态和 CAS。 |
+| Loom 情报库，`0019_monitor_canvas_binding.sql` | 既有 `flow_monitors` | 新增可空 `canvas_id TEXT` 与 `canvas_auto_run_grant JSONB`；非空 canvas ID 不得为空白，grant 必须是绑定画布的 JSON 对象。此迁移不新增索引或独立执行队列。Monitor 是绑定权威来源，Schedule 经既有 `schedule_id` 关系读取，不复制一套绑定字段。 |
+| Loom 情报库，`0020_report_structured_output.sql` | 既有 `flow_reports` | 新增 `structured_output JSONB NOT NULL DEFAULT '{}'` 与可空 `request_hash TEXT`；完整结构化输出不塞入 coverage。沿用既有 `(tenant_id, idempotency_key)` 唯一约束及 `flow_reports_brief_window` 部分唯一索引；0020 不另建索引。服务层检查工作区与请求摘要，旧空摘要不补造可重放身份。 |
+
+双库由 `docker-compose.flow.yml` 的平台 `DATABASE_URL` 与 Loom `DATABASE_URL` 分别连接，平台 GORM Schema 版本和 Loom 文件编号不是同一序列。0019/0020 仅增列、约束，不删除媒体或短剧数据；必须分别应用各自迁移，不能把平台 schema 68 当作 Loom 已升级的证据。Schema 68 表纳入平台 tenant FORCE RLS；0019/0020 不改已有情报表的租户隔离策略。
+
+长期自动授权应固定范围、配置、来源/工具、频率、预算、次数和到期，并区别 authored 配置变化与运行快照写回；这属于 T21/T22 待收口合同，0019 的 JSON 列存在本身不证明已批准或会自动运行。后续原子消费和平台汇合仍未完成，迁移落盘不等于完整自动闭环验收。
+
+后续已落盘的 `0021_monitor_hits_cycles.sql` 在 Loom 情报库增加 `flow_collection_windows`（主键 tenant/workspace/operation，tenant/workspace/schedule/scheduled_at 唯一，保存 expected_source_ids、Monitor 版本、绑定/授权及周期条件快照）和 `flow_monitor_hits`（document/revision 命中记录，tenant/workspace/monitor/operation/document/revision 唯一，分页索引 `flow_monitor_hits_page`）。0021 启用 RLS 和租户策略；真实 PG owner 检查曾失败，因为只 ENABLE 不能约束表所有者。
+
+`0022_monitor_cycle_force_rls.sql` 对上述两表补 `FORCE ROW LEVEL SECURITY`，不新增字段/索引、不替换原策略。主控的隔离 PG17 migrate/schema/Outbox 专项实际 3 pass、0 fail、0 skip（含 owner RLS 修复后验证）；这是本轮真实 PostgreSQL 局部证据，不是 T22 平台 Dispatcher、长期 grant 或最终用户验收。原 0021 owner RLS RED 记录保留；最终仍须核查普通角色、租户范围、并发消费及整条自动执行链。
+
 ## 分片上传预留
 
 Schema 45 新增 `upload_reservations`：`id`、`user_id`、`size`、`day`、`expires_at`。创建会话时在数据库事务内检查并行会话数、现有资源容量、未到期预留和每日上传用量，更新既有 `user_daily_upload_usages` 后插入预留。SQLite 先取得写锁，PostgreSQL 使用账号级事务 advisory lock。
@@ -31,7 +59,7 @@ Schema 45 新增 `upload_reservations`：`id`、`user_id`、`size`、`day`、`ex
 
 ## 结构迁移与版本
 
-当前结构版本为 50。版本 50 新增 `canvas_mutation_receipts`，按 `(user_id, canvas_id, mutation_id)` 唯一记录画布 operations 请求摘要、确定性结果和提交 revision，供响应丢失后的幂等重放使用；receipt 与画布内容、revision 在同一事务提交。版本 49 `banner_sort_order` 为 `banner_announcements` 增加可配置的 `sort_order` 展示顺序；版本 48 `channel_proxy_url` 为 `model_channels` 增加渠道级出站代理地址 `proxy_url`，支持 `socks5://`、`http://`、`https://`；留空时沿用全局代理。代理地址只返回管理员视图，普通用户目录不暴露渠道代理或其中的认证信息。版本 42 `cloud_agent_pi_sessions` 新增 `cloud_agent_pi_sessions` 表，按运行 ID 保存 Pi 原生 JSONL 会话快照、用户 ID、乐观并发 revision 和更新时间；会话正文由 Agent runtime 管理，Go 只将其作为不透明快照读写，不替代有界控制检查点、事件日志或任务记录。版本 41 `resource_thumbnail` 为 `resources` 增加缩略图元数据。版本 40 `builtin_skill_tombstones` 新增内置技能删除记录，管理员删除平台技能后，后续启动同步不会重新创建该技能；版本 39 `skill_library_categories` 新增 `skill_library_categories` 表，并为 `user_skill_states` 增加 `library_category_id`，保存个人技能库分类及每个用户对技能的归类；分类不改变 `skills.tag` 的技能广场共享分类。版本 38 `prefixed_id_sequence_reconcile` 创建（若缺失）并校准 `id_sequences`：`CHANNEL`、`MODEL`、`PTIER`、`ATTEMPT`、`LMODEL`、`REVISION`、`ROUTE` 按对应业务表的最大有效 ID 前移，包含软删除记录，不回退已有序列、不重写业务 ID。分配新 ID 时再次校准并检查冲突；SQLite → PostgreSQL 迁移完成后也校准序列。 `cloud_agent_gemini_cache` 创建 `cloud_agent_gemini_caches`，保存用户范围内的官方 Gemini 缓存元数据；版本 37 `cloud_agent_gemini_cache_identity` 将缓存标识约束修正为 `(user_id, cache_key)`，移除旧的全局 cache_key 唯一索引。版本 35 `auth_notifications` 为认证通知与组合验证补齐 `auth_verifications`、`notification_quotas`、`sms_channels`、`sms_records` 四张表，并为 `users` 增加 `phone`、`email_verified_at`、`phone_verified_at`，为 `email_verification_codes` 增加 `attempts`；同时创建非空手机号唯一索引。版本 34 `task_media_recovery` 为 `tasks` 增加 `media_recovery_json`（text）和 `media_stage`（最长 24 字）。版本 33 `oauth_state_accepted_terms` 为 `o_auth_states` 增加非空布尔列 `accepted_terms`，默认 `false`，不替历史流程补造同意记录。
+当前平台结构版本为 68（以 `backend/internal/database/migrations.go` 的 `CurrentSchemaVersion` 为准），新增画布执行准入表，详见上节；Loom 使用独立 SQL 迁移序列。以下为历史版本摘要，不是完整迁移列表。版本 50 新增 `canvas_mutation_receipts`，按 `(user_id, canvas_id, mutation_id)` 唯一记录画布 operations 请求摘要、确定性结果和提交 revision，供响应丢失后的幂等重放使用；receipt 与画布内容、revision 在同一事务提交。版本 49 `banner_sort_order` 为 `banner_announcements` 增加可配置的 `sort_order` 展示顺序；版本 48 `channel_proxy_url` 为 `model_channels` 增加渠道级出站代理地址 `proxy_url`，支持 `socks5://`、`http://`、`https://`；留空时沿用全局代理。代理地址只返回管理员视图，普通用户目录不暴露渠道代理或其中的认证信息。版本 42 `cloud_agent_pi_sessions` 新增 `cloud_agent_pi_sessions` 表，按运行 ID 保存 Pi 原生 JSONL 会话快照、用户 ID、乐观并发 revision 和更新时间；会话正文由 Agent runtime 管理，Go 只将其作为不透明快照读写，不替代有界控制检查点、事件日志或任务记录。版本 41 `resource_thumbnail` 为 `resources` 增加缩略图元数据。版本 40 `builtin_skill_tombstones` 新增内置技能删除记录，管理员删除平台技能后，后续启动同步不会重新创建该技能；版本 39 `skill_library_categories` 新增 `skill_library_categories` 表，并为 `user_skill_states` 增加 `library_category_id`，保存个人技能库分类及每个用户对技能的归类；分类不改变 `skills.tag` 的技能广场共享分类。版本 38 `prefixed_id_sequence_reconcile` 创建（若缺失）并校准 `id_sequences`：`CHANNEL`、`MODEL`、`PTIER`、`ATTEMPT`、`LMODEL`、`REVISION`、`ROUTE` 按对应业务表的最大有效 ID 前移，包含软删除记录，不回退已有序列、不重写业务 ID。分配新 ID 时再次校准并检查冲突；SQLite → PostgreSQL 迁移完成后也校准序列。 `cloud_agent_gemini_cache` 创建 `cloud_agent_gemini_caches`，保存用户范围内的官方 Gemini 缓存元数据；版本 37 `cloud_agent_gemini_cache_identity` 将缓存标识约束修正为 `(user_id, cache_key)`，移除旧的全局 cache_key 唯一索引。版本 35 `auth_notifications` 为认证通知与组合验证补齐 `auth_verifications`、`notification_quotas`、`sms_channels`、`sms_records` 四张表，并为 `users` 增加 `phone`、`email_verified_at`、`phone_verified_at`，为 `email_verification_codes` 增加 `attempts`；同时创建非空手机号唯一索引。版本 34 `task_media_recovery` 为 `tasks` 增加 `media_recovery_json`（text）和 `media_stage`（最长 24 字）。版本 33 `oauth_state_accepted_terms` 为 `o_auth_states` 增加非空布尔列 `accepted_terms`，默认 `false`，不替历史流程补造同意记录。
 
 升级前备份，按既有流程执行 `migrate-schema up` 和 `verify` 后再启动新后端。旧版本二进制不支持版本 42，回退需恢复匹配的数据库备份，并评估备份之后的新写入；不能只切回旧镜像。关闭自动迁移的生产环境必须运行正式迁移；手工改表不能更新 `schema_migrations` 的版本与校验和记录。
 

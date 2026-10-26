@@ -1,8 +1,10 @@
 # Local startup and A19 acceptance (user checklist)
 
-This guide covers two things: starting the full stack on your own machine, and closing **A19**, the live-connector
-acceptance that needs your real Telegram and WeChat credentials. Everything else (A01–A21 except A19) was
-verified in CI or on the build box; see `delivery-report.md`.
+本指南用于本地启动及实采连接器检查；历史 CI/build-box 结果不代表当前全部业务验收通过。当前范围见
+[项目任务盘点](2026-10-23-095706-project-progress-prd-handoff.md)与[待验收账](pending-acceptance.md)。
+原 F03 恢复、全 Web 质量债、完整 Agent/MCP/恢复迁移和发布门槛仍待收口，不再使用“只有 A19 未验”的口径。
+这里的 A01–A21 是 PRD 业务场景编号，对照盘点中的 S-A01–S-A21，不等同于部署工作包 A01–A15。
+既有 18088 隔离环境继续保留原卷和数据；下方启动、重启及 reset 示例不是本轮操作授权，不能覆盖现有环境。
 
 Credentials stay in `.env.flow` on your machine. That file is gitignored. Never paste credentials into
 chat, prompts, skills, or the web UI.
@@ -16,7 +18,7 @@ chat, prompts, skills, or the web UI.
 ```bash
 cp .env.flow.example .env.flow
 # Replace every change-me value with a random secret, e.g. `openssl rand -hex 24`:
-#   POSTGRES_PASSWORD, PLATFORM_DB_PASSWORD, INTEL_DB_PASSWORD, REDIS_PASSWORD,
+#   POSTGRES_SUPERUSER_PASSWORD, PLATFORM_DB_PASSWORD, INTEL_DB_PASSWORD, REDIS_PASSWORD,
 #   MINIO_ROOT_USER / MINIO_ROOT_PASSWORD, FLOW_INTERNAL_JWT_SIGNING_KEY (>= 32 bytes)
 # Optional: FLOW_MODEL_GATEWAY_URL/_KEY/_MODEL (OpenAI-compatible) to enable LLM synthesis.
 ```
@@ -129,7 +131,7 @@ into chat, tickets or the browser console; they live only in `.env.flow`.
 - [ ] Revoking a source stops new runs, and existing evidence stays readable (A17 live).
 - [ ] MCP: one approved tool call succeeded and appears in MCP usage with its credits. The token never appears in the UI or logs.
 - [ ] MCP OAuth (5.3.1): real-provider authorization succeeded, a tool call worked, refresh worked after expiry, replayed callback and revoke behaved as described.
-- [ ] Record the time (Asia/Shanghai), the commit SHA (`git rev-parse HEAD`) and the sample ids. Then set A19 to **pass** in `delivery-report.md`.
+- [ ] 记录 Asia/Shanghai 时间、代码 SHA、部署镜像、样本 ID、实际结果及未执行项，回填当前待验收账。只对有真实证据的连接器子项标记通过，不能据一个样本或这份清单解除整套 A19/MCP/OAuth 与其他发布门槛。
 
 ## 6. Stop / reset
 ```bash

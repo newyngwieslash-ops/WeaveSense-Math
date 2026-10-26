@@ -5,6 +5,30 @@ description: 从产品功能快速定位主要代码入口
 
 # 代码功能地图
 
+## 行业研判画布（T23 阶段地图，三入口尚未收口）
+
+这里区分浏览器预览、受管服务层和正在整合的入口；代码存在不代表真实审批、模型、报告或自动采集闭环已验收。不要把旧 `ExecuteCanvasWorkflow` 直接暴露为绕过准入的执行入口。
+
+| 边界 | 主要实现与责任 |
+| --- | --- |
+| 配置与浏览器预览 | `web/src/types/canvas.ts`；`web/src/lib/canvas/dataflow-evaluator.ts` 负责严格文件解析、十算子与本地 DAG 求值；`nodes/logic-node.tsx` 编辑多指标、复合键与去重参数；`nodes/data-source-node.tsx` 编辑来源配置。 |
+| 文件导入、图表与报告卡 | `web/src/lib/canvas/data-source-file.ts` 和 `pages/canvas/use-canvas-upload.ts` 共享导入边界；`canvas-node-graph-context.ts`、`lib/canvas/chart-data.ts`、`nodes/chart-node.tsx` 消费端口数据和当前空结果；`nodes/markdown-node.tsx` 承载报告状态，真实保存/打开仍待接线验收。上述 nodes/ 与 graph-context 位于 `web/src/components/canvas/`。 |
+| Agent 配置合同 | `backend/internal/canvas/capability/{builtin,schema,projection}.go` 定义并投影 data-source/logic/chart/skill 结构；`internal/app/cloud_agent_canvas_state.go` 回读。只扩展受控字段，不放开通用 SafeProjection。 |
+| 准入与持久身份 | `backend/internal/flow/canvas_workflow_execution.go` 和 `internal/model/canvas_workflow_execution.go` 固定范围、预算、能力、运行/节点键与检查点；迁移/RLS 在 `internal/database/`。 |
+| 服务端求值与编排 | `backend/internal/flow/canvas_workflow_runner.go` 保留算子/parser helper 及旧执行函数；`canvas_workflow_managed.go` 基于准入冻结图进行 DAG 预检、节点状态、失败阻断、CAS 写回和报告阶段恢复，复用既有租约与 ModelTasks。两者不能混称已接通的公开运行 API。 |
+| 来源及引用 | `backend/internal/flow/canvas_workflow_sources.go` 解析 static/intel/topic/MCP，返回 coverage、行级证据与候选同步时间；monitor hits 仍待汇合。`canvas_handoff.go` 区分动态专题与静态快照并验证机器引用。 |
+| Skill 执行 | `backend/internal/flow/canvas_workflow_skill.go` 校验安装版本/hash、输入/output_schema 与引用范围，经 `model_tasks.go` 使用既有模型网关、预算和任务状态；不是在浏览器执行 Skill。 |
+| 正式报告 | `backend/internal/flow/canvas_report.go` 固定 run/node 保存身份；`report_save.go` 冻结 payload、验证引用、处理未知结果对账；`services/loom-engine/flow/reports.ts`、`report-payload.ts` 保存正文/claims/structured，0020 增列。 |
+| 行业包和示例 | 源包 `industry-packs/substance-precursor-intel/`、自动导出 `backend/internal/flow/skillpacks/substance-precursor-intel.json`；导出入口 `TestIndustryPackExport`，不手维护双份。`web/src/lib/canvas/canvas-industry-blueprints.ts` 提供三套示例图，不提供真实证据或执行授权。 |
+
+三入口接线责任（不是完成清单）：
+
+- **手动 / REST（T17）**：`backend/cmd/server/canvas_workflow_routes.go` 的独立注册已由 `main.go` 调用，实际 `/api/canvas-workflows/...` 路由见 HTTP API 专题；旧 `registerCanvasWorkflowRoutes` 为空不能据此判断全部 REST 缺失。服务层完整接线、编译、前端 `http` 与真实审批仍未验收。
+- **Agent（T17）**：`internal/app/cloud_agent_workflow.go`、`cloud_agent_runtime*.go`、`cloud_agent_tools.go` 正在贯通 `canvas_run_workflow` 的具体 ops+run 一次审批、建图后 revision、Authority、异步恢复与结果消费；不能仅凭 schema 注册判断执行完成。
+- **Monitor（T21/T22）**：`internal/flow/monitors_canvas_routes.go`、`gaps9.go` 以及 Loom `engine.ts/server.ts` 负责绑定和授权边界；0019 只提供持久字段。周期事件汇合要接既有 `events.go`、Inbox/Outbox 与 worker，并在执行前重验授权、预算和暂停状态；长期 grant、命中记录和自动消费仍待最终核验。当前平台 CommandDispatcher 尚未实现画布自动分发，main 保留原 dispatcher，不能称采集自动闭环已接通。Loom 0021 增加窗口/命中表，0022 补这两表 FORCE RLS；局部真实 PG 通过不替代平台汇合执行。
+
+专项入口包括 `canvas_workflow_parser_test.go`、`canvas_workflow_execution_test.go`、`canvas_workflow_sources_test.go`、`canvas_workflow_skill_test.go`、`canvas_workflow_managed_test.go`、`canvas_report_test.go`、`substance_precursor_pack_test.go`，以及 Web dataflow/chart/upload/blueprints 和 Loom `t16-reports.test.ts`、`t21.test.ts`、`t22.test.ts`。测试文件存在不代表命令已执行，结果与未验收边界见[待测试](/docs/progress/pending-test)。
+
 ## 画布待同步编辑与可信基线
 
 共享实现 `web/src/services/user-data-sync.ts`：`initializeRemoteUserDataSession`不将脏缓存当已确认；`loadCanvasProjectWithinSync`由公开加载和已有画布直存共同复用，避免重入串行锁；正常加载和`refreshCanvasAfterAgent`只在远端正文哈希匹配上次确认哈希时恢复旧基线。HTTP、表结构及RLS无变化。回归检查：`web/test/canvas-pending-edit-sync.test.ts`。原F03历史图缺基线仍受保护，不是强制恢复路径。
