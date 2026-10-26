@@ -90,3 +90,14 @@ export function setProgress(questions: { id: string }[], attempts: SetAttempt[])
     const remaining = questions.filter((q) => !done.has(q.id)).length;
     return { done, remaining, complete: questions.length > 0 && remaining === 0 };
 }
+
+/** 自测视角预览（DEV-075）：只取学生能看到的字段（题干、单位、作答格式），不带参数、数学状态与参考答案。 */
+export function selfTestPreview(set: Pick<VariantSet, "items">) {
+    return {
+        state: "open",
+        helpUsed: false,
+        sawSolution: false,
+        measurement: "set" as const,
+        questions: set.items.map((it) => ({ id: it.id, prompt: it.prompt, unit: it.unit, answer_format: it.answer_format })),
+    };
+}

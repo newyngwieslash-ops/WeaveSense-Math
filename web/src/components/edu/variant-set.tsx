@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { edu, type EduScope } from "@/services/api/edu";
 
-import { dropReasonLabel, VARIANT_STATE_LABEL, variantApprovable, variantShortfall, type VariantSet } from "./edu-admin-logic";
+import { dropReasonLabel, selfTestPreview, VARIANT_STATE_LABEL, variantApprovable, variantShortfall, type VariantSet } from "./edu-admin-logic";
+import { SetSelfTest } from "./set-self-test";
 
 /**
  * 教师端：为已生成的讲解修订生成“举一反三”变式题组，逐题独立验证后审核（AC-22）。
@@ -20,6 +21,7 @@ export function VariantSetPanel({ scope, lessonId, onPick, picked }: { scope: Ed
     const [open, setOpen] = useState<VariantSet | null>(null);
     const [job, setJob] = useState<JobRow | null>(null);
     const [comment, setComment] = useState("");
+    const [studentView, setStudentView] = useState(false);
     const [msg, setMsg] = useState("");
 
     const reload = useCallback(() => {
@@ -124,6 +126,14 @@ export function VariantSetPanel({ scope, lessonId, onPick, picked }: { scope: Ed
                             </li>
                         ))}
                     </ol>
+                    <details className="mt-2" open={studentView} onToggle={(e) => setStudentView((e.target as HTMLDetailsElement).open)}>
+                        <summary className="cursor-pointer text-xs font-medium">自测视角预览（学生看到的样子，不含参考答案，提交已禁用）</summary>
+                        {studentView ? (
+                            <div className="mt-2 rounded-md border border-dashed p-2" data-testid="self-test-preview">
+                                <SetSelfTest selfTest={selfTestPreview(open)} attempts={[]} busy onSubmit={() => undefined} />
+                            </div>
+                        ) : null}
+                    </details>
                     {open.dropped?.length ? <p className="mt-2 text-xs text-stone-500">已剔除：{open.dropped.map((d) => dropReasonLabel(d.reason)).join("；")}</p> : null}
                     {open.reviews?.length ? (
                         <p className="mt-1 text-xs">
