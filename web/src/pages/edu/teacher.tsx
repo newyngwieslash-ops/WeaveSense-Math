@@ -4,6 +4,7 @@ import { ClassAdmin, ExtensionPanel } from "@/components/edu/class-admin";
 import { edu, RESULT_LABEL, type EduAttempt } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { emptyState, teacherError } from "@/components/edu/teacher-errors";
+import { ReportExport } from "@/components/edu/export";
 
 /**
  * 教师端课堂视图：班级、作业、学情分布、求助分组与回复、逐条作答与人工判定、开放答案。
@@ -181,6 +182,9 @@ export default function TeacherClassroom() {
                         独立自测 {dash.selfTest.independent} 人，其中正确 {dash.selfTest.independentCorrect}；待处理求助 {dash.help.open}，内容问题报告 {dash.help.openReports}
                     </p>
                     <p className="mt-1 text-xs text-stone-500">仅为统计分布，错因请对照学生作答核实。</p>
+                    <div className="mt-2">
+                        <ReportExport assignmentId={asId} scope={scope} onMsg={setMsg} />
+                    </div>
                 </section>
             ) : null}
 

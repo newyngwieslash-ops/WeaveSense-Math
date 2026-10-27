@@ -220,20 +220,38 @@ func (h *API) replyHelp(c *gin.Context) {
 // dashboard: per-class distribution for one assignment (FR-T12). Individual
 // records stay behind GET /assignments/:id/attempts (teaching permission).
 func (h *API) dashboard(c *gin.Context) {
-	a, tx, as, ok := h.staffAssignment(c)
+	_, tx, as, ok := h.staffAssignment(c)
 	if !ok {
 		return
 	}
+	st := assignmentStats(tx, as)
+	reply(c, 200, gin.H{"assignmentId": as.ID, "students": st.Students, "distribution": st.Dist,
+		"selfTest": gin.H{"independent": st.SelfIndependent, "independentCorrect": st.SelfCorrect},
+		"help":     gin.H{"open": st.OpenHelp, "openReports": st.OpenReports},
+		"note":     "distribution only; error causes are suggestions to verify against each student's attempts"}, "ok")
+}
+
+// classStats is the aggregate view of one assignment: no student identity.
+type classStats struct {
+	Students        int
+	Dist            map[string]int
+	SelfIndependent int
+	SelfCorrect     int
+	OpenHelp        int64
+	OpenReports     int64
+}
+
+func assignmentStats(tx *gorm.DB, as model.EduAssignment) classStats {
 	var students []string
-	tx.Model(&model.EduEnrollment{}).Where("tenant_id = ? AND class_id = ? AND status = ?", a.TenantID, as.ClassID, "active").Pluck("student_user_id", &students)
+	tx.Model(&model.EduEnrollment{}).Where("tenant_id = ? AND class_id = ? AND status = ?", as.TenantID, as.ClassID, "active").Pluck("student_user_id", &students)
 	var ats []model.EduAttempt
-	tx.Where("tenant_id = ? AND assignment_id = ? AND valid = ?", a.TenantID, as.ID, true).Order("created_at").Find(&ats)
+	tx.Where("tenant_id = ? AND assignment_id = ? AND valid = ?", as.TenantID, as.ID, true).Order("created_at").Find(&ats)
 	var hs []model.EduHintUnlock
-	tx.Where("tenant_id = ? AND assignment_id = ?", a.TenantID, as.ID).Find(&hs)
+	tx.Where("tenant_id = ? AND assignment_id = ?", as.TenantID, as.ID).Find(&hs)
 	var reports int64
-	tx.Model(&model.EduHelpRequest{}).Where("tenant_id = ? AND assignment_id = ? AND state = ? AND priority = ?", a.TenantID, as.ID, "open", 1).Count(&reports)
+	tx.Model(&model.EduHelpRequest{}).Where("tenant_id = ? AND assignment_id = ? AND state = ? AND priority = ?", as.TenantID, as.ID, "open", 1).Count(&reports)
 	var openHelp int64
-	tx.Model(&model.EduHelpRequest{}).Where("tenant_id = ? AND assignment_id = ? AND state = ?", a.TenantID, as.ID, "open").Count(&openHelp)
+	tx.Model(&model.EduHelpRequest{}).Where("tenant_id = ? AND assignment_id = ? AND state = ?", as.TenantID, as.ID, "open").Count(&openHelp)
 	hinted := map[string]bool{}
 	for _, x := range hs {
 		hinted[x.StudentUserID] = true
@@ -291,8 +309,5 @@ func (h *API) dashboard(c *gin.Context) {
 			}
 		}
 	}
-	reply(c, 200, gin.H{"assignmentId": as.ID, "students": len(students), "distribution": dist,
-		"selfTest": gin.H{"independent": selfIndep, "independentCorrect": selfCorrect},
-		"help":     gin.H{"open": openHelp, "openReports": reports},
-		"note":     "distribution only; error causes are suggestions to verify against each student's attempts"}, "ok")
+	return classStats{Students: len(students), Dist: dist, SelfIndependent: selfIndep, SelfCorrect: selfCorrect, OpenHelp: openHelp, OpenReports: reports}
 }
