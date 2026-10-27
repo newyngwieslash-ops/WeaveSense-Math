@@ -428,15 +428,25 @@ func (h *API) getEditable(c *gin.Context) {
 		Pronunciations map[string]string `json:"pronunciations"`
 		Quality        json.RawMessage   `json:"quality"`
 		Meta           struct {
-			EditLog json.RawMessage `json:"edit_log"`
-			Layout  json.RawMessage `json:"layout"`
+			EditLog       json.RawMessage `json:"edit_log"`
+			Layout        json.RawMessage `json:"layout"`
+			Goal          string          `json:"goal"`
+			Style         string          `json:"style"`
+			TargetMinutes int             `json:"target_minutes"`
 		} `json:"meta"`
 	}
 	if json.Unmarshal(raw, &doc) != nil {
 		h.fail(c, fmt.Errorf("%w: lesson document", ErrContract))
 		return
 	}
+	says, lines := make([]string, 0, len(doc.Beats)), 0
+	for _, b := range doc.Beats {
+		says = append(says, b.Say)
+		lines += len(b.Board)
+	}
+	teaching := gin.H{"goal": doc.Meta.Goal, "style": doc.Meta.Style, "targetMinutes": doc.Meta.TargetMinutes}
 	reply(c, 200, gin.H{"lessonRevisionId": l.ID, "lessonHash": l.LessonHash, "state": l.State, "parentLessonRevisionId": l.ParentLessonRevisionID,
+		"teaching": teaching, "duration": lessonDuration(says, lines, doc.Meta.Style, doc.Meta.TargetMinutes),
 		"beats": doc.Beats, "hints": doc.Hints, "pronunciations": doc.Pronunciations, "quality": doc.Quality, "editLog": doc.Meta.EditLog, "layout": doc.Meta.Layout,
 		"editReviewInherit": h.Svc.EditReviewRule(tx, a.TenantID), "latestRevisionId": h.Svc.latestHead(tx, l.ID),
 		"limits": gin.H{"maxEdits": maxLessonEdits, "maxText": 600, "maxBoardLines": 12, "maxLine": 200}}, "ok")

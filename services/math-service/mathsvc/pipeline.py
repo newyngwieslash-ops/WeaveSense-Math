@@ -70,7 +70,7 @@ def run_stage(stage, payload, prior):
         cq = mod.check_question(n, avoid=sol["answer"]["exact"])
         refs = {"problem_hash": payload.get("problem_hash", ""), "solution_hash": payload.get("solution_hash", ""),
                 "report_hash": payload.get("report_hash", ""), "catalog_version": catalog.CATALOG_VERSION}
-        lesson = L.compose(problem["family_id"], n, sol, src["report"], cq, refs)
+        lesson = L.compose(problem["family_id"], n, sol, src["report"], cq, refs, payload.get("teaching"))
         return {"lesson": lesson, "lesson_hash": L.canonical_hash(lesson)}
     if stage == "apply_edits":
         from . import edits

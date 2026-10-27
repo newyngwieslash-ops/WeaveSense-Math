@@ -75,6 +75,31 @@ class FamilyTests(unittest.TestCase):
         self.assertNotIn("check_answer_key", stu)
         self.assertEqual([h["level"] for h in stu["hints"]], [1, 2, 3])
 
+    def test_teaching_params(self):
+        """DEV-070: goal, style and target length are recorded in meta only;
+        absent params leave the document (and its hash) as before; the math,
+        beats and student projection are the same."""
+        n = F.normalize(P("2", "1"))
+        s = F.solve(n)
+        r = F.verify(n, s)
+        cq = F.check_question(n)
+        base = L.compose(F.FAMILY_ID, n, s, r, cq, {})
+        self.assertNotIn("target_minutes", base["meta"])
+        self.assertEqual(L.canonical_hash(base), L.canonical_hash(L.compose(F.FAMILY_ID, n, s, r, cq, {}, None)))
+        les = L.compose(F.FAMILY_ID, n, s, r, cq, {}, {"goal": "fix_mistake", "style": "detailed", "target_minutes": 6})
+        self.assertEqual((les["meta"]["goal"], les["meta"]["style"], les["meta"]["target_minutes"]), ("fix_mistake", "detailed", 6))
+        self.assertEqual(les["beats"], base["beats"])
+        self.assertEqual(les["answer"], base["answer"])
+        self.assertNotEqual(L.canonical_hash(les), L.canonical_hash(base))
+        stu = L.student_projection(les, "none")
+        self.assertNotIn("goal", stu["meta"])
+        self.assertNotIn("target_minutes", stu["meta"])
+        for bad in ({"goal": "x"}, {"style": "funny"}, {"target_minutes": 2}, {"target_minutes": 9}, {"target_minutes": True},
+                    {"target_minutes": "5"}, {"other": 1}, "fast"):
+            with self.assertRaises(MathError) as cm:
+                L.compose(F.FAMILY_ID, n, s, r, cq, {}, bad)
+            self.assertEqual(cm.exception.code, "INPUT_AMBIGUOUS", bad)
+
     def test_guard_catches_leak(self):
         with self.assertRaises(MathError):
             L.guard({"x": ["答案 2√22/11"]}, ["2√22/11"])

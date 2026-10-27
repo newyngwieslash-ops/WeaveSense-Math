@@ -32,7 +32,8 @@ SUITES = {
     ],
     "teaching": [
         "TestStudentLearningLoop", "TestHelpRequestsAndDashboard", "TestContentIncidentChain",
-        "TestPGContentIncidentChain", "TestIncidentSOP", "TestPGIncidentSOP",
+        "TestPGContentIncidentChain", "TestIncidentSOP", "TestPGIncidentSOP", "TestLessonPlan", "TestPGLessonPlan",
+        "TestLessonDurationEstimate",
     ],
     "agent": ["TestAgentMathTools", "TestMCPProtocolWithGoSDK"],
     "course": ["TestCourseConfig", "TestPGCourseConfig"],
@@ -86,6 +87,7 @@ RULES = [
     (ED + "authz", ["permissions"]),
     (ED + "problemimages", ["permissions"]),
     (ED + "cache", ["permissions"]),
+    (ED + "lessonplan", ["teaching", "cost"]),
     (ED + "roles", ["permissions"]),
     (ED + "opsaccess", ["permissions"]),
     (ED + "org", ["permissions"]),

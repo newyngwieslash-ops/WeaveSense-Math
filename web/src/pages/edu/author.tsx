@@ -9,6 +9,8 @@ import { edu, newClientKey, type EduScope } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { blockingCodeLabel } from "@/components/edu/render-check-logic";
 import { ManualLessonForm } from "@/components/edu/manual-lesson";
+import { LessonPlanPanel } from "@/components/edu/lesson-plan";
+import { actionLabel, teachingBody, type Teaching } from "@/components/edu/lesson-plan-logic";
 import { ProblemImagePanel } from "@/components/edu/problem-image";
 import { TextIntake } from "@/components/edu/text-intake";
 import { MANUAL_NOTICE_TEACHER, MANUAL_TEMPLATE_FAMILY, MANUAL_UNVERIFIED } from "@/components/edu/manual-lesson-logic";
@@ -40,7 +42,16 @@ export const FAMILY_TEMPLATES: Record<string, { label: string; structured: Recor
     [MANUAL_TEMPLATE_FAMILY]: { label: "目录外题目（人工编写讲解）", structured: { family_id: MANUAL_TEMPLATE_FAMILY, input_state: "sufficient", params: {} } },
 };
 
-type Job = { id: string; status: string; stage: string; progress: number; error?: { code?: string; message?: string } | null; solutionRevisionId?: string; lessonRevisionId?: string };
+type Job = {
+    id: string;
+    status: string;
+    stage: string;
+    progress: number;
+    error?: { code?: string; message?: string } | null;
+    solutionRevisionId?: string;
+    lessonRevisionId?: string;
+    recovery?: string[];
+};
 type Revision = { id: string; problemId: string; inputHash: string; state: string; revision: number };
 type Solution = { id: string; solutionStatus: string; mathState: string; evidenceLevels: string };
 type Lesson = { id: string; lessonHash: string; state: string; blockingErrors: string; previewArtifactId: string };
@@ -81,6 +92,8 @@ export default function TeacherAuthoring() {
     const [lessonKey] = useState(newClientKey);
     const [analyzeJob, setAnalyzeJob] = useState("");
     const [lessonJob, setLessonJob] = useState("");
+    const [teaching, setTeaching] = useState<Teaching>({ goal: "", style: "standard", targetMinutes: 5 });
+    const [lessonAttempt, setLessonAttempt] = useState(0);
     const [solution, setSolution] = useState<Solution | null>(null);
     const [lesson, setLesson] = useState<Lesson | null>(null);
     const [preview, setPreview] = useState("");
@@ -187,9 +200,14 @@ export default function TeacherAuthoring() {
     };
     const buildLesson = async () => {
         if (!solution) return;
-        const r = await edu<Job>("post", `/solution-revisions/${solution.id}/lesson`, scope, { idempotencyKey: `${lessonKey}-${solution.id}` });
+        const r = await edu<Job>("post", `/solution-revisions/${solution.id}/lesson`, scope, { idempotencyKey: `${lessonKey}-${lessonAttempt}-${solution.id}`, ...teachingBody(teaching) });
         if (!r.ok) return setMsg(teacherError(r));
         setLessonJob(r.data.id);
+    };
+    // DEV-070: a lesson job that did not succeed can be started again as a new job (new key); an unknown provider outcome is reconciled instead.
+    const restartLesson = () => {
+        setLessonAttempt((n) => n + 1);
+        setLessonJob("");
     };
     const publish = async () => {
         if (!lesson) return;
@@ -216,6 +234,25 @@ export default function TeacherAuthoring() {
                 任务 {j.id.slice(-8)}：{JOB_STATE_TEXT[j.status] || j.status} {j.stage && !TERMINAL.has(j.status) ? `· ${STAGE_TEXT[j.stage] || j.stage}` : ""}
                 {j.status === "failed" ? `。${jobErrorText(j.error)}` : ""}
                 {j.status === "reconciliation_required" ? "，供应商结果未知，等待服务端对账，不会自动重复计费" : ""}
+                {j.id === lessonJob && j.recovery?.length ? (
+                    <span className="ml-1">
+                        {j.recovery.map((x) =>
+                            x === "restart_new_key" ? (
+                                <button key={x} className={`${ghost} ml-2 h-7`} onClick={restartLesson}>
+                                    {actionLabel(x)}
+                                </button>
+                            ) : x === "reconcile" ? (
+                                <button key={x} className={`${ghost} ml-2 h-7`} onClick={() => void edu("post", `/jobs/${j.id}/reconcile`, scope, {})}>
+                                    {actionLabel(x)}
+                                </button>
+                            ) : (
+                                <span key={x} className="ml-2">
+                                    下一步：{actionLabel(x)}
+                                </span>
+                            ),
+                        )}
+                    </span>
+                ) : null}
                 {!TERMINAL.has(j.status) ? (
                     <button className={`${ghost} ml-2 h-7`} onClick={() => void edu("post", `/jobs/${j.id}/cancel`, scope, {})}>
                         取消
@@ -301,6 +338,7 @@ export default function TeacherAuthoring() {
 
             <section className={`${box} mt-4`}>
                 <h2 className="mb-2 font-semibold">3. 讲解与审核</h2>
+                {solution && !lessonJob ? <LessonPlanPanel scope={scope} solutionId={solution.id} refresh={lessonAttempt} value={teaching} onChange={setTeaching} /> : null}
                 <button className={btn} disabled={!solution || !!lessonJob} onClick={() => void buildLesson()}>
                     生成讲解
                 </button>

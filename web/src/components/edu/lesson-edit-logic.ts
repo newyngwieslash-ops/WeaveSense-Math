@@ -1,3 +1,5 @@
+import type { LessonDuration } from "./lesson-plan-logic";
+
 /**
  * 讲解结构化编辑的纯逻辑（FR-T05/T06，AC-17/18），便于单元测试。
  * 只生成字段级编辑；是否可编辑、影响范围和冲突都以服务端判定为准。
@@ -16,6 +18,8 @@ export type Editable = {
     editReviewInherit: string;
     latestRevisionId: string;
     limits: { maxEdits: number; maxText: number; maxBoardLines: number; maxLine: number };
+    teaching?: { goal: string; style: string; targetMinutes: number };
+    duration?: LessonDuration;
 };
 export type Draft = {
     beats: Record<string, { title: string; say: string; board: string }>;

@@ -20,7 +20,26 @@ def canonical_hash(obj):
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
-def compose(fam, norm, sol, report, cq, refs):
+GOALS = ("understand_method", "practice", "fix_mistake")
+STYLES = ("concise", "standard", "detailed")
+
+
+def teaching_params(t):
+    """Teacher chosen goal, style and target length (DEV-070). Absent means the
+    defaults and leaves the lesson document unchanged. They describe the
+    lesson and its pacing; they never change the verified mathematics."""
+    if t is None:
+        return None
+    if not isinstance(t, dict) or set(t) - {"goal", "style", "target_minutes"}:
+        raise MathError("INPUT_AMBIGUOUS", "teaching must be {goal, style, target_minutes}")
+    goal, style, minutes = t.get("goal", ""), t.get("style", "standard"), t.get("target_minutes", 5)
+    if goal not in GOALS + ("",) or style not in STYLES or isinstance(minutes, bool) or not isinstance(minutes, int) or not 3 <= minutes <= 8:
+        raise MathError("INPUT_AMBIGUOUS", "teaching goal, style or target_minutes (3 to 8) is not supported")
+    return {"goal": goal, "style": style, "target_minutes": minutes}
+
+
+def compose(fam, norm, sol, report, cq, refs, teaching=None):
+    teaching = teaching_params(teaching)
     if report["math_state"] != "verified":
         raise MathError("VALIDATION_FAILED", "lesson requires a verified solution", {"failed": report["failed_checks"]})
     beats = []
@@ -44,6 +63,11 @@ def compose(fam, norm, sol, report, cq, refs):
         "check_answer_key": cq["answer_key"],
         "quality": {"math": report["math_state"], "pedagogy": "pending_teacher_review", "presentation": "auto_checked"},
     }
+    if teaching:
+        lesson["meta"]["style"] = teaching["style"]
+        lesson["meta"]["target_minutes"] = teaching["target_minutes"]
+        if teaching["goal"]:
+            lesson["meta"]["goal"] = teaching["goal"]
     problems = presentation_check(lesson, sol)
     if problems:
         raise MathError("VALIDATION_FAILED", "presentation consistency failed", {"problems": problems})
