@@ -13,6 +13,8 @@ import { TextIntake } from "@/components/edu/text-intake";
 import { MANUAL_NOTICE_TEACHER, MANUAL_TEMPLATE_FAMILY, MANUAL_UNVERIFIED } from "@/components/edu/manual-lesson-logic";
 import { JOB_STATE_TEXT, jobErrorText, lessonStateLine, STAGE_TEXT, teacherError } from "@/components/edu/teacher-errors";
 import { ContentExport } from "@/components/edu/export";
+import { useTeacherBeat } from "@/components/edu/teacher-time";
+import { authorPhase } from "@/components/edu/teacher-time-logic";
 
 /**
  * 教师备课：结构化录入 → 确认题意（绑定输入哈希）→ 数学分析任务 → 生成讲解任务 →
@@ -90,6 +92,8 @@ export default function TeacherAuthoring() {
     const [manual, setManual] = useState(false);
     const aj = useJob(scope, analyzeJob);
     const lj = useJob(scope, lessonJob);
+    const [editing, setEditing] = useState(false);
+    useTeacherBeat(scope, authorPhase(lesson?.state, editing, !!publicationId), lesson?.id || rev?.id);
 
     useEffect(() => {
         void listIntelWorkspaces().then((l) => {
@@ -321,7 +325,7 @@ export default function TeacherAuthoring() {
                             </p>
                         ) : null}
                         {lesson.blockingErrors || manual ? null : (
-                            <details className="mt-3">
+                            <details className="mt-3" onToggle={(e) => setEditing((e.currentTarget as HTMLDetailsElement).open)}>
                                 <summary className="cursor-pointer text-sm font-medium">修改讲解（生成新修订）</summary>
                                 <div className="mt-2">
                                     <LessonEditor key={lesson.id} scope={scope} lessonId={lesson.id} onOpenRevision={openLesson} />

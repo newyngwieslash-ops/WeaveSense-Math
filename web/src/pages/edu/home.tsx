@@ -6,6 +6,7 @@ import { authorLink, catalogQuery, catalogStateLabel, favoriteRequest, JOB_STATU
 import { edu } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { teacherError } from "@/components/edu/teacher-errors";
+import { TeacherTimePanel } from "@/components/edu/teacher-time";
 
 /**
  * 教师首页（DEV-067）：我的讲解、待我审核、我的班级、学生问题、运行中的任务与内容事故。
@@ -166,6 +167,7 @@ export default function EduTeacherHome() {
                         )}
                     </section>
                     <DemoClassPanel scope={scope} />
+                    <TeacherTimePanel scope={scope} />
                     <section className={box}>
                         <h2 className="mb-2 font-semibold">检索与复用</h2>
                         <div className="flex flex-wrap gap-2">

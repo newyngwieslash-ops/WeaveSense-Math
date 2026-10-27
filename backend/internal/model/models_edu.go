@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -1022,3 +1022,37 @@ type EduMetricState struct {
 }
 
 func (EduMetricState) TableName() string { return "edu_metric_states" }
+
+// EduTeacherTimeSegment is a stretch of active teacher work in one phase (DEV-117). The web client sends
+// a beat only while the page is visible and the teacher interacted recently; the server adds the real
+// gap since the teacher's previous beat when it is within the idle threshold, so measured time never
+// exceeds wall clock time even with several tabs open.
+type EduTeacherTimeSegment struct {
+	ID            string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID      string    `json:"tenantId" gorm:"size:40;not null;index:ix_edu_ttime,priority:1"`
+	TeacherUserID string    `json:"teacherUserId" gorm:"size:40;not null;index:ix_edu_ttime,priority:2"`
+	Day           string    `json:"day" gorm:"size:10;not null;index:ix_edu_ttime,priority:3"` // YYYY-MM-DD in the reporting zone
+	Phase         string    `json:"phase" gorm:"size:16;not null"`                             // prep | review | edit | publish | after_class
+	ObjectID      string    `json:"objectId,omitempty" gorm:"size:40"`
+	StartedAt     time.Time `json:"startedAt"`
+	LastBeatAt    time.Time `json:"lastBeatAt" gorm:"index"`
+	ActiveSeconds int       `json:"activeSeconds"`
+	Beats         int       `json:"beats"`
+}
+
+func (EduTeacherTimeSegment) TableName() string { return "edu_teacher_time_segments" }
+
+// EduTeacherTimeDiary is a teacher's own time diary entry for one day and phase; it corrects the
+// measured time in reports and is shown next to it, never silently merged.
+type EduTeacherTimeDiary struct {
+	ID            string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID      string    `json:"tenantId" gorm:"size:40;not null;uniqueIndex:ux_edu_tdiary,priority:1"`
+	TeacherUserID string    `json:"teacherUserId" gorm:"size:40;not null;uniqueIndex:ux_edu_tdiary,priority:2"`
+	Day           string    `json:"day" gorm:"size:10;not null;uniqueIndex:ux_edu_tdiary,priority:3"`
+	Phase         string    `json:"phase" gorm:"size:16;not null;uniqueIndex:ux_edu_tdiary,priority:4"`
+	Minutes       int       `json:"minutes"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+func (EduTeacherTimeDiary) TableName() string { return "edu_teacher_time_diaries" }
