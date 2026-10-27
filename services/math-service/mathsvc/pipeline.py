@@ -33,6 +33,9 @@ def run_stage(stage, payload, prior):
     if stage == "grade":
         from .grade import grade
         return grade(payload)
+    if stage == "normalize_text":
+        from .intake import normalize_text
+        return normalize_text(payload)
     if stage == "generate_variants":
         from . import variants
         return variants.generate(payload)

@@ -73,6 +73,15 @@ class App:
             raise MathError(e.get("code", "INTERNAL"), e.get("message", "grade failed"))
         return dict(out["result"], elapsed_ms=ms)
 
+    def normalize(self, body):
+        """DEV-031: typed statement -> structured draft (needs_confirmation), in the isolated subprocess."""
+        text = body.get("text") if isinstance(body, dict) else None
+        out, _ = isolated_stage("normalize_text", {"text": text}, {}, 2)
+        if not out.get("ok"):
+            e = out["error"]
+            raise MathError(e.get("code", "INTERNAL"), e.get("message", "normalize failed"), e.get("details"))
+        return out["result"]
+
     def mcp_call(self, tenant, name, args, meta):
         if name in TOOL_KIND:
             key = (meta or {}).get("idempotency_key") or args.get("idempotency_key", "")
@@ -173,6 +182,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, self.app.store.cancel(t, m.group(1)))
             if self.path == "/v1/grade":
                 return self._send(200, self.app.grade(req))
+            if self.path == "/v1/normalize":
+                return self._send(200, self.app.normalize(req))
             if self.path == "/v1/reconcile":
                 j = self.app.store.find_by_key(t, req.get("kind", ""), req.get("idempotency_key", ""))
                 return self._send(200, {"found": bool(j), "job": j})
