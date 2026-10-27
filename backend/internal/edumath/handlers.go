@@ -75,6 +75,7 @@ func (h *API) Register(api *gin.RouterGroup) {
 	h.registerMetrics(g)
 	h.registerTeacherTime(g)
 	h.registerObservability(g)
+	h.registerRestore(g)
 	h.registerPauses(g)
 }
 
