@@ -42,6 +42,7 @@ func (h *API) Register(api *gin.RouterGroup) {
 	g.POST("/roles", h.bindRole)
 	g.POST("/roles/revoke", h.revokeRole)
 	g.GET("/roles", h.listRoles)
+	g.POST("/problem-drafts/normalize", h.normalizeDraft)
 	g.POST("/problems", h.createProblem)
 	g.POST("/problems/:id/revisions", h.reviseProblem)
 	g.POST("/problem-revisions/:id/confirm", h.confirm)

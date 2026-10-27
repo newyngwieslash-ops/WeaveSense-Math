@@ -104,6 +104,19 @@ class ServerTests(unittest.TestCase):
         st, raw, _ = self.call("POST", "/v1/grade", {"response": "1"})
         self.assertEqual(st, 400, raw)
 
+    def test_normalize_endpoint(self):
+        body = {"text": "正方体 ABCD-A1B1C1D1 的棱长为 2cm。求直线 A1C 与底面 ABCD 所成角的正弦值。"}
+        st, _, _ = self.call("POST", "/v1/normalize", body, sign=False)
+        self.assertEqual(st, 403)
+        st, raw, _ = self.call("POST", "/v1/normalize", body)
+        self.assertEqual(st, 200, raw)
+        v = json.loads(raw)
+        self.assertEqual((v["state"], v["family_id"]), ("needs_confirmation", "SOLID-ANGLE-01"))
+        st, raw, _ = self.call("POST", "/v1/normalize", {"text": "已知椭圆 x²/4 + y²/3 = 1，F 为其左焦点，过 F 的直线与椭圆交于 A、B 两点。求弦长 |AB| 的取值范围。"})
+        e = json.loads(raw)["error"]
+        self.assertEqual((st, e["code"], e["next_action"]), (400, "UNSUPPORTED_FAMILY", "manual_authoring"), raw)
+        self.assertIn("左焦点", e["details"]["reason"])
+
     def test_mcp_protocol(self):
         init = self.mcp("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}})
         self.assertEqual(init["result"]["serverInfo"]["name"], "edu-math")
