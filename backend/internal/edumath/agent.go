@@ -85,7 +85,7 @@ func (t AgentTools) Call(ctx context.Context, db *gorm.DB, scope flow.Scope, use
 		}
 		return t.view(db, j, false), nil
 	case "math_lesson_build_start":
-		j, err := t.Svc.StartLessonBuild(ctx, db, a, str(args, "solution_revision_id"), key)
+		j, err := t.Svc.StartLessonBuild(ctx, db, a, str(args, "solution_revision_id"), key, nil)
 		if err != nil {
 			return nil, agentErr(err)
 		}

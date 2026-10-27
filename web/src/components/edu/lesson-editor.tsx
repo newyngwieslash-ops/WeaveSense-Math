@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { edu, type EduScope } from "@/services/api/edu";
 
 import { conflictOf, diffEdits, draftKey, draftOf, draftProblems, EDIT_CLASS_LABEL, estimateText, INHERIT_LABEL, INVALIDATES_LABEL, type Draft, type Editable } from "./lesson-edit-logic";
+import { durationText, GOAL_LABEL, STYLE_LABEL } from "./lesson-plan-logic";
 import { teacherError, jobErrorText } from "./teacher-errors";
 
 /**
@@ -109,6 +110,13 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
             <p className="text-xs text-stone-500">
                 基于修订 {ed.lessonRevisionId}（哈希 {ed.lessonHash.slice(7, 19)}）。保存后生成新修订，本修订与已发布版本不变。机构规则：{INHERIT_LABEL[ed.editReviewInherit] || ed.editReviewInherit}（待确认）。
             </p>
+            {ed.duration ? (
+                <p className="text-xs text-stone-500" data-testid="lesson-duration">
+                    {ed.teaching?.goal ? `目标：${GOAL_LABEL[ed.teaching.goal] || ed.teaching.goal}；` : ""}
+                    {ed.teaching?.style ? `风格：${STYLE_LABEL[ed.teaching.style] || ed.teaching.style}；` : ""}
+                    {durationText(ed.duration)}
+                </p>
+            ) : null}
             {unverified.length ? <p className="text-sm text-amber-700">本修订有老师改过的板书（{unverified.join("、")}），未经自动验证，审核时请逐行核对。</p> : null}
             {ed.beats.map((b) => (
                 <fieldset key={b.id} className="rounded-md border border-stone-200 p-2 dark:border-stone-700">

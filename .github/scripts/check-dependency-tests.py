@@ -77,6 +77,9 @@ REQUIRED = {
     ("edumath", "TestPGRenderRollbackDrill"),
     ("edumath", "TestProblemImages"),
     ("edumath", "TestEduResponsesNeverCached"),
+    ("edumath", "TestLessonPlan"),
+    ("edumath", "TestPGLessonPlan"),
+    ("edumath", "TestLessonDurationEstimate"),
     ("edumath", "TestPGProblemImages"),
 }
 

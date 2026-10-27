@@ -198,7 +198,7 @@ func (s *Service) StartAnalysis(ctx context.Context, tx *gorm.DB, a Actor, revis
 }
 
 // StartLessonBuild requires a verified solution of the same revision.
-func (s *Service) StartLessonBuild(ctx context.Context, tx *gorm.DB, a Actor, solutionID, idemKey string) (model.EduMathJob, error) {
+func (s *Service) StartLessonBuild(ctx context.Context, tx *gorm.DB, a Actor, solutionID, idemKey string, teaching map[string]any) (model.EduMathJob, error) {
 	var sol model.EduSolutionRevision
 	if err := tx.First(&sol, "id = ? AND tenant_id = ?", solutionID, a.TenantID).Error; err != nil {
 		return model.EduMathJob{}, ErrNotFound
@@ -218,7 +218,15 @@ func (s *Service) StartLessonBuild(ctx context.Context, tx *gorm.DB, a Actor, so
 	_ = json.Unmarshal([]byte(r.Structured), &problem)
 	payload := map[string]any{"problem": problem, "problem_hash": r.InputHash, "analysis_job_id": src.ServiceJobID,
 		"solution_hash": sol.SolutionHash, "report_hash": sol.ReportHash}
-	return s.startJob(ctx, tx, a, "lesson_build", idemKey, hashOf("lesson_build", sol.ID, sol.SolutionHash), r.ID, src.ID, payload)
+	// DEV-070: teaching params, when given, are part of the input (a key reused
+	// with other params is a conflict) and are kept on the job.
+	in := hashOf("lesson_build", sol.ID, sol.SolutionHash)
+	th := teachingHash(teaching)
+	if teaching != nil {
+		payload["teaching"] = teaching
+		in = hashOf("lesson_build", sol.ID, sol.SolutionHash, th)
+	}
+	return s.startJobWith(ctx, tx, a, "lesson_build", idemKey, in, r.ID, src.ID, th, payload)
 }
 
 func (s *Service) startJob(ctx context.Context, tx *gorm.DB, a Actor, kind, idemKey, inputHash, revisionID, sourceJob string, payload map[string]any) (model.EduMathJob, error) {

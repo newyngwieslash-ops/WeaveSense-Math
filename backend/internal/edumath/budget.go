@@ -88,7 +88,13 @@ func (s *Service) raiseAlert(tx *gorm.DB, a Actor, period, scope, level string, 
 // then the organization and teacher monthly budgets (402). On Postgres the
 // check is serialized per tenant so concurrent starts cannot overshoot a cap.
 func (s *Service) admitJob(tx *gorm.DB, a Actor, kind string, hold int64, paid bool) error {
-	if tx.Dialector.Name() == "postgres" {
+	return s.admission(tx, a, kind, hold, paid, false)
+}
+
+// admission is admitJob's check; preview (DEV-070 lesson plan) runs the same
+// caps and budget arithmetic read only: no lock, no alert.
+func (s *Service) admission(tx *gorm.DB, a Actor, kind string, hold int64, paid, preview bool) error {
+	if !preview && tx.Dialector.Name() == "postgres" {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", "edu-budget:"+a.TenantID).Error; err != nil {
 			return err
 		}
@@ -138,10 +144,13 @@ func (s *Service) admitJob(tx *gorm.DB, a Actor, kind string, hold int64, paid b
 			return err
 		}
 		if spent+hold > lim.max {
+			if preview {
+				return appErr(402, "BUDGET_EXCEEDED", fmt.Sprintf("%s monthly math budget would be exceeded", lim.scope), "raise_budget")
+			}
 			s.raiseAlert(tx, a, period, lim.scope, "exhausted", spent, lim.max)
 			return appErr(402, "BUDGET_EXCEEDED", fmt.Sprintf("%s monthly math budget would be exceeded (%d committed + %d hold > %d); nothing was dispatched; existing lessons stay readable", lim.scope, spent, hold, lim.max), "raise_budget")
 		}
-		if (spent+hold)*100 >= lim.max*int64(b.AlertPercent) {
+		if !preview && (spent+hold)*100 >= lim.max*int64(b.AlertPercent) {
 			s.raiseAlert(tx, a, period, lim.scope, "warn", spent+hold, lim.max)
 		}
 	}

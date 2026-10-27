@@ -54,6 +54,7 @@ func (h *API) Register(api *gin.RouterGroup) {
 	g.POST("/jobs/:id/reconcile", h.reconcileJob)
 	g.GET("/solution-revisions/:id", h.getSolution)
 	g.POST("/solution-revisions/:id/lesson", h.buildLesson)
+	g.GET("/solution-revisions/:id/lesson-plan", h.lessonPlan)
 	g.GET("/lesson-revisions/:id", h.getLesson)
 	g.POST("/lesson-revisions/:id/review", h.review)
 	g.POST("/lesson-revisions/:id/publish", h.publish)
@@ -223,7 +224,7 @@ func jobOut(j model.EduMathJob) gin.H {
 	}
 	return gin.H{"id": j.ID, "kind": j.Kind, "status": j.Status, "stage": j.Stage, "progress": j.Progress, "seq": j.Seq,
 		"priceVersion": j.PriceVersion, "budgetMicro": j.BudgetMicro, "settlement": j.Settlement, "error": e, "cancelRequested": j.CancelRequested,
-		"problemRevisionId": j.ProblemRevisionID, "createdAt": j.CreatedAt, "updatedAt": j.UpdatedAt}
+		"problemRevisionId": j.ProblemRevisionID, "createdAt": j.CreatedAt, "updatedAt": j.UpdatedAt, "recovery": recoveryActions(j)}
 }
 
 func (h *API) analyze(c *gin.Context) {
@@ -349,21 +350,6 @@ func (h *API) getSolution(c *gin.Context) {
 		return
 	}
 	reply(c, 200, s, "ok")
-}
-
-func (h *API) buildLesson(c *gin.Context) {
-	a, tx, ok := h.staff(c)
-	if !ok {
-		return
-	}
-	ctx, cancel := ctx15(c)
-	defer cancel()
-	j, err := h.Svc.StartLessonBuild(ctx, tx, a, c.Param("id"), idemKey(c))
-	if err != nil {
-		h.fail(c, err)
-		return
-	}
-	reply(c, 202, jobOut(j), "accepted")
 }
 
 func (h *API) getLesson(c *gin.Context) {
