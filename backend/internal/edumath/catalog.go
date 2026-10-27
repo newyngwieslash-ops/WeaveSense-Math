@@ -128,18 +128,22 @@ func (h *API) setFavorite(c *gin.Context) {
 	reply(c, http.StatusOK, gin.H{"lessonRevisionId": l.ID, "favorite": true}, "ok")
 }
 
-// unsetFavorite removes the caller's own bookmark only; removing a missing one is a no-op.
+// unsetFavorite removes the caller's own bookmark only; removing a missing one is a no-op. The lesson
+// must still be readable by the caller, so the response never confirms ids outside the workspace.
 func (h *API) unsetFavorite(c *gin.Context) {
 	a, tx, ok := h.staff(c)
 	if !ok {
 		return
 	}
-	id := c.Param("id")
-	if err := tx.Where("tenant_id = ? AND user_id = ? AND lesson_revision_id = ?", a.TenantID, a.UserID, id).Delete(&model.EduFavorite{}).Error; err != nil {
+	l, ok := h.staffLesson(c, tx, a, c.Param("id"))
+	if !ok {
+		return
+	}
+	if err := tx.Where("tenant_id = ? AND user_id = ? AND lesson_revision_id = ?", a.TenantID, a.UserID, l.ID).Delete(&model.EduFavorite{}).Error; err != nil {
 		h.fail(c, err)
 		return
 	}
-	reply(c, http.StatusOK, gin.H{"lessonRevisionId": id, "favorite": false}, "ok")
+	reply(c, http.StatusOK, gin.H{"lessonRevisionId": l.ID, "favorite": false}, "ok")
 }
 
 const maxFavorites = 500
