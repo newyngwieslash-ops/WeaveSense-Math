@@ -119,7 +119,9 @@ func Middleware(db *gorm.DB, user flow.UserFunc) gin.HandlerFunc {
 			tx.Rollback()
 			return
 		}
-		tx.Commit()
+		if tx.Commit().Error == nil {
+			flushJournal(c)
+		}
 	}
 }
 

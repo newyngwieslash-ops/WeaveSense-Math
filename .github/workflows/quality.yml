@@ -201,6 +201,13 @@ jobs:
           docker run --rm --network a18 -v "$PWD/deploy/flow/backup:/b:ro" \
             -e DATABASE_URL=postgres://postgres:ci@pgbk/postgres -e RESTORE_URL=postgres://postgres:ci@pgbk/restore_t \
             --entrypoint /bin/bash postgres:17-alpine /b/daily-test.sh
+      - name: Restore drill (DEV-122)
+        run: |
+          docker exec pgbk psql -U postgres -qc "CREATE DATABASE drill_t"
+          docker run --rm --network a18 -v "$PWD/deploy/flow/backup:/b:ro" --entrypoint /bin/bash postgres:17-alpine \
+            -c 'set -e; /b/restore-drill.sh postgres://postgres:ci@pgbk/postgres postgres://postgres:ci@pgbk/drill_t /tmp/drill | tee /tmp/d.log
+                grep -q "restore drill OK" /tmp/d.log
+                if /b/restore-drill.sh postgres://postgres:ci@pgbk/postgres postgres://postgres:ci@pgbk/drill_t /tmp/drill2; then echo "a non empty scratch database must be refused"; exit 1; fi'
       - name: Validate alert rules (promtool)
         run: |
           docker run --rm -v "$PWD/deploy/flow/monitoring:/m:ro" -w /m --entrypoint promtool prom/prometheus:v3.5.0 check rules alerts.yml

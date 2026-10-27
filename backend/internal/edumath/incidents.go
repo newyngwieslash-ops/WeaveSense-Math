@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -152,26 +153,8 @@ func (s *Service) OpenIncident(tx *gorm.DB, a Actor, pubID, severity, reason str
 	imp := computeImpact(tx, a.TenantID, l, pub)
 	now := s.now()
 	if severity == "blocking" {
-		if err := tx.Model(&model.EduPublication{}).Where("id = ?", pub.ID).Update("state", "withdrawn").Error; err != nil {
+		if err := withdrawChain(tx, a.TenantID, pub, l, imp, now); err != nil {
 			return inc, false, err
-		}
-		if err := tx.Model(&model.EduLessonRevision{}).Where("id = ?", l.ID).Update("state", "withdrawn").Error; err != nil {
-			return inc, false, err
-		}
-		if err := tx.Model(&model.EduAssignment{}).Where("tenant_id = ? AND publication_id = ? AND state = 'active'", a.TenantID, pub.ID).
-			Update("state", "suspended").Error; err != nil {
-			return inc, false, err
-		}
-		if len(imp.VariantSets) > 0 {
-			if err := tx.Model(&model.EduVariantSet{}).Where("tenant_id = ? AND id IN ?", a.TenantID, imp.VariantSets).Update("state", "withdrawn").Error; err != nil {
-				return inc, false, err
-			}
-		}
-		if len(imp.RevokedArtifacts) > 0 {
-			if err := tx.Model(&model.EduArtifact{}).Where("tenant_id = ? AND id IN ? AND audience = 'student' AND revoked_at IS NULL", a.TenantID, imp.RevokedArtifacts).
-				Update("revoked_at", now).Error; err != nil {
-				return inc, false, err
-			}
 		}
 	} else {
 		imp.RevokedArtifacts = []string{}
@@ -372,6 +355,9 @@ func (h *API) openIncident(c *gin.Context) {
 	code := 200
 	if created {
 		code = 201
+		if inc.Severity == "blocking" {
+			h.journalLater(c, journalWithdrawal(a, inc, h.Svc.now()))
+		}
 	}
 	reply(c, code, incidentOut(inc), "ok")
 }
@@ -470,4 +456,56 @@ func (h *API) listMigrations(c *gin.Context) {
 	var out []model.EduAssignmentMigration
 	tx.Where("tenant_id = ? AND (from_assignment_id = ? OR to_assignment_id = ?)", a.TenantID, as.ID, as.ID).Order("created_at").Find(&out)
 	reply(c, 200, out, "ok")
+}
+
+// withdrawChain withdraws the publication and its lesson revision, suspends the
+// assignments using it, withdraws its variant sets and revokes every student
+// facing artifact. Idempotent: rows already in the target state are untouched.
+func withdrawChain(tx *gorm.DB, tenant string, pub model.EduPublication, l model.EduLessonRevision, imp incidentImpact, now time.Time) error {
+	if err := tx.Model(&model.EduPublication{}).Where("id = ?", pub.ID).Update("state", "withdrawn").Error; err != nil {
+		return err
+	}
+	if err := tx.Model(&model.EduLessonRevision{}).Where("id = ?", l.ID).Update("state", "withdrawn").Error; err != nil {
+		return err
+	}
+	if err := tx.Model(&model.EduAssignment{}).Where("tenant_id = ? AND publication_id = ? AND state = 'active'", tenant, pub.ID).
+		Update("state", "suspended").Error; err != nil {
+		return err
+	}
+	if len(imp.VariantSets) > 0 {
+		if err := tx.Model(&model.EduVariantSet{}).Where("tenant_id = ? AND id IN ?", tenant, imp.VariantSets).Update("state", "withdrawn").Error; err != nil {
+			return err
+		}
+	}
+	if len(imp.RevokedArtifacts) > 0 {
+		if err := tx.Model(&model.EduArtifact{}).Where("tenant_id = ? AND id IN ? AND audience = 'student' AND revoked_at IS NULL", tenant, imp.RevokedArtifacts).
+			Update("revoked_at", now).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// withdrawPending counts what withdrawChain would still change.
+func withdrawPending(tx *gorm.DB, tenant string, pub model.EduPublication, l model.EduLessonRevision, imp incidentImpact) (n int64) {
+	if pub.State != "withdrawn" {
+		n++
+	}
+	if l.State != "withdrawn" {
+		n++
+	}
+	var k int64
+	tx.Model(&model.EduAssignment{}).Where("tenant_id = ? AND publication_id = ? AND state = 'active'", tenant, pub.ID).Count(&k)
+	n += k
+	if len(imp.VariantSets) > 0 {
+		k = 0
+		tx.Model(&model.EduVariantSet{}).Where("tenant_id = ? AND id IN ? AND state <> 'withdrawn'", tenant, imp.VariantSets).Count(&k)
+		n += k
+	}
+	if len(imp.RevokedArtifacts) > 0 {
+		k = 0
+		tx.Model(&model.EduArtifact{}).Where("tenant_id = ? AND id IN ? AND audience = 'student' AND revoked_at IS NULL", tenant, imp.RevokedArtifacts).Count(&k)
+		n += k
+	}
+	return n
 }
