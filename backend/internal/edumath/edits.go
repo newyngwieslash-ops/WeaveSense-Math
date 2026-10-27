@@ -121,7 +121,11 @@ func ImpactOf(edits []lessonEditInput) (EditImpact, error) {
 			inv[x] = true
 		}
 	}
-	out := EditImpact{Keeps: []string{"problem", "solution", "verification", "figure", "check_question"},
+	figure := "figure"
+	if cls["figure_text"] {
+		figure = "figure_geometry" // the figure texts change; geometry and frames do not
+	}
+	out := EditImpact{Keeps: []string{"problem", "solution", "verification", figure, "check_question"},
 		Regenerates: []string{"apply_edits", "project_student", "render_preview", "check_render"}, ManualCheck: cls["reasoning"]}
 	for c := range cls {
 		out.Classes = append(out.Classes, c)

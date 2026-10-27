@@ -31,7 +31,8 @@ func TestLessonCompare(t *testing.T) {
 	fig := []map[string]any{{"target": "figure", "field": "prediction_prompt", "value": "先猜一猜"}}
 	c, out, raw, _ = h.call("u_alice", "POST", lr+l0+"/edit-impact", map[string]any{"edits": fig})
 	imp, _ := data(out)["impact"].(map[string]any)
-	if c != 200 || string(mustJSON(imp["classes"])) != `["figure_text"]` || !strings.Contains(string(mustJSON(imp["invalidates"])), `"review"`) {
+	if c != 200 || string(mustJSON(imp["classes"])) != `["figure_text"]` || !strings.Contains(string(mustJSON(imp["invalidates"])), `"review"`) ||
+		!strings.Contains(string(mustJSON(imp["keeps"])), `"figure_geometry"`) {
 		t.Fatalf("figure impact: %d %s", c, raw)
 	}
 	// Not inherited even under the widest institution rule.
