@@ -7,6 +7,8 @@
  * 3. 断言：开放答案前所有 /api/edu 响应与页面文字都不含答案；先预测后探索；
  *    拖动、键盘、表单与重置都可用；文字说明先于图形；开放后逐步讲解默认静音、带字幕、可续看；
  *    图形使用只以汇总计数上报。
+ * 4. 教师课堂页 /dev/edu-teach（DEV-112）：批量重评分、迁移任务、撤回发布都先预览影响、填写原因再确认；
+ *    预览不改变服务端状态，确认后的状态从测试后端数据库读取核对。
  * 所有等待都有硬超时；任何断言失败 exit 1。只终止本脚本启动的进程，只删除本脚本创建的临时目录。
  */
 import { spawn, spawnSync } from "node:child_process";
@@ -314,9 +316,72 @@ async function run(cdp, base, api, seed) {
         .join("\n");
     assert(setMarkers.length > 0 && leaksSet(after).length > 0, "E25b 对照：提交后响应确实含题组答案，说明检查有效", `markers=${setMarkers.length}`);
 
+    await runTeacher(cdp, base, api, seed.teacher);
+
     const bad = cdp.statuses.filter((s) => s.status >= 400 && !(s.status === 409 && s.url.includes("/hints")));
     assert(bad.length === 0, "E20 /api/edu 无意外错误响应", JSON.stringify(bad));
     assert(cdp.exceptions.length === 0, "E21 页面无未捕获异常", JSON.stringify(cdp.exceptions));
+}
+
+async function runTeacher(cdp, base, api, t) {
+    const state = async () => (await fetch(`${api}/__e2e/teacher-state`)).json();
+    const setSelect = (label, value) =>
+        cdp.evaluate(`(() => { const el = document.querySelector('select[aria-label="${label}"]'); if (!el || ![...el.options].some((o) => o.value === ${JSON.stringify(value)})) return false;
+            Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
+    const type = async (testId, text) => {
+        await cdp.evaluate(`${cdp.byTestId(testId)}.focus()`);
+        await cdp.send("Input.insertText", { text });
+    };
+    const open = (summary) => cdp.evaluate(`(() => { const s = [...document.querySelectorAll("summary")].find((x) => x.textContent.trim() === ${JSON.stringify(summary)}); if (!s) return false; s.parentElement.open = true; return true; })()`);
+
+    await cdp.send("Page.navigate", { url: `${base}/dev/edu-teach` });
+    assert(await cdp.poll(`document.querySelector('select[aria-label="班级"]')?.options.length > 1`, "teacher classes", 60000), "T1 教师课堂页挂载并列出班级");
+    assert(await setSelect("班级", t.classId), "T2a 选择班级");
+    assert(await cdp.poll(`[...document.querySelector('select[aria-label="作业"]').options].some((o) => o.value === ${JSON.stringify(t.assignmentId)})`, "teacher assignments"), "T2b 列出作业");
+    assert(await setSelect("作业", t.assignmentId), "T2 选择作业");
+    assert(await cdp.poll(`[...document.querySelectorAll("summary")].some((x) => x.textContent.trim() === "批量重评分")`, "action panels"), "T3 迁移、重评分、撤回发布入口出现");
+
+    // Batch regrade: the reason is required, the preview lists the change and writes nothing.
+    await open("批量重评分");
+    assert(await cdp.click(cdp.byTestId("regrade-preview"), "regrade preview empty"), "T4a 无原因预览");
+    assert(await cdp.poll(`(${cdp.byTestId("regrade-status")}?.textContent || "").includes("原因")`, "reason required"), "T4 未填原因时在本地提示，不发请求确认");
+    await type("regrade-reason", "答案键更正后重新评分");
+    assert(await cdp.click(cdp.byTestId("regrade-preview"), "regrade preview"), "T5a 预览重评分");
+    assert(await cdp.poll(`/1 次结果会改变/.test(${cdp.byTestId("regrade-impact")}?.textContent || "")`, "regrade impact"), "T5 预览显示 1 次作答会改变", await cdp.evaluate(`${cdp.byTestId("regrade-impact")}?.textContent || ""`));
+    let st = await state();
+    assert(st.attemptResult === "correct" && !st.audit.includes("assignment.regrade"), "T6 预览不改变作答结果、不写审计", JSON.stringify({ r: st.attemptResult }));
+    assert(await cdp.click(cdp.byTestId("regrade-confirm"), "regrade confirm"), "T7a 确认重评分");
+    assert(await cdp.poll(`(${cdp.byTestId("regrade-status")}?.textContent || "").includes("已重评分：1 次")`, "regraded"), "T7b 页面显示已重评分");
+    st = await state();
+    assert(st.attemptResult === "incorrect" && st.audit.includes("assignment.regrade"), "T7 服务端结果已更正并写入审计", JSON.stringify({ r: st.attemptResult }));
+
+    // Migration to the newer publication: preview, then confirm; the old attempts stay put.
+    await open("迁移任务到新发布版本");
+    assert(await setSelect("迁移到的发布版本", t.fixPublicationId), "T8a 选择新发布版本");
+    assert((await cdp.evaluate(`[...document.querySelector('select[aria-label="迁移到的发布版本"]').options].some((o) => o.value === ${JSON.stringify(t.publicationId)})`)) === false, "T8b 当前发布不在迁移目标中");
+    await type("migrate-reason", "讲解措辞修正，迁移到新版本");
+    assert(await cdp.click(cdp.byTestId("migrate-preview"), "migrate preview"), "T8c 预览迁移");
+    assert(await cdp.poll(`/1 名学生/.test(${cdp.byTestId("migrate-impact")}?.textContent || "")`, "migrate impact"), "T8 迁移预览显示受影响学生", await cdp.evaluate(`${cdp.byTestId("migrate-impact")}?.textContent || ""`));
+    st = await state();
+    assert(st.assignments.length === 1 && st.assignments[0].state === "active", "T9 预览不迁移", JSON.stringify(st.assignments));
+    assert(await cdp.click(cdp.byTestId("migrate-confirm"), "migrate confirm"), "T10a 确认迁移");
+    assert(await cdp.poll(`document.body.innerText.includes("已迁移到新任务并切换过去")`, "migrated"), "T10b 页面显示已迁移");
+    st = await state();
+    const moved = st.assignments.find((a) => a.publicationId === t.fixPublicationId);
+    assert(st.assignments.find((a) => a.id === t.assignmentId)?.state === "migrated" && moved?.state === "active", "T10 服务端旧任务为已迁移、新任务在新版本上", JSON.stringify(st.assignments));
+    assert(await cdp.poll(`document.querySelector('select[aria-label="作业"]').value === ${JSON.stringify(moved?.id || "")}`, "new assignment selected"), "T11 页面自动切到新任务");
+
+    // Withdraw the new publication: the preview names the impact and leaves it published.
+    await open("撤回发布（内容有错）");
+    await type("withdraw-pub-reason", "第二步的数值算错，需要停止使用");
+    assert(await cdp.click(cdp.byTestId("withdraw-pub-preview"), "withdraw preview"), "T12a 预览撤回发布");
+    assert(await cdp.poll(`/涉及 1 个任务/.test(${cdp.byTestId("withdraw-pub-impact")}?.textContent || "")`, "withdraw impact"), "T12 撤回预览列出影响", await cdp.evaluate(`${cdp.byTestId("withdraw-pub-impact")}?.textContent || ""`));
+    st = await state();
+    assert(st.publications[t.fixPublicationId] === "published", "T13 预览不撤回", JSON.stringify(st.publications));
+    assert(await cdp.click(cdp.byTestId("withdraw-pub-confirm"), "withdraw confirm"), "T14a 确认撤回发布");
+    assert(await cdp.poll(`(${cdp.byTestId("withdraw-pub-status")}?.textContent || "").includes("已撤回发布")`, "withdrawn"), "T14b 页面显示已撤回");
+    st = await state();
+    assert(st.publications[t.fixPublicationId] === "withdrawn" && st.publications[t.publicationId] === "published" && st.assignments.find((a) => a.id === moved?.id)?.state === "suspended", "T14 服务端只撤回所选发布，相关任务暂停", JSON.stringify(st));
 }
 
 async function main() {

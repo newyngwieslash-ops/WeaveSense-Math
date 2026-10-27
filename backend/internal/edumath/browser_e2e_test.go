@@ -68,8 +68,81 @@ func TestServeBrowserE2E(t *testing.T) {
 		t.Fatalf("set assignment: %s", raw)
 	}
 
+	// DEV-112 teacher flow: its own class and assignment on the same publication, a second published
+	// revision to migrate to, and one stale attempt result for the batch regrade to correct.
+	_, out, _, _ = h.call("u_alice", "POST", "/api/edu/classes", map[string]any{"name": "影响确认班"})
+	tClassID := data(out)["id"].(string)
+	_, out, raw, _ = h.call("u_alice", "POST", "/api/edu/classes/"+tClassID+"/assignments", map[string]any{"publicationId": pubID, "title": "影响确认任务", "answerPolicy": "teacher_release"})
+	tAsID, _ := data(out)["id"].(string)
+	if tAsID == "" {
+		t.Fatalf("teacher assignment: %s", raw)
+	}
+	_, out, _, _ = h.call("u_alice", "POST", "/api/edu/classes/"+tClassID+"/invites", map[string]any{"ttlHours": 24, "maxUses": 5})
+	if c, _, raw, _ := h.call("u_bob", "POST", "/api/edu-join", map[string]any{"code": data(out)["code"]}); c != 200 {
+		t.Fatalf("join teacher class: %d %s", c, raw)
+	}
+	if c, _, raw, _ := h.call("u_bob", "POST", "/api/edu/student/assignments/"+tAsID+"/attempts", map[string]any{"kind": "answer", "response": "1", "clientKey": "e2e-teacher-attempt-1"}, "X-Edu-Tenant", tenant); c != 201 {
+		t.Fatalf("teacher-flow attempt: %d %s", c, raw)
+	}
+	h.db.Model(&model.EduAttempt{}).Where("assignment_id = ? AND client_key = ?", tAsID, "e2e-teacher-attempt-1").Updates(map[string]any{"result": "correct", "grader": "old_key"})
+	var lr model.EduLessonRevision
+	h.db.First(&lr, "id = ?", pub.LessonRevisionID)
+	_, out, _, _ = h.call("u_alice", "GET", "/api/edu/lesson-revisions/"+lr.ID+"/editable", nil)
+	beat := data(out)["beats"].([]any)[0].(map[string]any)["id"].(string)
+	c, out, raw, _ := h.call("u_alice", "POST", "/api/edu/lesson-revisions/"+lr.ID+"/edits", map[string]any{"baseLessonHash": lr.LessonHash, "idempotencyKey": "e2e-fix", "saveAs": "branch",
+		"edits": []map[string]any{{"target": "beat", "id": beat, "field": "say", "value": "重新整理这一步的说明。"}}})
+	if c != 202 {
+		t.Fatalf("edit: %d %s", c, raw)
+	}
+	ej := h.waitJob("u_alice", data(out)["job"].(map[string]any)["id"].(string))
+	var fix model.EduLessonRevision
+	h.db.First(&fix, "id = ?", ej["lessonRevisionId"])
+	if fix.ID == "" {
+		t.Fatalf("edit produced no revision: %v", ej)
+	}
+	if fix.State != "approved" {
+		if c, _, raw, _ := h.call("u_alice", "POST", "/api/edu/lesson-revisions/"+fix.ID+"/review", map[string]any{"lessonHash": fix.LessonHash, "decision": "approved", "comment": "重审"}); c != 200 {
+			t.Fatalf("review fix: %d %s", c, raw)
+		}
+	}
+	c, out, raw, _ = h.call("u_alice", "POST", "/api/edu/lesson-revisions/"+fix.ID+"/publish", map[string]any{"lessonHash": fix.LessonHash})
+	if c != 200 {
+		t.Fatalf("publish fix: %d %s", c, raw)
+	}
+	fixPubID := data(out)["id"].(string)
+
 	done := make(chan struct{})
 	mux := http.NewServeMux()
+	// Server state the teacher flow must have produced; read from the database, not from the page.
+	mux.HandleFunc("/__e2e/teacher-state", func(w http.ResponseWriter, r *http.Request) {
+		var pubs []model.EduPublication
+		h.db.Where("id IN ?", []string{pubID, fixPubID}).Find(&pubs)
+		ps := map[string]string{}
+		for _, p := range pubs {
+			ps[p.ID] = p.State
+		}
+		var as []model.EduAssignment
+		h.db.Where("class_id = ?", tClassID).Order("created_at").Find(&as)
+		rows := []map[string]string{}
+		for _, a := range as {
+			rows = append(rows, map[string]string{"id": a.ID, "publicationId": a.PublicationID, "state": a.State})
+		}
+		var att model.EduAttempt
+		h.db.First(&att, "assignment_id = ? AND client_key = ?", tAsID, "e2e-teacher-attempt-1")
+		var audits []model.EduAuditEvent
+		h.db.Where("tenant_id = ?", tenant).Order("created_at").Find(&audits)
+		acts := []string{}
+		for _, a := range audits {
+			acts = append(acts, a.Action)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"publications": ps, "assignments": rows, "attemptResult": att.Result, "audit": acts})
+	})
+	// The teacher page lists the caller's workspaces from the platform; the E2E backend has one.
+	mux.HandleFunc("/api/intelligence/workspaces", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "msg": "ok", "data": []map[string]any{{"id": model.PersonalWorkspaceID("u_alice"), "name": "E2E 教师工作区"}}})
+	})
 	mux.HandleFunc("/__e2e/release", func(w http.ResponseWriter, r *http.Request) {
 		c, _, raw, _ := h.call("u_alice", "POST", "/api/edu/assignments/"+asID+"/release-answer", map[string]any{})
 		w.WriteHeader(c)
@@ -98,8 +171,10 @@ func TestServeBrowserE2E(t *testing.T) {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/edu/student/") || strings.HasPrefix(r.URL.Path, "/api/edu/files/") {
 			r.Header.Set("X-Test-User", "u_bob")
+		} else if strings.HasPrefix(r.URL.Path, "/api/edu/") && strings.Contains(r.Referer(), "/dev/edu-teach") {
+			r.Header.Set("X-Test-User", "u_alice") // the teacher page acts as the seeded teacher
 		} else if strings.HasPrefix(r.URL.Path, "/api/edu/") {
-			r.Header.Del("X-Test-User") // the browser acts only as the seeded student
+			r.Header.Del("X-Test-User") // the student page acts only as the seeded student
 		}
 		h.r.ServeHTTP(w, r)
 	})
@@ -118,7 +193,8 @@ func TestServeBrowserE2E(t *testing.T) {
 		}
 	}
 	ready, _ := json.Marshal(map[string]any{"ready": true, "assignmentId": asID, "tenant": tenant, "answerMarkers": markers,
-		"setAssignmentId": setAsID, "setItems": len(vs["items"].([]any)), "setMarkers": setMarkers})
+		"setAssignmentId": setAsID, "setItems": len(vs["items"].([]any)), "setMarkers": setMarkers,
+		"teacher": map[string]any{"classId": tClassID, "assignmentId": tAsID, "publicationId": pubID, "fixPublicationId": fixPubID}})
 	fmt.Println("EDU_E2E_READY " + string(ready))
 	select {
 	case <-done:

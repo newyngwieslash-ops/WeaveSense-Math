@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { MigrateAssignmentPanel, RegradePanel, WithdrawPublicationPanel, type PublicationRow } from "@/components/edu/assignment-actions";
 import { ClassAdmin, ExtensionPanel, WithdrawAssignmentPanel } from "@/components/edu/class-admin";
 import { edu, RESULT_LABEL, type EduAttempt } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
@@ -15,7 +16,7 @@ const btn = "inline-flex h-8 items-center rounded-md bg-stone-900 px-3 text-sm t
 const ghost = "inline-flex h-8 items-center rounded-md border border-stone-300 px-2 text-sm disabled:opacity-40 dark:border-stone-600";
 
 type EduClass = { id: string; name: string; status: string };
-type EduAssignmentRow = { id: string; title: string; state: string; answerPolicy: string; dueAt?: string; answerReleasedAt?: string };
+type EduAssignmentRow = { id: string; title: string; state: string; publicationId: string; answerPolicy: string; dueAt?: string; answerReleasedAt?: string };
 type Dashboard = { students: number; distribution: Record<string, number>; selfTest: { independent: number; independentCorrect: number }; help: { open: number; openReports: number }; note: string };
 type FigureSummary = { predictions: Record<string, { choice: number; text: string; count: number }[]>; figure: { studentsUsed: number; studentsKeyboardOrForm: number; fallbacks: number } };
 type HelpGroup = { groupKey: string; kind: string; beatId: string; priority: number; open: number; requests: { id: string; message: string; state: string; createdAt: string }[] };
@@ -27,6 +28,7 @@ const DIST_LABEL: Record<string, string> = {
     completed_after_hints: "借助提示完成",
     pending_teacher: "待老师判断",
 };
+const ASSIGNMENT_STATE: Record<string, string> = { withdrawn: "已撤回", migrated: "已迁移", suspended: "已暂停", closed: "已结束" };
 const KIND_LABEL: Record<string, string> = { content_error: "内容可能有错", access_problem: "访问或显示问题", dont_understand: "看不懂", ask_teacher: "提问" };
 
 export default function TeacherClassroom() {
@@ -43,6 +45,12 @@ export default function TeacherClassroom() {
     const [attempts, setAttempts] = useState<EduAttempt[]>([]);
     const [msg, setMsg] = useState("");
     const [loaded, setLoaded] = useState({ classes: false, assignments: false, attempts: false });
+    const [publications, setPublications] = useState<PublicationRow[]>([]);
+    const loadPublications = useCallback(() => {
+        if (!ws) return;
+        void edu<PublicationRow[]>("get", "/publications", scope).then((r) => r.ok && setPublications(r.data));
+    }, [ws, scope]);
+    useEffect(loadPublications, [loadPublications]);
 
     useEffect(() => {
         void listIntelWorkspaces().then((l) => {
@@ -93,6 +101,7 @@ export default function TeacherClassroom() {
         setMsg(r.ok ? "答案已开放" : teacherError(r));
     };
 
+    const current = assignments.find((a) => a.id === asId);
     const empty = emptyState({
         classes: loaded.classes ? classes.length : -1,
         classId,
@@ -130,6 +139,7 @@ export default function TeacherClassroom() {
                     {assignments.map((a) => (
                         <option key={a.id} value={a.id}>
                             {a.title}
+                            {ASSIGNMENT_STATE[a.state] ? `（${ASSIGNMENT_STATE[a.state]}）` : ""}
                         </option>
                     ))}
                 </select>
@@ -175,6 +185,46 @@ export default function TeacherClassroom() {
                         <WithdrawAssignmentPanel scope={scope} assignmentId={asId} onDone={reloadAssignments} />
                     </div>
                 </details>
+            ) : null}
+
+            {current && classId ? (
+                <>
+                    <details className={`${box} mb-4`}>
+                        <summary className="cursor-pointer font-semibold">迁移任务到新发布版本</summary>
+                        <div className="mt-2">
+                            <MigrateAssignmentPanel
+                                scope={scope}
+                                assignmentId={current.id}
+                                publicationId={current.publicationId}
+                                publications={publications}
+                                onDone={(id) => {
+                                    reloadAssignments();
+                                    if (id) setAsId(id);
+                                    setMsg("已迁移到新任务并切换过去，原任务的作答原样保留");
+                                }}
+                            />
+                        </div>
+                    </details>
+                    <details className={`${box} mb-4`}>
+                        <summary className="cursor-pointer font-semibold">批量重评分</summary>
+                        <div className="mt-2">
+                            <RegradePanel scope={scope} assignmentId={current.id} publications={publications} />
+                        </div>
+                    </details>
+                    <details className={`${box} mb-4`}>
+                        <summary className="cursor-pointer font-semibold">撤回发布（内容有错）</summary>
+                        <div className="mt-2">
+                            <WithdrawPublicationPanel
+                                scope={scope}
+                                publicationId={current.publicationId}
+                                onDone={() => {
+                                    reloadAssignments();
+                                    loadPublications();
+                                }}
+                            />
+                        </div>
+                    </details>
+                </>
             ) : null}
 
             {dash ? (
