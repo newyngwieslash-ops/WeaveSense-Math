@@ -134,8 +134,19 @@ func TestMCPOAuthAuthorizationCodePKCERefreshRevoke(t *testing.T) {
 	}
 	var gr model.FlowMCPOAuthGrant
 	db.First(&gr, "connection_id = ?", c.ID)
-	if strings.Contains(gr.AccessTokenEnc, "a1") || strings.Contains(gr.RefreshTokenEnc, "r1") || !strings.HasPrefix(gr.AccessTokenEnc, "v1:") {
-		t.Fatal("tokens stored in clear")
+	// Stored values must be sealed and bound to the connection. A substring check
+	// on the base64 ciphertext is flaky (random bytes can encode "a1"), so check
+	// the format and that only the right associated data opens them.
+	for _, s := range []struct{ enc, plain, aad string }{{gr.AccessTokenEnc, "a1", "access:" + c.ID}, {gr.RefreshTokenEnc, "r1", "refresh:" + c.ID}} {
+		if !strings.HasPrefix(s.enc, "v1:") || s.enc == s.plain {
+			t.Fatal("tokens stored in clear")
+		}
+		if got, err := openSecret(s.enc, s.aad); err != nil || got != s.plain {
+			t.Fatalf("sealed token does not open: %q %v", got, err)
+		}
+		if _, err := openSecret(s.enc, s.aad+"x"); err == nil {
+			t.Fatal("sealed token opens with the wrong connection")
+		}
 	}
 	if tok, err := gw.oauthCodeToken(context.Background(), c); err != nil || tok != "a1" {
 		t.Fatalf("access %q %v", tok, err)
