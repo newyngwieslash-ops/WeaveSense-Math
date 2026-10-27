@@ -17,7 +17,6 @@ import hashlib
 import json
 import math
 import os
-import resource
 import signal
 import sqlite3
 import subprocess
@@ -219,15 +218,8 @@ class Store:
 WALL_FACTOR = 6
 
 
-def _limits(cpu_s):
-    def apply():
-        mem = catalog.LIMITS["worker_memory_mb"] * 1024 * 1024
-        resource.setrlimit(resource.RLIMIT_AS, (mem, mem))
-        # SIGXCPU at the soft limit, SIGKILL one second later.
-        resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 1))
-        resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
-        os.setsid()
-    return apply
+def _memory_bytes():
+    return catalog.LIMITS["worker_memory_mb"] * 1024 * 1024
 
 
 def _timeout(stage, timeout, ms):
@@ -244,8 +236,10 @@ def isolated_stage(stage, payload, prior, timeout):
     cpu_s = max(1, int(math.ceil(timeout)))
     t0 = time.monotonic()
     try:
-        p = subprocess.run([sys.executable, "-E", "-s", "-m", "mathsvc.runner", stage], input=req, capture_output=True,
-                           timeout=timeout * WALL_FACTOR, env=env, preexec_fn=_limits(cpu_s), cwd=root)
+        # No preexec_fn (not safe with threads): the runner limits itself first (runner.apply_limits);
+        # the new session is set up by the C fork path.
+        p = subprocess.run([sys.executable, "-E", "-s", "-m", "mathsvc.runner", stage, str(cpu_s), str(_memory_bytes())], input=req,
+                           capture_output=True, timeout=timeout * WALL_FACTOR, env=env, start_new_session=True, cwd=root)
     except subprocess.TimeoutExpired:
         return _timeout(stage, timeout, int((time.monotonic() - t0) * 1000))
     ms = int((time.monotonic() - t0) * 1000)
