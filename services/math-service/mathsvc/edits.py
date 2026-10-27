@@ -14,6 +14,10 @@ Each edit carries an impact class that decides what becomes stale:
   pronunciation (term readings)  media and captions only; preview is unchanged
   layout        (font scale, columns, figure labels)  review, student projection,
                                  preview, media; captions and the math are unchanged
+  figure_text   (figure description, prediction prompt and choices; DEV-073)
+                                 review, student projection, preview, media; the
+                                 geometry, frames and math are unchanged, and the
+                                 student projection still refuses any answer marker
 The math solution and its verification are kept: the stage re-solves the problem
 and refuses the edit when the base lesson no longer matches (REVISION_CONFLICT).
 """
@@ -34,7 +38,11 @@ IMPACT = {
     "wording": ["review", "student_projection", "preview", "media"],
     "pronunciation": ["media", "captions"],
     "layout": ["review", "student_projection", "preview", "media"],
+    "figure_text": ["review", "student_projection", "preview", "media"],
 }
+
+FIGURE_FIELDS = ("description", "prediction_prompt", "prediction_options")
+MAX_OPTION = 60
 
 # Layout fields and their allowed values (first is the default).
 LAYOUT = {
@@ -72,6 +80,8 @@ def classify(edit):
         return "pronunciation"
     if t == "layout" and edit.get("field") in LAYOUT:
         return "layout"
+    if t == "figure" and edit.get("field") in FIGURE_FIELDS:
+        return "figure_text"
     raise MathError("POLICY_REVOKED", "this part is not editable here; change the problem revision instead",
                     {"target": str(t)[:20], "field": str(edit.get("field"))[:20]})
 
@@ -119,6 +129,28 @@ def apply(base, edits, sol):
                 raise MathError("INPUT_AMBIGUOUS", "unknown hint level")
             h["text"] = _text(e.get("value"))
             log.append({"class": cls, "target": "hint", "level": h["level"], "field": "text"})
+        elif e["target"] == "figure":
+            ex = (out.get("figure") or {}).get("explore")
+            if not isinstance(ex, dict):
+                raise MathError("INPUT_AMBIGUOUS", "this lesson has no interactive figure")
+            f = e["field"]
+            if f == "description":
+                ex["description"] = _text(e.get("value"))
+            else:
+                pred = ex.get("prediction")
+                if not isinstance(pred, dict):
+                    raise MathError("INPUT_AMBIGUOUS", "this figure has no prediction prompt")
+                if f == "prediction_prompt":
+                    pred["prompt"] = _text(e.get("value"), 200)
+                else:
+                    opts = e.get("value")
+                    if not isinstance(opts, list) or not 2 <= len(opts) <= 6:
+                        raise MathError("INPUT_AMBIGUOUS", "prediction needs 2..6 choices")
+                    opts = [_text(x, MAX_OPTION) for x in opts]
+                    if len(set(opts)) != len(opts):
+                        raise MathError("INPUT_AMBIGUOUS", "prediction choices must differ")
+                    pred["options"] = opts
+            log.append({"class": cls, "target": "figure", "field": f})
         elif e["target"] == "layout":
             v = e.get("value")
             if not any(type(v) is type(x) and v == x for x in LAYOUT[e["field"]]):

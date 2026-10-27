@@ -47,11 +47,16 @@ const (
 
 var layoutFields = map[string]bool{"font_scale": true, "columns": true, "figure_labels": true}
 
+// figureFields are the figure texts a teacher may reword (DEV-073); geometry,
+// frames and the prediction id stay with the problem revision.
+var figureFields = map[string]bool{"description": true, "prediction_prompt": true, "prediction_options": true}
+
 var editImpact = map[string][]string{
 	"reasoning":     {"review", "student_projection", "preview", "media"},
 	"wording":       {"review", "student_projection", "preview", "media"},
 	"pronunciation": {"media", "captions"},
 	"layout":        {"review", "student_projection", "preview", "media"},
+	"figure_text":   {"review", "student_projection", "preview", "media"},
 }
 
 type lessonEditInput struct {
@@ -94,6 +99,8 @@ func classifyEdit(e lessonEditInput) (string, error) {
 		return "pronunciation", nil
 	case e.Target == "layout" && layoutFields[e.Field]:
 		return "layout", nil
+	case e.Target == "figure" && figureFields[e.Field]:
+		return "figure_text", nil
 	}
 	return "", appErr(403, "POLICY_REVOKED", "this part is not editable here; change the problem revision instead", "new_problem_revision")
 }
@@ -114,7 +121,11 @@ func ImpactOf(edits []lessonEditInput) (EditImpact, error) {
 			inv[x] = true
 		}
 	}
-	out := EditImpact{Keeps: []string{"problem", "solution", "verification", "figure", "check_question"},
+	figure := "figure"
+	if cls["figure_text"] {
+		figure = "figure_geometry" // the figure texts change; geometry and frames do not
+	}
+	out := EditImpact{Keeps: []string{"problem", "solution", "verification", figure, "check_question"},
 		Regenerates: []string{"apply_edits", "project_student", "render_preview", "check_render"}, ManualCheck: cls["reasoning"]}
 	for c := range cls {
 		out.Classes = append(out.Classes, c)
@@ -392,6 +403,7 @@ func (h *API) registerEdits(g *gin.RouterGroup) {
 	g.POST("/lesson-revisions/:id/edit-impact", h.editImpact)
 	g.POST("/lesson-revisions/:id/edits", h.startEdit)
 	g.GET("/lesson-revisions/:id/history", h.lessonHistory)
+	g.GET("/lesson-revisions/:id/compare", h.lessonCompare)
 }
 
 // getEditable returns the editable fields of the exact revision (teacher view; answer stays in teacher scope).
@@ -427,7 +439,17 @@ func (h *API) getEditable(c *gin.Context) {
 		} `json:"hints"`
 		Pronunciations map[string]string `json:"pronunciations"`
 		Quality        json.RawMessage   `json:"quality"`
-		Meta           struct {
+		Figure         struct {
+			Explore *struct {
+				Description string `json:"description"`
+				Prediction  *struct {
+					ID      string   `json:"id"`
+					Prompt  string   `json:"prompt"`
+					Options []string `json:"options"`
+				} `json:"prediction"`
+			} `json:"explore"`
+		} `json:"figure"`
+		Meta struct {
 			EditLog       json.RawMessage `json:"edit_log"`
 			Layout        json.RawMessage `json:"layout"`
 			Goal          string          `json:"goal"`
@@ -446,7 +468,7 @@ func (h *API) getEditable(c *gin.Context) {
 	}
 	teaching := gin.H{"goal": doc.Meta.Goal, "style": doc.Meta.Style, "targetMinutes": doc.Meta.TargetMinutes}
 	reply(c, 200, gin.H{"lessonRevisionId": l.ID, "lessonHash": l.LessonHash, "state": l.State, "parentLessonRevisionId": l.ParentLessonRevisionID,
-		"teaching": teaching, "duration": lessonDuration(says, lines, doc.Meta.Style, doc.Meta.TargetMinutes),
+		"teaching": teaching, "duration": lessonDuration(says, lines, doc.Meta.Style, doc.Meta.TargetMinutes), "figure": doc.Figure.Explore,
 		"beats": doc.Beats, "hints": doc.Hints, "pronunciations": doc.Pronunciations, "quality": doc.Quality, "editLog": doc.Meta.EditLog, "layout": doc.Meta.Layout,
 		"editReviewInherit": h.Svc.EditReviewRule(tx, a.TenantID), "latestRevisionId": h.Svc.latestHead(tx, l.ID),
 		"limits": gin.H{"maxEdits": maxLessonEdits, "maxText": 600, "maxBoardLines": 12, "maxLine": 200}}, "ok")

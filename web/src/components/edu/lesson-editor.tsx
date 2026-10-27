@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { edu, type EduScope } from "@/services/api/edu";
 
-import { conflictOf, diffEdits, draftKey, draftOf, draftProblems, EDIT_CLASS_LABEL, estimateText, INHERIT_LABEL, INVALIDATES_LABEL, type Draft, type Editable } from "./lesson-edit-logic";
+import { changeLabel, changeValue, conflictOf, diffEdits, draftKey, draftOf, draftProblems, EDIT_CLASS_LABEL, estimateText, INHERIT_LABEL, INVALIDATES_LABEL, type Draft, type Editable, type LessonChange } from "./lesson-edit-logic";
 import { durationText, GOAL_LABEL, STYLE_LABEL } from "./lesson-plan-logic";
 import { teacherError, jobErrorText } from "./teacher-errors";
 
@@ -33,6 +33,7 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
     const [conflict, setConflict] = useState<ReturnType<typeof conflictOf>>(null);
     const [history, setHistory] = useState<HistoryNode[]>([]);
     const [msg, setMsg] = useState("");
+    const [compare, setCompare] = useState<{ with: string; changes: LessonChange[] } | null>(null);
 
     const load = useCallback(() => {
         void edu<Editable>("get", `/lesson-revisions/${lessonId}/editable`, scope).then((r) => {
@@ -79,6 +80,13 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
         setUndo((u) => [...u.slice(-49), draft]);
         setDraft(next);
         setImpact(null);
+    };
+    const fig = draft.figure ?? draftOf(ed).figure;
+    const setFig = (field: "description" | "prompt" | "options", v: string) => fig && change({ ...draft, figure: { ...fig, [field]: v } });
+    const compareWith = async (other: string) => {
+        const r = await edu<{ changes: LessonChange[] }>("get", `/lesson-revisions/${other}/compare?with=${encodeURIComponent(lessonId)}`, scope);
+        if (!r.ok) return setMsg(teacherError(r));
+        setCompare({ with: other, changes: r.data.changes });
     };
     const setBeat = (id: string, field: "title" | "say" | "board", v: string) => change({ ...draft, beats: { ...draft.beats, [id]: { ...draft.beats[id], [field]: v } } });
     const preview = async () => {
@@ -135,6 +143,18 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
                     <textarea className={input} rows={2} value={draft.hints[h.level] ?? ""} onChange={(e) => change({ ...draft, hints: { ...draft.hints, [h.level]: e.target.value } })} />
                 </label>
             ))}
+            {ed.figure && fig ? (
+                <fieldset className="rounded-md border border-stone-200 p-2 dark:border-stone-700" data-testid="figure-edit">
+                    <legend className="px-1 text-xs text-stone-500">图形文字（几何与动画不在这里改）</legend>
+                    <textarea aria-label="图形说明" className={input} rows={2} value={fig.description} onChange={(e) => setFig("description", e.target.value)} />
+                    {ed.figure.prediction ? (
+                        <>
+                            <input aria-label="预测问题" className={`${input} mt-1`} value={fig.prompt} onChange={(e) => setFig("prompt", e.target.value)} />
+                            <textarea aria-label="预测选项（每行一个）" className={`${input} mt-1`} rows={3} value={fig.options} onChange={(e) => setFig("options", e.target.value)} />
+                        </>
+                    ) : null}
+                </fieldset>
+            ) : null}
             <div className="text-sm">
                 读音
                 {draft.pronunciations.map((p, i) => (
@@ -172,7 +192,7 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
             {impact ? (
                 <div className="rounded-md bg-stone-50 p-2 text-sm dark:bg-stone-800" data-testid="edit-impact">
                     <p>修改类型：{impact.impact.classes.map((c) => EDIT_CLASS_LABEL[c] || c).join("、")}</p>
-                    <p>需要重新生成或失效：{impact.impact.invalidates.map((c) => INVALIDATES_LABEL[c] || c).join("、")}；题目、解答、验证、图形和检查题保持不变。</p>
+                    <p>需要重新生成或失效：{impact.impact.invalidates.map((c) => INVALIDATES_LABEL[c] || c).join("、")}；题目、解答、验证、图形几何和检查题保持不变。</p>
                     {impact.impact.manualCheck ? <p className="text-amber-700">改动了推理板书：不会自动验证，必须人工审核。</p> : null}
                     <p>{impact.approvalInherited ? "仅改读音：按机构规则继承上一版审核结论。" : "保存后需要重新审核才能发布。"}</p>
                     <p className="text-stone-500">{estimateText(impact.estimate)}</p>
@@ -219,10 +239,29 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
                                           .join("、")}`
                                     : "，原始生成"}
                                 {n.approvalInheritedFrom ? "，审核继承" : ""}
+                                {n.id !== lessonId ? (
+                                    <button className={`${ghost} ml-2 h-6`} onClick={() => void compareWith(n.id)}>
+                                        与本修订对比
+                                    </button>
+                                ) : null}
                             </li>
                         ))}
                     </ol>
                 </details>
+            ) : null}
+            {compare ? (
+                <div className="rounded-md bg-stone-50 p-2 text-sm dark:bg-stone-800" data-testid="lesson-compare">
+                    <p>
+                        {compare.with} 与本修订：{compare.changes.length ? `${compare.changes.length} 处不同` : "内容相同"}
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                        {compare.changes.map((c, i) => (
+                            <li key={i}>
+                                <span className="font-medium">{changeLabel(c)}</span>：<del className="text-stone-500">{changeValue(c.before)}</del> → <ins className="no-underline">{changeValue(c.after)}</ins>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             ) : null}
         </div>
     );
