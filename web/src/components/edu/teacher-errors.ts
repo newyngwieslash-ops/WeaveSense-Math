@@ -30,6 +30,7 @@ const BY_CODE: Record<string, [string, string]> = {
     PERSONAL_INFO: ["公开回复中疑似包含学生个人信息", "删去个人信息后再发"],
     DATA_REQUEST_OPEN: ["这名学生已有同类请求未处理完", "先完成或拒绝那一条，再登记新的请求"],
     DATA_REQUEST_NOT_VERIFIED: ["还没有记录申请人身份核验", "线下核验后填写核验单号，再预览和完成"],
+    OPS_GRANT_INVALID: ["没有有效的运维授权，或授权范围不包括这项内容", "请学校管理员在组织管理中授权，或检查授权是否到期、已撤销"],
     DATA_REQUEST_CLOSED: ["这条请求已完成或已拒绝", "刷新列表；如需再次处理请重新登记"],
     RETENTION_NOT_CONFIRMED: ["数据保留期还是建议值，机构确认前不会清理任何数据", "在机构管理的数据保留一节核对各项天数，写明理由后确认"],
     ACCESS_PURPOSE_REQUIRED: ["查看非任课班级的个体学生记录需要说明业务目的", "填写 4 到 200 字的目的后再查看；每次查看都会记入访问记录"],

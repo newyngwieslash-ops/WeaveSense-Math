@@ -53,9 +53,16 @@ func eduTenantIDs(db *gorm.DB, userID string) ([]string, error) {
 		Distinct().Pluck("tenant_id", &edu).Error; err != nil {
 		return nil, err
 	}
+	// A support operator sees a tenant only while an institution grant is active (DEV-108);
+	// handlers still check the grant, its scope and its expiry on every request.
+	var ops []string
+	if err := db.Model(&model.EduOpsGrant{}).Where("operator_user_id = ? AND status = ? AND expires_at > ?", userID, "active", time.Now().UTC()).
+		Distinct().Pluck("tenant_id", &ops).Error; err != nil {
+		return nil, err
+	}
 	seen := map[string]bool{}
 	out := []string{}
-	for _, t := range append(ids, edu...) {
+	for _, t := range append(append(ids, edu...), ops...) {
 		if !seen[t] {
 			seen[t] = true
 			out = append(out, t)

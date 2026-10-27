@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -962,3 +962,26 @@ type EduDataRequest struct {
 }
 
 func (EduDataRequest) TableName() string { return "edu_data_requests" }
+
+// EduOpsGrant is a time-limited support access an institution gives one platform
+// operator (DEV-108): a purpose, a scope (job metadata, or one class), whether
+// student text may be read, and an expiry of at most 72 hours.
+type EduOpsGrant struct {
+	ID             string     `json:"id" gorm:"primaryKey;size:40"`
+	TenantID       string     `json:"tenantId" gorm:"size:40;not null;index"`
+	OperatorUserID string     `json:"operatorUserId" gorm:"size:40;not null;index"`
+	Scope          string     `json:"scope" gorm:"size:16;not null"` // jobs | class
+	ClassID        string     `json:"classId,omitempty" gorm:"size:40"`
+	IncludeContent bool       `json:"includeContent"`
+	Purpose        string     `json:"purpose" gorm:"size:200;not null"`
+	ExpiresAt      time.Time  `json:"expiresAt" gorm:"index"`
+	Status         string     `json:"status" gorm:"size:16;not null"` // active | revoked
+	GrantedBy      string     `json:"grantedBy" gorm:"size:40"`
+	RevokedBy      string     `json:"revokedBy,omitempty" gorm:"size:40"`
+	RevokedAt      *time.Time `json:"revokedAt,omitempty"`
+	RevokeReason   string     `json:"revokeReason,omitempty" gorm:"size:200"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+}
+
+func (EduOpsGrant) TableName() string { return "edu_ops_grants" }
