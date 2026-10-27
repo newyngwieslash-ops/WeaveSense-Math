@@ -23,6 +23,7 @@ import { teacherError } from "@/components/edu/teacher-errors";
 import { OrgAdminPanel } from "@/components/edu/org-admin";
 import { CostBreakdownPanel } from "@/components/edu/cost-breakdown";
 import { ObservabilityPanel } from "@/components/edu/observability";
+import { PausePanel } from "@/components/edu/pauses";
 
 /**
  * 机构管理后台：机构概览、人员与角色、审核与同意策略、个体记录访问与访问记录（DEV-102），账本对账与审计导出、对账发现的负责人与处理状态、机构预算与公平限流、
@@ -288,6 +289,11 @@ export default function EduAdmin() {
                     <section className={box} aria-label="运行观测">
                         <h2 className="mb-2 font-medium">运行观测</h2>
                         <ObservabilityPanel scope={scope} />
+                    </section>
+
+                    <section className={box} aria-label="暂停与回退">
+                        <h2 className="mb-2 font-medium">暂停与回退</h2>
+                        <PausePanel scope={scope} />
                     </section>
                 </>
             )}

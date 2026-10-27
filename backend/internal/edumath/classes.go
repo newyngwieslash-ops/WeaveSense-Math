@@ -436,6 +436,10 @@ func (h *API) createAssignment(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
+	if err := publicationAllowed(tx, a.TenantID, pub, l); err != nil {
+		h.fail(c, err)
+		return
+	}
 	if in.VariantSetID != "" {
 		if _, err := approvedVariantSetFor(tx, a, in.VariantSetID, pub); err != nil {
 			h.fail(c, err)
