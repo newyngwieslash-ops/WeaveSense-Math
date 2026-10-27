@@ -84,6 +84,12 @@ jobs:
             echo "::error::Go files require gofmt. Run gofmt -w on the files listed above."
             exit 1
           fi
+      # DEV-127 交接一致性：开发清单勾选、04 汇总与逐项、11 缺口表必须一致。
+      - name: Education handover consistency
+        shell: bash
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 ../.github/scripts/test_check_edu_handover.py
+          python3 ../.github/scripts/check-edu-handover.py ..
       - name: Run Go tests
         shell: bash
         run: |
