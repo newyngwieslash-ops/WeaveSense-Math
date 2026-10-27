@@ -43,7 +43,7 @@ SUITES = {
     "permissions": [
         "TestClassesInvitesConsentAuthorization", "TestPGEduTablesForceRLS", "TestRoleBindingScopeExpiry",
         "TestPGRoleBindingScopeExpiry", "TestStudentLeakGuard", "TestPauses", "TestPGPauses",
-        "TestPauseFailClosed", "TestPGPauseFailClosed", "TestProblemImages", "TestPGProblemImages",
+        "TestPauseFailClosed", "TestPGPauseFailClosed", "TestProblemImages", "TestPGProblemImages", "TestEduResponsesNeverCached",
     ],
 }
 
@@ -85,6 +85,7 @@ RULES = [
     (ED + "pauses", ["permissions", "teaching"]),
     (ED + "authz", ["permissions"]),
     (ED + "problemimages", ["permissions"]),
+    (ED + "cache", ["permissions"]),
     (ED + "roles", ["permissions"]),
     (ED + "opsaccess", ["permissions"]),
     (ED + "org", ["permissions"]),

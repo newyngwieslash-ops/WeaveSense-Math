@@ -6,6 +6,7 @@ import { FigureBoundary, InteractiveFigure, PredictionPanel, useFigureUsage } fr
 import { SetSelfTest } from "@/components/edu/set-self-test";
 import { isManualLesson, MANUAL_NOTICE_STUDENT } from "@/components/edu/manual-lesson-logic";
 import { StepViewer } from "@/components/edu/step-viewer";
+import { revisionBadge, revisionNotice, type StudentRevision } from "@/components/edu/student-revision-logic";
 import { clearOtherUsers, enqueue, flushQueue, readQueue, type PendingAttempt } from "@/lib/edu-offline-queue";
 import { edu, newClientKey, RESULT_LABEL, type EduAttempt, type EduMe, type HintBody, type LearningState, type StudentLesson } from "@/services/api/edu";
 import { useUserStore } from "@/stores/use-user-store";
@@ -68,7 +69,7 @@ function useOfflineFlush(tenant: string, onFlushed: () => void) {
 
 export function StudentHome() {
     const { tenants, tenant, setTenant, error } = useStudentTenant();
-    const [list, setList] = useState<{ id: string; title: string }[]>([]);
+    const [list, setList] = useState<{ id: string; title: string; revision?: StudentRevision }[]>([]);
     const [review, setReview] = useState<{ id: string; assignmentId: string; title: string; stage: number; dueAt: string; due: boolean }[]>([]);
     const [progress, setProgress] = useState<{
         summary: { independentResults: number; minimumNeeded: number; evidence: string };
@@ -77,7 +78,7 @@ export function StudentHome() {
     useEffect(() => {
         if (!tenant) return;
         const s = { tenant };
-        void edu<{ id: string; title: string }[]>("get", "/student/assignments", s).then((r) => r.ok && setList(r.data));
+        void edu<{ id: string; title: string; revision?: StudentRevision }[]>("get", "/student/assignments", s).then((r) => r.ok && setList(r.data));
         void edu<typeof review>("get", "/student/review", s).then((r) => r.ok && setReview(r.data));
         void edu<NonNullable<typeof progress>>("get", "/student/progress", s).then((r) => r.ok && setProgress(r.data));
     }, [tenant]);
@@ -101,6 +102,7 @@ export function StudentHome() {
                             <Link className="underline" to={`/edu/learn/${a.id}?tenant=${encodeURIComponent(tenant)}`}>
                                 {a.title}
                             </Link>
+                            {a.revision ? <span className="ml-2 rounded bg-amber-100 px-1.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100">{revisionBadge(a.revision)}</span> : null}
                         </li>
                     ))}
                 </ul>
@@ -149,6 +151,7 @@ export function StudentAssignment() {
     const scope = useMemo(() => ({ tenant }), [tenant]);
     const [lesson, setLesson] = useState<StudentLesson | null>(null);
     const [previewUrl, setPreviewUrl] = useState("");
+    const [revision, setRevision] = useState<StudentRevision | null>(null);
     const [state, setState] = useState<LearningState | null>(null);
     const [hints, setHints] = useState<HintBody[]>([]);
     const [answer, setAnswer] = useState("");
@@ -168,9 +171,10 @@ export function StudentAssignment() {
     const useFig = useFigureUsage((u) => void edu("post", `/student/assignments/${id}/figure-events`, scope, u));
 
     useEffect(() => {
-        void edu<{ lesson: StudentLesson; preview: { url: string } }>("get", `/student/assignments/${id}`, scope).then((r) => {
+        void edu<{ assignment?: { revision?: StudentRevision }; lesson: StudentLesson; preview: { url: string } }>("get", `/student/assignments/${id}`, scope).then((r) => {
             if (!r.ok) return setMsg(errorText(r.code, r.message));
             setLesson(r.data.lesson);
+            setRevision(r.data.assignment?.revision || null);
             setPreviewUrl(r.data.preview?.url || "");
         });
         reload();
@@ -236,6 +240,11 @@ export function StudentAssignment() {
         <Shell title={lesson?.meta.title || "作业"} back>
             {msg ? <p className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">{msg}</p> : null}
             {pending ? <p className="mb-3 text-sm text-stone-500">有 {pending} 条作答待网络恢复后提交</p> : null}
+            {revision ? (
+                <p role="status" data-testid="revision-notice" className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                    {revisionNotice(revision)}
+                </p>
+            ) : null}
             {lesson ? (
                 <section className={box}>
                     <p className="whitespace-pre-wrap leading-7">{lesson.problem.text}</p>
