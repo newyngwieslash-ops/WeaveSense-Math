@@ -25,6 +25,23 @@ export async function edu<T>(method: "get" | "post" | "put" | "delete", path: st
     }
 }
 
+/** 上传 multipart 表单（DEV-068 题图）。与 edu 相同的错误解包；不设置 Content-Type，由浏览器写入边界。 */
+export async function eduUpload<T>(path: string, scope: EduScope, form: FormData): Promise<EduResult<T>> {
+    return edu<T>("post", path, scope, form);
+}
+
+/** 读取受保护的二进制内容（题图），返回 Blob；只在教师视图使用，内容不进入任何缓存。 */
+export async function eduBlob(path: string, scope: EduScope): Promise<Blob | null> {
+    const headers: Record<string, string> = {};
+    if (scope.workspace) headers["X-Workspace-Id"] = scope.workspace;
+    try {
+        const res = await apiClient.request({ method: "get", url: `/edu${path}`, headers, responseType: "blob", validateStatus: () => true });
+        return res.status === 200 ? (res.data as Blob) : null;
+    } catch {
+        return null;
+    }
+}
+
 export type EduRoleBinding = { tenantId: string; role: string; status: string };
 export type EduMe = { userId: string; roles: EduRoleBinding[] };
 export type EduAttempt = {

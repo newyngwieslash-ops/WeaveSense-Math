@@ -46,6 +46,13 @@ const BY_CODE: Record<string, [string, string]> = {
     MATH_TOOL_FAILED: ["数学计算没有得到可用结果", "检查题目条件后重试"],
     RECEIPT_INVALID: ["数学服务返回的结果没有通过平台校验，已丢弃", "请联系管理员核查，不要重复提交"],
     IDEMPOTENCY_REQUIRED: ["请求缺少防重复标识", "刷新页面后重试"],
+    IMAGE_TOO_LARGE: ["图片超过 10 MB，没有上传", "压缩或裁小后再上传"],
+    UNSUPPORTED_IMAGE: ["只支持 PNG 或 JPEG 图片", "把图片另存为 PNG 或 JPEG 后再上传"],
+    IMAGE_TYPE_MISMATCH: ["文件内容与扩展名或类型不一致", "用看图软件重新另存为 PNG 或 JPEG 后再上传"],
+    IMAGE_DECODE_FAILED: ["图片已损坏或无法读取", "重新截图或另存后再上传"],
+    IMAGE_DIMENSIONS: ["图片尺寸超出范围（每边 16 到 8192 像素，总像素不超过 4000 万）", "缩放到范围内后再上传"],
+    IMAGE_BUSY: ["图片处理繁忙，本次没有上传", "稍等片刻后再试"],
+    IMAGE_NOT_SINGLE: ["原图不能直接关联题目", "先框选一道题生成单题图，再关联"],
     WITHDRAWN: ["内容已撤回，学生不再可见", "如需继续使用，请修改后生成新修订并重新审核发布"],
 };
 

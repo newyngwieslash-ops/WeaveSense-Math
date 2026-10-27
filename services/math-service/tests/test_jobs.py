@@ -96,8 +96,12 @@ class JobTests(unittest.TestCase):
             real = subprocess.run
 
             def spin(cmd, **kw):
+                self.assertNotIn("preexec_fn", kw)
+                self.assertEqual(cmd[3:5], ["-m", "mathsvc.runner"])
+                # Same limits the runner applies to itself, then spin instead of computing.
+                boot = "import sys; from mathsvc.runner import apply_limits; apply_limits(int(sys.argv[1]), int(sys.argv[2]))\nwhile True: pass"
                 try:
-                    p = real([sys.executable, "-c", "while True: pass"], **kw)
+                    p = real([sys.executable, "-E", "-s", "-c", boot, cmd[6], cmd[7]], **kw)
                 except subprocess.TimeoutExpired:
                     seen["wall_timeout"] = True
                     raise

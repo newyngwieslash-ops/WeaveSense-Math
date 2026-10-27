@@ -75,6 +75,8 @@ REQUIRED = {
     ("edumath", "TestPGPauseFailClosed"),
     ("edumath", "TestRenderRollbackDrill"),
     ("edumath", "TestPGRenderRollbackDrill"),
+    ("edumath", "TestProblemImages"),
+    ("edumath", "TestPGProblemImages"),
 }
 
 

@@ -96,7 +96,7 @@ export function accessRowText(r: AccessRow): string {
 
 /** DEV-106 retention: suggested periods, bounds and the impact of a cleanup run. */
 export type RetentionDays = { tempDays: number; imageDays: number; learningDays: number; backupDays: number };
-export type RetentionSummary = { enrollments: number; learningRows: Record<string, number>; rosterEntries: number; artifacts: number };
+export type RetentionSummary = { enrollments: number; learningRows: Record<string, number>; rosterEntries: number; artifacts: number; problemImages?: number };
 export type RetentionView = {
     policy: RetentionDays & { state: string; reason?: string; confirmedBy?: string; confirmedAt?: string; lastRunAt?: string; lastRunSummary?: string };
     confirmed: boolean;
@@ -141,17 +141,18 @@ export function retentionImpact(s: RetentionSummary): string {
     const rows = Object.entries(s.learningRows || {})
         .filter(([, n]) => n > 0)
         .map(([t, n]) => `${RETENTION_TABLE[t] || t} ${n} 条`);
-    if (s.enrollments === 0 && s.artifacts === 0 && rows.length === 0) return "按当前保留期，现在没有需要清理的数据。";
+    if (s.enrollments === 0 && s.artifacts === 0 && !s.problemImages && rows.length === 0) return "按当前保留期，现在没有需要清理的数据。";
     const parts = [`涉及已离开班级 ${s.enrollments} 人次`];
     if (rows.length) parts.push(`学习记录：${rows.join("，")}`);
     if (s.rosterEntries) parts.push(`名单认领 ${s.rosterEntries} 条`);
     if (s.artifacts) parts.push(`临时文件 ${s.artifacts} 个`);
+    if (s.problemImages) parts.push(`未关联题目的题图 ${s.problemImages} 张`);
     return `${parts.join("；")}。账本、用量与审计记录不在清理范围内。`;
 }
 
 function retentionDetail(d: string): string {
-    const m = /^enrollments=(\d+) learning_rows=(\d+) roster_entries=(\d+) artifacts=(\d+)$/.exec(d);
-    if (m) return `离开班级 ${m[1]} 人次，学习记录 ${m[2]} 条，名单认领 ${m[3]} 条，临时文件 ${m[4]} 个`;
+    const m = /^enrollments=(\d+) learning_rows=(\d+) roster_entries=(\d+)(?: problem_images=(\d+))? artifacts=(\d+)$/.exec(d);
+    if (m) return `离开班级 ${m[1]} 人次，学习记录 ${m[2]} 条，名单认领 ${m[3]} 条，临时文件 ${m[5]} 个${m[4] && m[4] !== "0" ? `，题图 ${m[4]} 张` : ""}`;
     const p = /^temp=(\d+) image=(\d+) learning=(\d+) backup=(\d+) \| (.*)$/.exec(d);
     if (p) return `临时 ${p[1]} 天，图片 ${p[2]} 天，学习记录 ${p[3]} 天，备份 ${p[4]} 天；理由：${p[5]}`;
     return d;

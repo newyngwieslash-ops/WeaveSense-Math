@@ -62,17 +62,22 @@ func runAuthzSweep(t *testing.T, h *harness) {
 	rosterID := data(out)["codes"].([]any)[0].(map[string]any)["entryId"].(string)
 	var art model.EduArtifact
 	h.db.Where("tenant_id = ? AND id = ?", tenant, lesson.PreviewArtifact).First(&art)
+	c, out, raw := h.uploadImage("u_alice", pngWithText(64, 48, "sweep"), "sweep.png", "image/png", srcID)
+	if c != 201 {
+		t.Fatalf("upload sweep picture: %d %s", c, raw)
+	}
+	imgID := data(out)["id"].(string)
 
 	ids := map[string]string{"classes": classID, "assignments": asID, "publications": pubID, "lesson-revisions": lesson.ID, "problems": prev.ProblemID,
 		"problem-revisions": prev.ID, "jobs": job.ID, "artifacts": art.ID, "source-assets": srcID, "courses": courseID, "course-alignments": alignID,
-		"roster-entries": rosterID, "invites": inviteID, "incidents": "einc_none", "variant-sets": "evs_none", "regrades": "erd_none"}
-	secret := []string{classID, asID, pubID, lesson.ID, prev.ID, job.ID, srcID, courseID, alignID, rosterID, inviteID, lesson.LessonHash}
+		"roster-entries": rosterID, "invites": inviteID, "incidents": "einc_none", "variant-sets": "evs_none", "regrades": "erd_none", "problem-images": imgID}
+	secret := []string{classID, asID, pubID, lesson.ID, prev.ID, job.ID, srcID, courseID, alignID, rosterID, inviteID, imgID, lesson.LessonHash}
 	answer := []string{tl.Answer.Exact, tl.Answer.Plain}
 	body := map[string]any{"publicationId": pubID, "classId": classID, "lessonRevisionId": lesson.ID, "problemRevisionId": prev.ID, "studentUserId": "u_bob",
 		"userId": "u_carol", "tenantId": tenant, "role": "org_admin", "lessonHash": lesson.LessonHash, "decision": "approved", "comment": "x", "reason": "授权扫描",
 		"confirm": true, "severity": "blocking", "note": "x", "sourceAssetId": srcID, "courseId": courseID, "knowledgePoints": []string{"线面角"},
 		"status": "granted", "evidenceRef": "x", "reviewMode": "self_allowed", "consentMode": "not_applicable", "csv": "externalRef\nX1", "title": "x", "name": "x",
-		"idempotencyKey": "sweep", "kind": "answer", "response": "1", "clientKey": "sweep-0001", "visibility": "class", "released": true, "version": 1}
+		"idempotencyKey": "sweep", "kind": "answer", "response": "1", "clientKey": "sweep-0001", "visibility": "class", "released": true, "version": 1, "imageId": imgID, "whole": true}
 
 	digest := func() map[string]string {
 		out := map[string]string{}

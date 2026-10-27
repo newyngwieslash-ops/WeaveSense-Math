@@ -76,10 +76,11 @@ type RetentionSummary struct {
 	LearningRows  map[string]int `json:"learningRows"`
 	RosterEntries int            `json:"rosterEntries"`
 	Artifacts     int            `json:"artifacts"`
+	ProblemImages int            `json:"problemImages"` // unattached uploads past the temporary period (DEV-068)
 }
 
 func (s RetentionSummary) total() int {
-	n := s.RosterEntries + s.Artifacts
+	n := s.RosterEntries + s.Artifacts + s.ProblemImages
 	for _, v := range s.LearningRows {
 		n += v
 	}
@@ -87,7 +88,7 @@ func (s RetentionSummary) total() int {
 }
 
 func (s RetentionSummary) String() string {
-	return fmt.Sprintf("enrollments=%d learning_rows=%d roster_entries=%d artifacts=%d", s.Enrollments, s.total()-s.RosterEntries-s.Artifacts, s.RosterEntries, s.Artifacts)
+	return fmt.Sprintf("enrollments=%d learning_rows=%d roster_entries=%d problem_images=%d artifacts=%d", s.Enrollments, s.total()-s.RosterEntries-s.Artifacts-s.ProblemImages, s.RosterEntries, s.ProblemImages, s.Artifacts)
 }
 
 // applyRetention computes (dry) or performs the cleanup for one tenant inside tx.
@@ -119,6 +120,21 @@ func applyRetention(tx *gorm.DB, tenant string, p model.EduRetentionPolicy, now 
 			}
 		}
 	}
+	// Problem pictures never attached to a problem are temporary files: removed
+	// with their bytes after the temporary period. Attached ones stay with the problem.
+	imgQ := func() *gorm.DB {
+		return tx.Model(&model.EduProblemImage{}).Where("tenant_id = ? AND (problem_id = '' OR problem_id IS NULL) AND created_at < ?", tenant, now.AddDate(0, 0, -p.TempDays))
+	}
+	var ni int64
+	if err := imgQ().Count(&ni).Error; err != nil {
+		return sum, err
+	}
+	sum.ProblemImages = int(ni)
+	if !dry && ni > 0 {
+		if err := imgQ().Delete(&model.EduProblemImage{}).Error; err != nil {
+			return sum, err
+		}
+	}
 	return sum, nil
 }
 
@@ -128,7 +144,7 @@ func retentionView(p model.EduRetentionPolicy, confirmed bool, preview Retention
 		"preview": preview,
 		"categories": gin.H{
 			"learning": "withdrawn_enrollments",
-			"temp":     "revoked_on_platform; math service store deletion not implemented",
+			"temp":     "revoked_on_platform; math service store deletion not implemented; unattached problem images deleted",
 			"images":   "no_image_answers_yet",
 			"backup":   "deployment (07)",
 		},

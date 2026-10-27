@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}, &EduPause{}, &EduIncidentReview{}, &EduRevisionNotice{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}, &EduPause{}, &EduIncidentReview{}, &EduRevisionNotice{}, &EduProblemImage{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -1114,3 +1114,37 @@ type EduRevisionNotice struct {
 }
 
 func (EduRevisionNotice) TableName() string { return "edu_revision_notices" }
+
+// EduProblemImage is one teacher-uploaded problem picture (DEV-068). Only the
+// server-cleaned copy is kept: the upload is decoded, checked and re-encoded,
+// which drops EXIF, GPS, ICC and text chunks. An original (kind original) may
+// show several problems; the teacher selects one region, which becomes a new
+// single-problem image (kind single) that can be attached to a problem. Every
+// image carries the rights record it was uploaded under. Never served to
+// students.
+type EduProblemImage struct {
+	ID            string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID      string    `json:"tenantId" gorm:"size:40;not null;index"`
+	WorkspaceID   string    `json:"workspaceId" gorm:"size:40;not null;index"`
+	Kind          string    `json:"kind" gorm:"size:16;not null"`  // original | single
+	State         string    `json:"state" gorm:"size:16;not null"` // active | withdrawn
+	ParentID      string    `json:"parentId,omitempty" gorm:"size:40;index"`
+	SourceAssetID string    `json:"sourceAssetId" gorm:"size:40;not null;index"`
+	ProblemID     string    `json:"problemId,omitempty" gorm:"size:40;index"`
+	Mime          string    `json:"mime" gorm:"size:24;not null"`
+	Width         int       `json:"width" gorm:"not null"`
+	Height        int       `json:"height" gorm:"not null"`
+	Bytes         int       `json:"bytes" gorm:"not null"`
+	SHA256        string    `json:"sha256" gorm:"size:80;not null"`
+	UploadSHA256  string    `json:"uploadSha256" gorm:"size:80;not null"`
+	CropX         int       `json:"cropX"`
+	CropY         int       `json:"cropY"`
+	CropW         int       `json:"cropW"`
+	CropH         int       `json:"cropH"`
+	Content       []byte    `json:"-"`
+	CreatedBy     string    `json:"createdBy" gorm:"size:40;not null"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+func (EduProblemImage) TableName() string { return "edu_problem_images" }
