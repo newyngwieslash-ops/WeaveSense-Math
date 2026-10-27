@@ -1002,7 +1002,7 @@ type EduMetricEvent struct {
 	AssignmentID  string    `json:"assignmentId,omitempty" gorm:"size:40"`
 	PublicationID string    `json:"publicationId,omitempty" gorm:"size:40"`
 	FamilyID      string    `json:"familyId,omitempty" gorm:"size:40"`
-	Attrs         string    `json:"attrs,omitempty" gorm:"size:300"` // enumerated attributes only (JSON object)
+	Attrs         string    `json:"attrs,omitempty" gorm:"size:300"`   // enumerated attributes only (JSON object)
 	Terminal      string    `json:"terminal,omitempty" gorm:"size:16"` // empty = not collected
 	OccurredAt    time.Time `json:"occurredAt" gorm:"index:ix_edu_metric_type,priority:3"`
 	CollectedAt   time.Time `json:"collectedAt"`
