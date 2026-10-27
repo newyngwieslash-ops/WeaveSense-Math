@@ -163,5 +163,5 @@ func FromEnv(db *gorm.DB) *Service {
 	if len(uk) < 32 {
 		uk = "edu-artifact-url:" + key
 	}
-	return &Service{DB: db, Client: Client{BaseURL: url, Key: []byte(key)}, URLKey: []byte(uk)}
+	return &Service{DB: db, Client: Client{BaseURL: url, Key: []byte(key)}, URLKey: []byte(uk), Journal: JournalFromEnv()}
 }

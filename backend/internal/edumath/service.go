@@ -39,6 +39,9 @@ type Service struct {
 	Client Client
 	URLKey []byte
 	Now    func() time.Time
+	// Journal records withdrawals and deletions outside the database so a
+	// restore can replay them (DEV-122). Nil when EDU_RESTORE_JOURNAL is unset.
+	Journal *RestoreJournal
 }
 
 func (s *Service) now() time.Time {

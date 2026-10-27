@@ -309,6 +309,9 @@ func (h *API) completeDataRequest(c *gin.Context) {
 		return
 	}
 	h.Svc.audit(tx, a, "datareq.complete", r.ID, dataRequestLine(r.Kind, outcome))
+	if r.Kind == "withdraw" || r.Kind == "delete" {
+		h.journalLater(c, journalDataRequest(a, r, now))
+	}
 	res := gin.H{"dryRun": false, "id": r.ID, "status": "completed", "outcome": outcome}
 	if pkg != nil {
 		res["package"] = pkg
