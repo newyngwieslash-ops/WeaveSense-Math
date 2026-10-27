@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 91
+const CurrentSchemaVersion int64 = 92
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -429,6 +429,13 @@ var schemaMigrations = []migration{
 	{version: 91, name: "edu_ops_grants_v91", checksum: "sha256:edu-ops-grants-v91-20261027", apply: func(tx *gorm.DB) error {
 		// docs/math-workbench: time-limited support access granted by the institution (DEV-108), new table under FORCE RLS.
 		if err := tx.AutoMigrate(&model.EduOpsGrant{}); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 92, name: "edu_metric_events_v92", checksum: "sha256:edu-metric-events-v92-20261027", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: de-identified metric events and collector state (DEV-116), new tables under FORCE RLS.
+		if err := tx.AutoMigrate(&model.EduMetricEvent{}, &model.EduMetricState{}); err != nil {
 			return err
 		}
 		return applyFlowRLS(tx)
