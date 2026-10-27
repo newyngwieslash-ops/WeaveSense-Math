@@ -34,6 +34,7 @@ type variantItem struct {
 	Prompt         string            `json:"prompt"`
 	AnswerFormat   string            `json:"answer_format"`
 	ChangeType     string            `json:"change_type"`
+	Source         string            `json:"source,omitempty"`
 	Transfer       string            `json:"transfer"`
 	Method         string            `json:"method"`
 	MathState      string            `json:"math_state"`
@@ -61,6 +62,7 @@ func (h *API) registerVariants(g *gin.RouterGroup) {
 	g.GET("/lesson-revisions/:id/variant-sets", h.listVariantSets)
 	g.GET("/variant-sets/:id", h.getVariantSet)
 	g.POST("/variant-sets/:id/review", h.reviewVariantSet)
+	g.POST("/variant-sets/:id/replace", h.replaceVariantItem)
 	g.GET("/assignments/:id/extensions", h.listExtensions)
 	g.POST("/assignments/:id/extensions", h.putExtension)
 	g.POST("/assignments/:id/extensions/:studentId/remove", h.removeExtension)
@@ -131,6 +133,8 @@ func (s *Service) materializeVariantSet(ctx context.Context, tx *gorm.DB, job mo
 	}
 	ij, _ := json.Marshal(items)
 	kj, _ := json.Marshal(keys)
+	rep, repBlocking, isReplacement := replacementOf(tx, job, doc.Dropped, len(items))
+	blocking = append(blocking, repBlocking...)
 	state, be := "ready_for_review", ""
 	if len(blocking) > 0 {
 		state = "rejected"
@@ -140,7 +144,14 @@ func (s *Service) materializeVariantSet(ctx context.Context, tx *gorm.DB, job mo
 	return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model.EduVariantSet{ID: flow.NewID("evs_"), TenantID: job.TenantID, WorkspaceID: job.WorkspaceID,
 		LessonRevisionID: l.ID, ProblemRevisionID: job.ProblemRevisionID, JobID: job.ID, ArtifactID: ta.ID, StudentArtifactID: sa.ID, SetHash: ta.SHA256,
 		FamilyID: doc.FamilyID, Requested: doc.Requested, ItemCount: len(items), ItemsJSON: string(ij), AnswerKeysJSON: string(kj), DroppedJSON: string(doc.Dropped),
-		State: state, BlockingErrors: be, CreatedBy: job.CreatedBy, CreatedAt: s.now()}).Error
+		State: state, BlockingErrors: be, CreatedBy: job.CreatedBy, CreatedAt: s.now(), SupersedesSetID: supersedes(isReplacement, rep), ReplacementID: rep.ID}).Error
+}
+
+func supersedes(ok bool, rep model.EduVariantReplacement) string {
+	if !ok {
+		return ""
+	}
+	return rep.BaseSetID
 }
 
 // reviewAllowed applies the institution review policy (FR-I04, AC-03) to any reviewable object.
@@ -198,7 +209,12 @@ func variantSetOut(vs model.EduVariantSet, withKeys bool) gin.H {
 	_ = json.Unmarshal([]byte(vs.ItemsJSON), &items)
 	out := gin.H{"id": vs.ID, "lessonRevisionId": vs.LessonRevisionID, "jobId": vs.JobID, "setHash": vs.SetHash, "familyId": vs.FamilyID,
 		"requested": vs.Requested, "itemCount": vs.ItemCount, "state": vs.State, "blockingErrors": vs.BlockingErrors, "createdBy": vs.CreatedBy,
-		"createdAt": vs.CreatedAt, "reviewedAt": vs.ReviewedAt, "items": items}
+		"createdAt": vs.CreatedAt, "reviewedAt": vs.ReviewedAt, "items": items, "supersedesSetId": vs.SupersedesSetID, "replacementId": vs.ReplacementID}
+	scopes := map[string]gin.H{}
+	for _, it := range items {
+		scopes[it.ID] = gradingScope(it.AnswerFormat)
+	}
+	out["grading"] = scopes
 	if withKeys {
 		var keys map[string]answerKey
 		_ = json.Unmarshal([]byte(vs.AnswerKeysJSON), &keys)

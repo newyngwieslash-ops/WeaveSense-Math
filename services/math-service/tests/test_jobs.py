@@ -159,6 +159,40 @@ class VariantSetJobTests(unittest.TestCase):
         self.assertEqual(v["error"]["code"], "VALIDATION_FAILED")
 
 
+    def test_explicit_items_keep_order_and_mark_teacher_own(self):
+        """DEV-078: a teacher's own numbers are verified like generated ones and never skipped or padded."""
+        j, _ = self.s.start("t1", "variant_set", "vx", {"problem": PROB["problem"], "problem_hash": "ph", "count": 2,
+                                                        "items": [{"params": {"a": "2", "h": "2"}, "source": "generated"},
+                                                                  {"params": {"a": "5", "h": "2"}, "source": "teacher_own"}]})
+        drain(self.w, j["job_id"])
+        v = self.s.get("t1", j["job_id"], internal=True)
+        self.assertEqual(v["status"], "succeeded")
+        vs = v["_checkpoint"]["verify_variants"]["variant_set"]
+        self.assertEqual([it["change_type"] for it in vs["items"]], ["numbers_only", "teacher_own"])
+        self.assertEqual([it["source"] for it in vs["items"]], ["generated", "teacher_own"])
+        self.assertEqual(vs["items"][1]["params"], {"a": "5", "h": "2"})
+        self.assertEqual(vs["items"][1]["math_state"], "verified")
+        self.assertEqual(vs["dropped"], [])
+
+    def test_explicit_teacher_item_reusing_parent_answer_is_dropped_not_replaced(self):
+        j, _ = self.s.start("t1", "variant_set", "vy", {"problem": PROB["problem"], "problem_hash": "ph", "count": 2,
+                                                        "items": [{"params": {"a": "2", "h": "2"}, "source": "generated"},
+                                                                  {"params": {"a": "4", "h": "2"}, "source": "teacher_own"},
+                                                                  {"params": {"a": "2", "h": "x"}, "source": "teacher_own"}]})
+        drain(self.w, j["job_id"])
+        vs = self.s.get("t1", j["job_id"], internal=True)["_checkpoint"]["verify_variants"]["variant_set"]
+        self.assertEqual(len(vs["items"]), 1)
+        self.assertEqual([(d["source"], d["reason"]) for d in vs["dropped"]][0], ("teacher_own", "answer_reused"))
+        self.assertEqual(vs["dropped"][1]["source"], "teacher_own")
+
+    def test_explicit_items_reject_unknown_source(self):
+        j, _ = self.s.start("t1", "variant_set", "vz", {"problem": PROB["problem"], "problem_hash": "ph", "count": 1,
+                                                        "items": [{"params": {"a": "5", "h": "2"}, "source": "pasted"}]})
+        drain(self.w, j["job_id"])
+        v = self.s.get("t1", j["job_id"])
+        self.assertEqual((v["status"], v["error"]["code"]), ("failed", "INPUT_AMBIGUOUS"))
+
+
 class LessonEditJobTests(unittest.TestCase):
     """FR-T05/FR-T06, AC-17/18: field level edits on an exact base hash; math kept, stale parts regenerated."""
 

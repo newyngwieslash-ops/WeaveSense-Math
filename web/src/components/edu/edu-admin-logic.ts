@@ -14,7 +14,10 @@ export type VariantItem = {
     method?: string;
     math_state?: string;
     evidence_levels?: string[];
+    /** generated（服务生成）或 teacher_own（教师自有数字替换，DEV-078）。 */
+    source?: string;
 };
+export type GradingScope = { auto: boolean; covers: string; equivalence?: string; decimal?: string; steps: string; unit?: string };
 export type VariantKey = { id: string; exact: string; plain: string; latex: string };
 export type VariantSet = {
     id: string;
@@ -34,6 +37,9 @@ export type VariantSet = {
     dropped?: { id?: string; reason: string; params?: Record<string, string> }[];
     reviews?: { id: string; reviewerId: string; decision: string; comment: string; selfReview: boolean; createdAt: string }[];
     reviewMode?: string;
+    supersedesSetId?: string;
+    replacementId?: string;
+    grading?: Record<string, GradingScope>;
 };
 
 export const VARIANT_STATE_LABEL: Record<string, string> = {
@@ -100,4 +106,47 @@ export function selfTestPreview(set: Pick<VariantSet, "items">) {
         measurement: "set" as const,
         questions: set.items.map((it) => ({ id: it.id, prompt: it.prompt, unit: it.unit, answer_format: it.answer_format })),
     };
+}
+
+/** 自动评分范围的教师说明（DEV-078）：只说明服务端判分实际覆盖的内容。 */
+export function gradingScopeLabel(g?: GradingScope): string {
+    if (!g) return "自动评分范围未知，布置前请向管理员确认";
+    if (!g.auto) return "不自动评分，需教师批改";
+    const parts = ["自动评分只判最终答案"];
+    if (g.equivalence === "exact_value") parts.push("按精确值等价判定（化简、分数与根式的等价写法均算对）");
+    if (g.decimal === "needs_exact") parts.push("只写小数会提示需要精确值");
+    if (g.unit === "checked_when_expected") parts.push("有单位的题检查单位");
+    if (g.steps === "not_graded") parts.push("解题过程不自动评分");
+    return parts.join("；");
+}
+
+/** 题组阻断错误的教师说明；teacher_item_dropped 表示教师自有题没有通过检查。 */
+export function blockingLabel(code: string): string {
+    const [kind, reason = ""] = code.split(/:(.*)/s);
+    if (kind === "teacher_item_dropped") return `自有题未通过：${dropReasonLabel(reason)}`;
+    if (kind === "item_dropped") return `原有题未通过：${dropReasonLabel(reason)}`;
+    if (code === "item_count_short") return "题数少于替换前，不能审核";
+    if (kind.endsWith("math_not_verified") || reason === "math_not_verified") return `${kind} 数学未验证`;
+    return code;
+}
+
+export function parseBlocking(raw: string): string[] {
+    if (!raw) return [];
+    try {
+        const v = JSON.parse(raw);
+        return Array.isArray(v) ? v.map(String) : [raw];
+    } catch {
+        return [raw];
+    }
+}
+
+const PARAM_VALUE = /^[0-9a-zA-Z_+\-*/^().√ ]{1,32}$/;
+/** 替换参数只允许原题的参数名与简短数值表达式；最终由数学服务归一化与验证。 */
+export function replaceParamsError(names: string[], params: Record<string, string>): string {
+    for (const n of names) {
+        const v = (params[n] || "").trim();
+        if (!v) return `请填写参数 ${n}`;
+        if (!PARAM_VALUE.test(v)) return `参数 ${n} 只能是简短的数值表达式，例如 3、2/3、sqrt(2)`;
+    }
+    return "";
 }
