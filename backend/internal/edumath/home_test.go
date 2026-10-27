@@ -133,4 +133,47 @@ func runTeacherHome(t *testing.T, h *harness) {
 	if c, _, raw = home("u_bob", stu...); c < 400 {
 		t.Fatalf("student home: %d %s", c, raw)
 	}
+	// Favorites (DEV-081): private to the teacher, idempotent, filtered with favorites=1, never across tenants.
+	fav := func(u, method, id string, hdr ...string) (int, []byte) {
+		c, _, raw, _ := h.call(u, method, "/api/edu/lesson-revisions/"+id+"/favorite", nil, hdr...)
+		return c, raw
+	}
+	for i := 0; i < 2; i++ {
+		if c, raw := fav("u_alice", "PUT", pendingID); c != 200 {
+			t.Fatalf("favorite: %d %s", c, raw)
+		}
+	}
+	if c, items, raw := cat("u_alice", "?favorites=1"); c != 200 || len(items) != 1 || items[0].(map[string]any)["lessonRevisionId"] != pendingID || items[0].(map[string]any)["favorite"] != true {
+		t.Fatalf("catalog favorites: %d %s", c, raw)
+	}
+	if c, _, raw := cat("u_alice", "?favorites=yes"); c != 400 {
+		t.Fatalf("catalog bad favorites flag: %d %s", c, raw)
+	}
+	var nf int64
+	h.db.Model(&model.EduFavorite{}).Where("lesson_revision_id = ?", pendingID).Count(&nf)
+	if nf != 1 {
+		t.Fatalf("favorite rows: %d", nf)
+	}
+	if c, raw := fav("u_carol", "PUT", pendingID); c < 400 {
+		t.Fatalf("carol favorites alice's lesson: %d %s", c, raw)
+	}
+	if c, raw := fav("u_carol", "PUT", pendingID, "X-Workspace-Id", model.PersonalWorkspaceID("u_alice")); c < 400 {
+		t.Fatalf("carol favorites naming alice's workspace: %d %s", c, raw)
+	}
+	fav("u_carol", "DELETE", pendingID)
+	if c, items, raw := cat("u_carol", "?favorites=1"); c != 200 || len(items) != 0 {
+		t.Fatalf("carol favorites list: %d %s", c, raw)
+	}
+	if c, raw := fav("u_bob", "PUT", pendingID, stu...); c < 400 {
+		t.Fatalf("student favorite: %d %s", c, raw)
+	}
+	if _, items, raw := cat("u_alice", "?favorites=1"); len(items) != 1 {
+		t.Fatalf("others must not touch alice's favorite: %s", raw)
+	}
+	if c, raw := fav("u_alice", "DELETE", pendingID); c != 200 {
+		t.Fatalf("unfavorite: %d %s", c, raw)
+	}
+	if _, items, raw := cat("u_alice", "?favorites=1"); len(items) != 0 {
+		t.Fatalf("favorites after removal: %s", raw)
+	}
 }

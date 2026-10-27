@@ -36,6 +36,8 @@ type homeClass struct {
 func (h *API) registerHome(g *gin.RouterGroup) {
 	g.GET("/home", h.home)
 	g.GET("/catalog", h.catalog)
+	g.PUT("/lesson-revisions/:id/favorite", h.setFavorite)
+	g.DELETE("/lesson-revisions/:id/favorite", h.unsetFavorite)
 	h.registerDemo(g)
 }
 
