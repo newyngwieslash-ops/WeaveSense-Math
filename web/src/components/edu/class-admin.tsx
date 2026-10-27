@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { edu, type EduScope } from "@/services/api/edu";
 
-import { extensionDueISO, INVITE_STATUS_LABEL, type ExtensionRow, type InviteRow, type RosterRow } from "./edu-admin-logic";
+import { assignmentImpactText, extensionDueISO, INVITE_STATUS_LABEL, withdrawReasonProblem, type AssignmentImpact, type ExtensionRow, type InviteRow, type RosterRow } from "./edu-admin-logic";
 import { teacherError } from "./teacher-errors";
 
 /**
@@ -188,6 +188,63 @@ export function ExtensionPanel({ scope, classId, assignmentId, dueAt }: { scope:
                     </li>
                 ))}
             </ul>
+        </div>
+    );
+}
+
+/** DEV-112：撤回任务先预览影响范围，填写原因后再确认；服务端校验权限并记录审计。 */
+export function WithdrawAssignmentPanel({ scope, assignmentId, onDone }: { scope: EduScope; assignmentId: string; onDone: () => void }) {
+    const [impact, setImpact] = useState<AssignmentImpact | null>(null);
+    const [reason, setReason] = useState("");
+    const [msg, setMsg] = useState("");
+    useEffect(() => {
+        setImpact(null);
+        setReason("");
+        setMsg("");
+    }, [assignmentId]);
+    const preview = async () => {
+        const r = await edu<{ dryRun: boolean; impact: AssignmentImpact }>("post", `/assignments/${assignmentId}/withdraw`, scope, {});
+        if (!r.ok) return setMsg(teacherError(r));
+        setImpact(r.data.impact);
+        setMsg("");
+    };
+    const confirmWithdraw = async () => {
+        const problem = withdrawReasonProblem(reason);
+        if (problem) return setMsg(problem);
+        const r = await edu("post", `/assignments/${assignmentId}/withdraw`, scope, { confirm: true, reason: reason.trim() });
+        if (!r.ok) return setMsg(teacherError(r));
+        setImpact(null);
+        setMsg("已撤回，学生不可见");
+        onDone();
+    };
+    return (
+        <div className="text-sm">
+            {msg ? (
+                <p role="status" aria-live="polite" className="text-amber-700">
+                    {msg}
+                </p>
+            ) : null}
+            {impact ? (
+                <div className="space-y-2">
+                    <p data-testid="withdraw-impact">{assignmentImpactText(impact)}</p>
+                    <label className="block">
+                        撤回原因
+                        <input className="ml-2 h-8 w-80 rounded-md border px-2" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
+                    </label>
+                    <div className="flex gap-2">
+                        <button className={btn} onClick={() => void confirmWithdraw()}>
+                            确认撤回
+                        </button>
+                        <button className={ghost} onClick={() => setImpact(null)}>
+                            取消
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <button className={ghost} onClick={() => void preview()}>
+                    查看撤回影响
+                </button>
+            )}
         </div>
     );
 }

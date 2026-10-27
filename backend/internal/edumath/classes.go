@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -481,9 +482,52 @@ func (h *API) withdrawAssignment(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
+	var in struct {
+		Confirm bool   `json:"confirm"`
+		Reason  string `json:"reason"`
+	}
+	if c.Request.ContentLength != 0 && c.ShouldBindJSON(&in) != nil {
+		h.fail(c, appErr(400, "VALIDATION_FAILED", "body must be {confirm, reason}", "fix_input"))
+		return
+	}
+	if as.State == "withdrawn" {
+		h.fail(c, appErr(409, "ASSIGNMENT_WITHDRAWN", "assignment is already withdrawn", "refresh"))
+		return
+	}
+	// DEV-112: withdrawing hides the assignment from every student of the class,
+	// so the teacher sees who and what it touches before confirming.
+	imp := assignmentImpact(tx, as)
+	if !in.Confirm {
+		reply(c, 200, gin.H{"dryRun": true, "impact": imp}, "ok")
+		return
+	}
+	reason, good := plainText(in.Reason, 4, 200)
+	if !good {
+		h.fail(c, appErr(400, "VALIDATION_FAILED", "reason must be 4 to 200 characters without angle brackets or line breaks", "fix_input"))
+		return
+	}
 	tx.Model(&as).Update("state", "withdrawn")
-	h.Svc.audit(tx, a, "assignment.withdraw", as.ClassID, as.ID)
-	reply(c, 200, gin.H{"id": as.ID, "state": "withdrawn"}, "ok")
+	h.Svc.audit(tx, a, "assignment.withdraw", as.ClassID, fmt.Sprintf("%s students=%d attempts=%d help=%d extensions=%d | %s", as.ID, imp.Students, imp.Attempts, imp.OpenHelp, imp.Extensions, reason))
+	reply(c, 200, gin.H{"id": as.ID, "state": "withdrawn", "impact": imp}, "ok")
+}
+
+// AssignmentImpact is what withdrawing one assignment touches.
+type AssignmentImpact struct {
+	Students             int64 `json:"students"`
+	StudentsWithAttempts int64 `json:"studentsWithAttempts"`
+	Attempts             int64 `json:"attempts"`
+	OpenHelp             int64 `json:"openHelp"`
+	Extensions           int64 `json:"extensions"`
+}
+
+func assignmentImpact(tx *gorm.DB, as model.EduAssignment) AssignmentImpact {
+	var imp AssignmentImpact
+	tx.Model(&model.EduEnrollment{}).Where("tenant_id = ? AND class_id = ? AND status = 'active'", as.TenantID, as.ClassID).Count(&imp.Students)
+	tx.Model(&model.EduAttempt{}).Where("tenant_id = ? AND assignment_id = ?", as.TenantID, as.ID).Count(&imp.Attempts)
+	tx.Model(&model.EduAttempt{}).Where("tenant_id = ? AND assignment_id = ?", as.TenantID, as.ID).Distinct("student_user_id").Count(&imp.StudentsWithAttempts)
+	tx.Model(&model.EduHelpRequest{}).Where("tenant_id = ? AND assignment_id = ? AND state = 'open'", as.TenantID, as.ID).Count(&imp.OpenHelp)
+	tx.Model(&model.EduAssignmentExtension{}).Where("tenant_id = ? AND assignment_id = ?", as.TenantID, as.ID).Count(&imp.Extensions)
+	return imp
 }
 
 // recordConsent: only an org admin (or tenant owner/admin) with an evidence

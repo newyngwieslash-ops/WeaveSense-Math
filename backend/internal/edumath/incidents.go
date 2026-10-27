@@ -108,6 +108,24 @@ func incidentOut(in model.EduContentIncident) gin.H {
 
 // OpenIncident records a content error on a publication. Blocking incidents run
 // the whole withdrawal chain in the caller's transaction.
+// IncidentImpact previews what a blocking incident on a publication would stop,
+// with the same checks as OpenIncident and without changing anything.
+func (s *Service) IncidentImpact(tx *gorm.DB, a Actor, pubID, reason string) (incidentImpact, error) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" || len([]rune(reason)) > 400 {
+		return incidentImpact{}, appErr(400, "VALIDATION_FAILED", "severity must be blocking or minor and reason 1..400 chars", "fix_input")
+	}
+	var pub model.EduPublication
+	if tx.First(&pub, "id = ? AND tenant_id = ?", pubID, a.TenantID).Error != nil {
+		return incidentImpact{}, ErrNotFound
+	}
+	l, _, err := lessonForStaff(tx, a, pub.LessonRevisionID)
+	if err != nil {
+		return incidentImpact{}, err
+	}
+	return computeImpact(tx, a.TenantID, l, pub), nil
+}
+
 func (s *Service) OpenIncident(tx *gorm.DB, a Actor, pubID, severity, reason string) (model.EduContentIncident, bool, error) {
 	var inc model.EduContentIncident
 	reason = strings.TrimSpace(reason)
@@ -328,9 +346,22 @@ func (h *API) openIncident(c *gin.Context) {
 	var in struct {
 		Severity string `json:"severity"`
 		Reason   string `json:"reason"`
+		Confirm  bool   `json:"confirm"`
 	}
 	if c.ShouldBindJSON(&in) != nil {
 		h.fail(c, appErr(400, "VALIDATION_FAILED", "invalid body", "fix_input"))
+		return
+	}
+	// DEV-112: a blocking incident withdraws the publication and suspends every
+	// assignment using it, so it first returns the concrete impact and runs only
+	// with confirm. A minor incident changes nothing for students and needs none.
+	if in.Severity == "blocking" && !in.Confirm {
+		imp, err := h.Svc.IncidentImpact(tx, a, c.Param("id"), in.Reason)
+		if err != nil {
+			h.fail(c, err)
+			return
+		}
+		reply(c, 200, gin.H{"dryRun": true, "impact": imp}, "ok")
 		return
 	}
 	inc, created, err := h.Svc.OpenIncident(tx, a, c.Param("id"), in.Severity, in.Reason)

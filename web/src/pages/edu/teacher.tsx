@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ClassAdmin, ExtensionPanel } from "@/components/edu/class-admin";
+import { ClassAdmin, ExtensionPanel, WithdrawAssignmentPanel } from "@/components/edu/class-admin";
 import { edu, RESULT_LABEL, type EduAttempt } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { emptyState, teacherError } from "@/components/edu/teacher-errors";
@@ -59,7 +59,7 @@ export default function TeacherClassroom() {
         });
     }, [ws, scope]);
     useEffect(loadClasses, [loadClasses]);
-    useEffect(() => {
+    const reloadAssignments = useCallback(() => {
         if (!classId) return;
         void edu<EduAssignmentRow[]>("get", `/classes/${classId}/assignments`, scope).then((r) => {
             if (!r.ok) return setMsg(teacherError(r));
@@ -67,6 +67,7 @@ export default function TeacherClassroom() {
             setLoaded((x) => ({ ...x, assignments: true }));
         });
     }, [classId, scope]);
+    useEffect(reloadAssignments, [reloadAssignments]);
 
     const load = useCallback(() => {
         if (!asId) return;
@@ -163,6 +164,15 @@ export default function TeacherClassroom() {
                     <summary className="cursor-pointer font-semibold">单个学生延期</summary>
                     <div className="mt-2">
                         <ExtensionPanel scope={scope} classId={classId} assignmentId={asId} dueAt={assignments.find((a) => a.id === asId)?.dueAt} />
+                    </div>
+                </details>
+            ) : null}
+
+            {asId && classId ? (
+                <details className={`${box} mb-4`}>
+                    <summary className="cursor-pointer font-semibold">撤回任务</summary>
+                    <div className="mt-2">
+                        <WithdrawAssignmentPanel scope={scope} assignmentId={asId} onDone={reloadAssignments} />
                     </div>
                 </details>
             ) : null}
