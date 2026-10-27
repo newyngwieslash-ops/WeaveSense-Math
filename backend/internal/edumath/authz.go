@@ -76,6 +76,7 @@ func eduTenantIDs(db *gorm.DB, userID string) ([]string, error) {
 // still authorize explicitly (role, class, enrollment, assignment, state).
 func Middleware(db *gorm.DB, user flow.UserFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		noStore(c)
 		if strings.HasPrefix(c.Request.URL.Path, "/api/edu/files/") {
 			c.Next() // signed-URL fetch: authorized by signature + access recheck in system context
 			return
@@ -123,6 +124,15 @@ func Middleware(db *gorm.DB, user flow.UserFunc) gin.HandlerFunc {
 			flushJournal(c)
 		}
 	}
+}
+
+// noStore marks a response as never cacheable (DEV-097): education responses
+// are per user and per moment (an answer can be released and withdrawn
+// again), so no browser, proxy or CDN may keep them. Handlers that serve
+// files set their own stricter headers afterwards.
+func noStore(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store, max-age=0")
+	c.Header("Pragma", "no-cache")
 }
 
 func reqDB(c *gin.Context, base *gorm.DB) *gorm.DB {

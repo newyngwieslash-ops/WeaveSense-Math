@@ -24,8 +24,8 @@ type API struct {
 
 // Register mounts /api/edu/* on the given group (expects the group at /api).
 func (h *API) Register(api *gin.RouterGroup) {
-	api.POST("/edu-join", h.join) // outside the tenant-scoped middleware (see join)
-	api.POST("/edu-roster-claim", h.claimRoster)
+	api.POST("/edu-join", noStore, h.join) // outside the tenant-scoped middleware (see join)
+	api.POST("/edu-roster-claim", noStore, h.claimRoster)
 	api.POST("/edu-math-events", h.mathEvent) // service-signed push; no user session (see events.go)
 	g := api.Group("/edu", Middleware(h.DB, h.User))
 	h.registerClasses(g)
@@ -466,7 +466,11 @@ func (h *API) studentAssignments(c *gin.Context) {
 	out := []gin.H{}
 	for _, x := range as {
 		if _, _, err := studentCanAccessAssignment(tx, a.TenantID, a.UserID, x.ID); err == nil {
-			out = append(out, gin.H{"id": x.ID, "title": x.Title, "classId": x.ClassID, "createdAt": x.CreatedAt})
+			row := gin.H{"id": x.ID, "title": x.Title, "classId": x.ClassID, "createdAt": x.CreatedAt}
+			if r := studentRevision(tx, a.TenantID, a.UserID, x.ID); r != nil {
+				row["revision"] = r
+			}
+			out = append(out, row)
 		}
 	}
 	reply(c, 200, out, "ok")
@@ -512,7 +516,39 @@ func (h *API) studentAssignment(c *gin.Context) {
 		return
 	}
 	u, exp := h.Svc.SignedURL(sp.ID, a.UserID, MaxURLTTL)
-	reply(c, 200, gin.H{"assignment": gin.H{"id": as.ID, "title": as.Title}, "lesson": proj, "preview": gin.H{"url": u, "expiresAt": exp}}, "ok")
+	asg := gin.H{"id": as.ID, "title": as.Title}
+	if r := studentRevision(tx, a.TenantID, a.UserID, as.ID); r != nil {
+		asg["revision"] = r
+	}
+	reply(c, 200, gin.H{"assignment": asg, "lesson": proj, "preview": gin.H{"url": u, "expiresAt": exp}}, "ok")
+}
+
+// studentRevision is the student side of a revision notice (DEV-126): when the
+// assignment replaced an earlier one (content incident fix or a teacher's
+// migration), the student learns when, whether it was a correction, and how
+// many of their own answers stay with the earlier version. The teacher's
+// reason, the incident, the publications and other students are never named:
+// a reason may quote the corrected answer.
+func studentRevision(tx *gorm.DB, tenant, student, assignmentID string) gin.H {
+	var first model.EduAssignmentMigration
+	cur, prev := assignmentID, []string{}
+	for i := 0; i < 10; i++ {
+		var m model.EduAssignmentMigration
+		if tx.Where("tenant_id = ? AND to_assignment_id = ?", tenant, cur).Limit(1).Find(&m).Error != nil || m.ID == "" {
+			break
+		}
+		if i == 0 {
+			first = m
+		}
+		prev = append(prev, m.FromAssignmentID)
+		cur = m.FromAssignmentID
+	}
+	if first.ID == "" {
+		return nil
+	}
+	var mine int64
+	tx.Model(&model.EduAttempt{}).Where("tenant_id = ? AND student_user_id = ? AND assignment_id IN ?", tenant, student, prev).Count(&mine)
+	return gin.H{"revisedAt": first.CreatedAt, "correction": first.IncidentID != "", "earlierAttempts": mine}
 }
 
 // StudentLeak is the platform-side second guard: the projection must be the

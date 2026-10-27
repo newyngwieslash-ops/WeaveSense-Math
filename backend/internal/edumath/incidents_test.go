@@ -245,8 +245,27 @@ func runIncidents(t *testing.T, h *harness) {
 	if as.State != "migrated" || nb.State != "active" || nb.PublicationID != fixPub || nb.AnswerPolicy != "after_submission" || kept != attempts {
 		t.Fatalf("migration result: old=%s new=%+v kept=%d", as.State, nb, kept)
 	}
-	if c, _, raw, _ := h.call("u_bob", "GET", "/api/edu/student/assignments/"+asB, nil, stu...); c != 200 {
+	c, o, raw, _ := h.call("u_bob", "GET", "/api/edu/student/assignments/"+asB, nil, stu...)
+	if c != 200 {
 		t.Fatalf("student sees the migrated task: %d %s", c, raw)
+	}
+	// Student side of the revision notice (DEV-126): when, that it was a correction, and how
+	// many of the student's own answers stay with the earlier version; never the teacher's
+	// reason (it may quote the corrected answer), the incident or the publications.
+	rv, _ := data(o)["assignment"].(map[string]any)["revision"].(map[string]any)
+	if rv == nil || rv["correction"] != true || rv["earlierAttempts"].(float64) != float64(attempts) || rv["revisedAt"] == nil {
+		t.Fatalf("student revision notice: %s", raw)
+	}
+	_, _, rawList, _ := h.call("u_bob", "GET", "/api/edu/student/assignments", nil, stu...)
+	for _, r := range [][]byte{raw, rawList} {
+		for _, s := range []string{"内容事故修正", "答案错误", incID, pubID, fixPub, asA} {
+			if strings.Contains(string(r), s) {
+				t.Fatalf("student response names %q: %s", s, r)
+			}
+		}
+	}
+	if !strings.Contains(string(rawList), `"correction":true`) {
+		t.Fatalf("student list lacks the revision mark: %s", rawList)
 	}
 	if c, o, _, _ := h.call("u_alice", "GET", "/api/edu/assignments/"+asB+"/migrations", nil); c != 200 || len(o["data"].([]any)) != 1 {
 		t.Fatalf("migrations: %d %v", c, o)
