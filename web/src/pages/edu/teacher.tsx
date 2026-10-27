@@ -6,6 +6,7 @@ import { edu, RESULT_LABEL, type EduAttempt } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { emptyState, teacherError } from "@/components/edu/teacher-errors";
 import { ReportExport } from "@/components/edu/export";
+import { TeachingMetricsPanel, useTeacherBeat } from "@/components/edu/teacher-time";
 
 /**
  * 教师端课堂视图：班级、作业、学情分布、求助分组与回复、逐条作答与人工判定、开放答案。
@@ -39,6 +40,7 @@ export default function TeacherClassroom() {
     const [classId, setClassId] = useState("");
     const [assignments, setAssignments] = useState<EduAssignmentRow[]>([]);
     const [asId, setAsId] = useState("");
+    useTeacherBeat(scope, "after_class", asId);
     const [dash, setDash] = useState<Dashboard | null>(null);
     const [help, setHelp] = useState<HelpGroup[]>([]);
     const [fig, setFig] = useState<FigureSummary | null>(null);
@@ -168,6 +170,15 @@ export default function TeacherClassroom() {
                     />
                 </div>
             </details>
+
+            {asId ? (
+                <details className={`${box} mb-4`}>
+                    <summary className="cursor-pointer font-semibold">教学指标（带分母）</summary>
+                    <div className="mt-2">
+                        <TeachingMetricsPanel scope={scope} assignmentId={asId} />
+                    </div>
+                </details>
+            ) : null}
 
             {asId && classId ? (
                 <details className={`${box} mb-4`}>

@@ -341,6 +341,14 @@ async function runTeacher(cdp, base, api, t) {
     assert(await setSelect("作业", t.assignmentId), "T2 选择作业");
     assert(await cdp.poll(`[...document.querySelectorAll("summary")].some((x) => x.textContent.trim() === "批量重评分")`, "action panels"), "T3 迁移、重评分、撤回发布入口出现");
 
+    // Teaching metrics (DEV-117): denominators and the definition version are always shown.
+    assert(await open("教学指标（带分母）"), "T3b 打开教学指标");
+    assert(
+        await cdp.poll(`/在读学生 1 人/.test(${cdp.byTestId("teaching-metrics")}?.textContent || "") && (${cdp.byTestId("teaching-metrics")}?.textContent || "").includes("teaching_metrics/1")`, "teaching metrics"),
+        "T3c 教学指标显示分母与口径版本",
+        await cdp.evaluate(`${cdp.byTestId("teaching-metrics")}?.textContent || ""`),
+    );
+
     // Batch regrade: the reason is required, the preview lists the change and writes nothing.
     await open("批量重评分");
     assert(await cdp.click(cdp.byTestId("regrade-preview"), "regrade preview empty"), "T4a 无原因预览");
