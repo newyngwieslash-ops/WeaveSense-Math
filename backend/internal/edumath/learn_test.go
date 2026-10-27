@@ -15,7 +15,10 @@ import (
 func publishG1(t *testing.T, h *harness) (string, teacherLesson) {
 	t.Helper()
 	revID := h.confirmedRevision("2", "1")
-	_, out, _, _ := h.call("u_alice", "POST", "/api/edu/problem-revisions/"+revID+"/analyze", map[string]any{"idempotencyKey": "learn-a"})
+	c, out, raw, _ := h.call("u_alice", "POST", "/api/edu/problem-revisions/"+revID+"/analyze", map[string]any{"idempotencyKey": "learn-a"})
+	if _, ok := data(out)["id"].(string); !ok {
+		t.Fatalf("analyze: %d %s", c, raw)
+	}
 	job := h.waitJob("u_alice", data(out)["id"].(string))
 	_, out, _, _ = h.call("u_alice", "POST", "/api/edu/solution-revisions/"+job["solutionRevisionId"].(string)+"/lesson", map[string]any{"idempotencyKey": "learn-l"})
 	lj := h.waitJob("u_alice", data(out)["id"].(string))

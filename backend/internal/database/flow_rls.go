@@ -33,6 +33,7 @@ var flowRLSTables = []string{
 	"edu_metric_states",
 	"edu_teacher_time_segments",
 	"edu_teacher_time_diaries",
+	"edu_pauses",
 }
 
 // flowSystemOnlyTables are platform-wide tables with no tenant_id (managed

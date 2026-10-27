@@ -61,7 +61,13 @@ func t22Setup(t *testing.T) (*Service, *gorm.DB, *httptest.Server, flow.MonitorC
 		t.Fatal(err)
 	}
 	runner := flow.CanvasWorkflowManagedRunner{Tools: flow.Tools{DB: db, Model: gateway}, WorkerID: "t22-runner", Timeout: 15 * time.Second}
-	s.ConfigureCanvasWorkflowRunner(runner.Run)
+	s.ConfigureCanvasWorkflowRunner(func(ctx context.Context, ex flow.CanvasWorkflowExecutions, rec model.CanvasWorkflowExecution) error {
+		err := runner.Run(ctx, ex, rec)
+		if err != nil {
+			t.Logf("managed runner %s: %v", rec.ID, err) // background error, otherwise invisible
+		}
+		return err
+	})
 	// Freeze the recurring plan from the real prepare path.
 	args := map[string]any{"purpose": flow.MonitorCanvasRecurringPurpose, "monitor_id": "mon22", "canvas_id": "cv22", "total_budget_micro": 300, "max_runs": 2, "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
 	scope, err := flow.ResolveScope(db, "user", "")

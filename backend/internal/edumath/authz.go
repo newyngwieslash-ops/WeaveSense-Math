@@ -248,9 +248,14 @@ func studentCanAccessAssignment(tx *gorm.DB, tenantID, userID, assignmentID stri
 	}
 	// Source rights are checked at every student read (DEV-026): expiry or withdrawal stops access at once.
 	var l model.EduLessonRevision
-	if tx.Select("id", "problem_revision_id").First(&l, "id = ? AND tenant_id = ?", pub.LessonRevisionID, tenantID).Error != nil ||
+	if tx.Select("id", "problem_revision_id", "render_check").First(&l, "id = ? AND tenant_id = ?", pub.LessonRevisionID, tenantID).Error != nil ||
 		rightsAllow(tx, tenantID, l.ProblemRevisionID, "student") != nil {
 		return as, pub, ErrNotFound
+	}
+	// DEV-125: a paused publication, family or renderer stops access at once and
+	// comes back when lifted; nothing is deleted.
+	if err := publicationAllowed(tx, tenantID, pub, l); err != nil {
+		return as, pub, err
 	}
 	return as, pub, nil
 }

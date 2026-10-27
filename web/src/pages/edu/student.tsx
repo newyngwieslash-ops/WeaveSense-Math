@@ -169,7 +169,7 @@ export function StudentAssignment() {
 
     useEffect(() => {
         void edu<{ lesson: StudentLesson; preview: { url: string } }>("get", `/student/assignments/${id}`, scope).then((r) => {
-            if (!r.ok) return setMsg(r.code === "NOT_STARTED" ? "作业尚未开始" : r.message);
+            if (!r.ok) return setMsg(errorText(r.code, r.message));
             setLesson(r.data.lesson);
             setPreviewUrl(r.data.preview?.url || "");
         });
@@ -380,6 +380,8 @@ function errorText(code: string, fallback: string) {
         SELFTEST_NOT_STARTED: "请先开始自测",
         REVIEW_NOT_DUE: "复习还没到时间",
         CONSENT_REQUIRED: "需要监护人同意后才能使用",
+        PAUSE_CHECK_UNAVAILABLE: "暂时无法打开这份作业，请稍后再试，已提交的作答不受影响",
+        CONTENT_PAUSED: "这份作业暂时停用，老师处理后会恢复，已提交的作答不受影响",
     };
     return m[code] || fallback;
 }

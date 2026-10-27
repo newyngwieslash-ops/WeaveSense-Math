@@ -239,6 +239,10 @@ func (s *Service) startJobWith(ctx context.Context, tx *gorm.DB, a Actor, kind, 
 		}
 		return existing, nil
 	}
+	// DEV-125: a pause stops new jobs only; an existing key above still answers.
+	if err := generationAllowed(tx, a.TenantID, revisionID); err != nil {
+		return model.EduMathJob{}, err
+	}
 	if !s.Client.Configured() {
 		return model.EduMathJob{}, appErr(503, "PROVIDER_UNAVAILABLE", "math service is not configured", "contact_admin")
 	}
@@ -774,6 +778,9 @@ func (s *Service) Publish(tx *gorm.DB, a Actor, lessonID, lessonHash string) (mo
 	}
 	if l.State != "approved" || l.LessonHash != lessonHash || l.BlockingErrors != "" {
 		return model.EduPublication{}, appErr(409, "VALIDATION_FAILED", "only an approved revision with the reviewed hash and no blocking errors can be published", "teacher_review")
+	}
+	if err := lessonAllowed(tx, a.TenantID, l); err != nil {
+		return model.EduPublication{}, err
 	}
 	var rec model.EduReviewRecord
 	if err := tx.Where("lesson_revision_id = ? AND lesson_hash = ? AND decision = ?", l.ID, lessonHash, "approved").Order("created_at desc").First(&rec).Error; err != nil {

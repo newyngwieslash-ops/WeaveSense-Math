@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}, &EduPause{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -1056,3 +1056,25 @@ type EduTeacherTimeDiary struct {
 }
 
 func (EduTeacherTimeDiary) TableName() string { return "edu_teacher_time_diaries" }
+
+// EduPause is a reversible stop at one granularity (DEV-125): generation (no new
+// math jobs in the tenant), family (no new jobs, publishing, assignments or
+// student access for one problem family), publication (no new assignments or
+// student access for one published version) or renderer (the same for every
+// lesson rendered by one renderer version). Lifting a pause never restores a
+// withdrawn publication, and a pause never deletes ledger, attempts or markers.
+type EduPause struct {
+	ID        string     `json:"id" gorm:"primaryKey;size:40"`
+	TenantID  string     `json:"tenantId" gorm:"size:40;not null;index:ix_edu_pause,priority:1"`
+	Scope     string     `json:"scope" gorm:"size:16;not null;index:ix_edu_pause,priority:2"` // generation | family | publication | renderer
+	TargetID  string     `json:"targetId" gorm:"size:60;index:ix_edu_pause,priority:3"`
+	Reason    string     `json:"reason" gorm:"size:400"`
+	State     string     `json:"state" gorm:"size:16;not null;index"` // active | lifted
+	CreatedBy string     `json:"createdBy" gorm:"size:40"`
+	CreatedAt time.Time  `json:"createdAt"`
+	LiftedBy  string     `json:"liftedBy,omitempty" gorm:"size:40"`
+	LiftedAt  *time.Time `json:"liftedAt,omitempty"`
+	LiftNote  string     `json:"liftNote,omitempty" gorm:"size:400"`
+}
+
+func (EduPause) TableName() string { return "edu_pauses" }
