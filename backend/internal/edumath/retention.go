@@ -98,36 +98,9 @@ func applyRetention(tx *gorm.DB, tenant string, p model.EduRetentionPolicy, now 
 		return sum, err
 	}
 	for _, e := range es {
-		var asIDs []string
-		tx.Model(&model.EduAssignment{}).Where("tenant_id = ? AND class_id = ?", tenant, e.ClassID).Pluck("id", &asIDs)
-		touched := false
-		for _, m := range learningTables {
-			q := tx.Model(m).Where("tenant_id = ? AND student_user_id = ? AND assignment_id IN ?", tenant, e.StudentUserID, append(asIDs, ""))
-			var n int64
-			if err := q.Count(&n).Error; err != nil {
-				return sum, err
-			}
-			if n == 0 {
-				continue
-			}
-			touched = true
-			sum.LearningRows[m.(interface{ TableName() string }).TableName()] += int(n)
-			if !dry {
-				if err := tx.Where("tenant_id = ? AND student_user_id = ? AND assignment_id IN ?", tenant, e.StudentUserID, append(asIDs, "")).Delete(m).Error; err != nil {
-					return sum, err
-				}
-			}
-		}
-		var rn int64
-		tx.Model(&model.EduRosterEntry{}).Where("tenant_id = ? AND class_id = ? AND claimed_by = ?", tenant, e.ClassID, e.StudentUserID).Count(&rn)
-		if rn > 0 {
-			touched = true
-			sum.RosterEntries += int(rn)
-			if !dry {
-				if err := tx.Where("tenant_id = ? AND class_id = ? AND claimed_by = ?", tenant, e.ClassID, e.StudentUserID).Delete(&model.EduRosterEntry{}).Error; err != nil {
-					return sum, err
-				}
-			}
+		touched, err := deleteStudentLearning(tx, tenant, e.StudentUserID, e.ClassID, dry, &sum)
+		if err != nil {
+			return sum, err
 		}
 		if touched {
 			sum.Enrollments++
@@ -309,4 +282,55 @@ func (s *Service) RetentionAll(ctx context.Context) (tenants int, err error) {
 		tenants++
 	}
 	return tenants, nil
+}
+
+// deleteStudentLearning counts (dry) or deletes one student's learning records and
+// claimed roster entries: in one class's assignments, or in every class of the
+// tenant when classID is "". Ledger, usage and audit rows are never touched.
+func deleteStudentLearning(tx *gorm.DB, tenant, student, classID string, dry bool, sum *RetentionSummary) (bool, error) {
+	scope := func(q *gorm.DB) *gorm.DB {
+		q = q.Where("tenant_id = ? AND student_user_id = ?", tenant, student)
+		if classID != "" {
+			q = q.Where("assignment_id IN (?)", tx.Model(&model.EduAssignment{}).Select("id").Where("tenant_id = ? AND class_id = ?", tenant, classID))
+		}
+		return q
+	}
+	touched := false
+	for _, m := range learningTables {
+		var n int64
+		if err := scope(tx.Model(m)).Count(&n).Error; err != nil {
+			return touched, err
+		}
+		if n == 0 {
+			continue
+		}
+		touched = true
+		sum.LearningRows[m.(interface{ TableName() string }).TableName()] += int(n)
+		if !dry {
+			if err := scope(tx.Session(&gorm.Session{NewDB: true})).Delete(m).Error; err != nil {
+				return touched, err
+			}
+		}
+	}
+	rq := func(q *gorm.DB) *gorm.DB {
+		q = q.Where("tenant_id = ? AND claimed_by = ?", tenant, student)
+		if classID != "" {
+			q = q.Where("class_id = ?", classID)
+		}
+		return q
+	}
+	var rn int64
+	if err := rq(tx.Model(&model.EduRosterEntry{})).Count(&rn).Error; err != nil {
+		return touched, err
+	}
+	if rn > 0 {
+		touched = true
+		sum.RosterEntries += int(rn)
+		if !dry {
+			if err := rq(tx.Session(&gorm.Session{NewDB: true})).Delete(&model.EduRosterEntry{}).Error; err != nil {
+				return touched, err
+			}
+		}
+	}
+	return touched, nil
 }

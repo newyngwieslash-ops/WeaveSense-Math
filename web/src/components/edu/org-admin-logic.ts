@@ -40,6 +40,11 @@ export const ACTION_LABEL: Record<string, string> = {
     "export.report": "导出学习报告",
     "retention.set": "确认数据保留期",
     "retention.run": "执行数据保留清理",
+    "datareq.create": "登记数据请求",
+    "datareq.verify": "核验数据请求身份",
+    "datareq.reject": "拒绝数据请求",
+    "datareq.complete": "完成数据请求",
+    "datareq.replay": "恢复后重放删除",
 };
 
 export const PURPOSE_MIN = 4;
@@ -76,7 +81,7 @@ export function retentionLine(r: OrgOverview["retention"]): string {
 
 export function accessRowText(r: AccessRow): string {
     const label = ACTION_LABEL[r.action] || r.action;
-    const purpose = r.action === "org.individual_access" && r.detail ? `；目的：${r.detail.split(" | ").slice(1).join(" | ")}` : r.action.startsWith("retention.") && r.detail ? `；${retentionDetail(r.detail)}` : "";
+    const purpose = r.action === "org.individual_access" && r.detail ? `；目的：${r.detail.split(" | ").slice(1).join(" | ")}` : (r.action.startsWith("retention.") || r.action.startsWith("datareq.")) && r.detail ? `；${retentionDetail(r.detail)}` : "";
     return `${label}（${r.actorId}，对象 ${r.subject}）${purpose}`;
 }
 

@@ -28,8 +28,10 @@ var ErrPurposeRequired = &AppError{Status: http.StatusForbidden, Code: "ACCESS_P
 // governance actions shown in the access log; detail is shown only where it holds no student data.
 var orgLogActions = []string{"org.individual_access", "policy.set", "budget.set", "class.teacher.add", "class.create",
 	"class.roster.import", "class.roster.reissue", "class.roster.revoke", "class.enrollment.withdraw", "ledger.export",
-	"role.bind", "role.renew", "role.revoke", "export.content", "export.report", "retention.set", "retention.run"}
-var orgLogDetail = map[string]bool{"org.individual_access": true, "policy.set": true, "retention.set": true, "retention.run": true}
+	"role.bind", "role.renew", "role.revoke", "export.content", "export.report", "retention.set", "retention.run",
+	"datareq.create", "datareq.verify", "datareq.reject", "datareq.complete", "datareq.replay"}
+var orgLogDetail = map[string]bool{"org.individual_access": true, "policy.set": true, "retention.set": true, "retention.run": true,
+	"datareq.create": true, "datareq.reject": true, "datareq.complete": true, "datareq.replay": true}
 
 func (h *API) registerOrg(g *gin.RouterGroup) {
 	g.GET("/org/overview", h.orgOverview)
