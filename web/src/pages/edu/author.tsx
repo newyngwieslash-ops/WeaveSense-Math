@@ -12,6 +12,7 @@ import { ManualLessonForm } from "@/components/edu/manual-lesson";
 import { TextIntake } from "@/components/edu/text-intake";
 import { MANUAL_NOTICE_TEACHER, MANUAL_TEMPLATE_FAMILY, MANUAL_UNVERIFIED } from "@/components/edu/manual-lesson-logic";
 import { JOB_STATE_TEXT, jobErrorText, lessonStateLine, STAGE_TEXT, teacherError } from "@/components/edu/teacher-errors";
+import { ContentExport } from "@/components/edu/export";
 
 /**
  * 教师备课：结构化录入 → 确认题意（绑定输入哈希）→ 数学分析任务 → 生成讲解任务 →
@@ -360,6 +361,11 @@ export default function TeacherAuthoring() {
                             </option>
                         ))}
                     </select>
+                    {publicationId ? (
+                        <div className="md:col-span-2">
+                            <ContentExport publicationId={publicationId} scope={scope} onMsg={setMsg} />
+                        </div>
+                    ) : null}
                     {variantSetId ? <p className="md:col-span-2">自测使用已审核题组 {variantSetId.slice(-6)}，学生全部提交后才显示结果</p> : null}
                     <select className="h-9 rounded-md border px-2" value={assign.classId} onChange={(e) => setAssign({ ...assign, classId: e.target.value })}>
                         <option value="">选择班级</option>

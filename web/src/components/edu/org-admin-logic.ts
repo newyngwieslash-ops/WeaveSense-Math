@@ -36,6 +36,8 @@ export const ACTION_LABEL: Record<string, string> = {
     "role.bind": "授予角色",
     "role.renew": "续期角色",
     "role.revoke": "撤销角色",
+    "export.content": "导出讲解",
+    "export.report": "导出学习报告",
 };
 
 export const PURPOSE_MIN = 4;
