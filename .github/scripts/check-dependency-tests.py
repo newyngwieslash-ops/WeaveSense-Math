@@ -67,6 +67,12 @@ REQUIRED = {
     ("edumath", "TestDemoClass"),
     ("edumath", "TestPGDemoClass"),
     ("edumath", "TestPGAgentMathTools"),
+    ("edumath", "TestPauses"),
+    ("edumath", "TestPGPauses"),
+    ("edumath", "TestPauseFailClosed"),
+    ("edumath", "TestPGPauseFailClosed"),
+    ("edumath", "TestRenderRollbackDrill"),
+    ("edumath", "TestPGRenderRollbackDrill"),
 }
 
 

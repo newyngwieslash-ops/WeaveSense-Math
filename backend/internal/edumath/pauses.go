@@ -17,6 +17,7 @@ package edumath
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 
@@ -31,6 +32,9 @@ var pauseScopes = map[string]bool{"generation": true, "family": true, "publicati
 var (
 	ErrGenerationPaused = appErr(423, "GENERATION_PAUSED", "new generation is paused", "wait_or_contact_admin")
 	ErrContentPaused    = appErr(423, "CONTENT_PAUSED", "this content is paused by the institution", "wait_or_contact_admin")
+	// ErrPauseCheckFailed: the pause state could not be read, so the action is
+	// refused rather than allowed (fail closed).
+	ErrPauseCheckFailed = appErr(503, "PAUSE_CHECK_UNAVAILABLE", "pause state could not be checked; refused", "retry_later")
 )
 
 func platformGenerationPaused() bool {
@@ -38,25 +42,37 @@ func platformGenerationPaused() bool {
 	return v == "1" || v == "true" || v == "on"
 }
 
-func activePause(tx *gorm.DB, tenant, scope, target string) bool {
+// activePause reports whether an active pause matches. A lookup error is
+// returned, never read as "not paused": every caller fails closed.
+func activePause(tx *gorm.DB, tenant, scope, target string) (bool, error) {
 	if target == "" && scope != "generation" {
-		return false
+		return false, nil
 	}
 	var n int64
-	tx.Model(&model.EduPause{}).Where("tenant_id = ? AND scope = ? AND target_id = ? AND state = ?", tenant, scope, target, "active").Count(&n)
-	return n > 0
+	if err := tx.Model(&model.EduPause{}).Where("tenant_id = ? AND scope = ? AND target_id = ? AND state = ?", tenant, scope, target, "active").Count(&n).Error; err != nil {
+		return true, err
+	}
+	return n > 0, nil
 }
 
-func familyOfRevision(tx *gorm.DB, tenant, problemRevisionID string) string {
+// familyOfRevision returns "" with no error only when the revision or problem
+// does not exist (the caller then 404s on its own); any other error is returned.
+func familyOfRevision(tx *gorm.DB, tenant, problemRevisionID string) (string, error) {
 	var r model.EduProblemRevision
-	if tx.Select("id", "problem_id").First(&r, "id = ? AND tenant_id = ?", problemRevisionID, tenant).Error != nil {
-		return ""
+	if err := tx.Select("id", "problem_id").First(&r, "id = ? AND tenant_id = ?", problemRevisionID, tenant).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil
+		}
+		return "", err
 	}
 	var p model.EduProblem
-	if tx.Select("id", "family_id").First(&p, "id = ? AND tenant_id = ?", r.ProblemID, tenant).Error != nil {
-		return ""
+	if err := tx.Select("id", "family_id").First(&p, "id = ? AND tenant_id = ?", r.ProblemID, tenant).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil
+		}
+		return "", err
 	}
-	return p.FamilyID
+	return p.FamilyID, nil
 }
 
 func rendererOf(l model.EduLessonRevision) string {
@@ -66,30 +82,55 @@ func rendererOf(l model.EduLessonRevision) string {
 	return ""
 }
 
-// generationAllowed is checked before a new math job is created.
-func generationAllowed(tx *gorm.DB, tenant, problemRevisionID string) error {
-	if platformGenerationPaused() || activePause(tx, tenant, "generation", "") {
-		return ErrGenerationPaused
+// generationGate and contentGate turn a pause lookup into an error: a failed
+// lookup blocks with ErrPauseCheckFailed (fail closed), a match blocks with the
+// paused error, otherwise nil.
+func generationGate(paused bool, err error) error { return gate(paused, err, ErrGenerationPaused) }
+
+func contentGate(paused bool, err error) error { return gate(paused, err, ErrContentPaused) }
+
+func gate(paused bool, err error, pausedErr error) error {
+	if err != nil {
+		return ErrPauseCheckFailed
 	}
-	if activePause(tx, tenant, "family", familyOfRevision(tx, tenant, problemRevisionID)) {
-		return ErrGenerationPaused
+	if paused {
+		return pausedErr
 	}
 	return nil
 }
 
+// generationAllowed is checked before a new math job is created.
+func generationAllowed(tx *gorm.DB, tenant, problemRevisionID string) error {
+	if platformGenerationPaused() {
+		return ErrGenerationPaused
+	}
+	if err := generationGate(activePause(tx, tenant, "generation", "")); err != nil {
+		return err
+	}
+	fam, err := familyOfRevision(tx, tenant, problemRevisionID)
+	if err != nil {
+		return ErrPauseCheckFailed
+	}
+	return generationGate(activePause(tx, tenant, "family", fam))
+}
+
 // lessonAllowed is checked before publishing a lesson revision.
 func lessonAllowed(tx *gorm.DB, tenant string, l model.EduLessonRevision) error {
-	if activePause(tx, tenant, "family", familyOfRevision(tx, tenant, l.ProblemRevisionID)) || activePause(tx, tenant, "renderer", rendererOf(l)) {
-		return ErrContentPaused
+	fam, err := familyOfRevision(tx, tenant, l.ProblemRevisionID)
+	if err != nil {
+		return ErrPauseCheckFailed
 	}
-	return nil
+	if err := contentGate(activePause(tx, tenant, "family", fam)); err != nil {
+		return err
+	}
+	return contentGate(activePause(tx, tenant, "renderer", rendererOf(l)))
 }
 
 // publicationAllowed is checked before a new assignment, a migration target and
 // every student read.
 func publicationAllowed(tx *gorm.DB, tenant string, pub model.EduPublication, l model.EduLessonRevision) error {
-	if activePause(tx, tenant, "publication", pub.ID) {
-		return ErrContentPaused
+	if err := contentGate(activePause(tx, tenant, "publication", pub.ID)); err != nil {
+		return err
 	}
 	return lessonAllowed(tx, tenant, l)
 }
@@ -153,7 +194,7 @@ func pauseTarget(tx *gorm.DB, tenant, scope, target string) ([]string, error) {
 		}
 		for _, p := range pubs {
 			var l model.EduLessonRevision
-			if tx.Select("id", "problem_revision_id").First(&l, "id = ?", p.LessonRevisionID).Error == nil && familyOfRevision(tx, tenant, l.ProblemRevisionID) == target {
+			if tx.Select("id", "problem_revision_id").First(&l, "id = ?", p.LessonRevisionID).Error == nil && familyIs(tx, tenant, l.ProblemRevisionID, target) {
 				ids = append(ids, p.ID)
 			}
 		}
@@ -298,4 +339,9 @@ func (h *API) liftPause(c *gin.Context) {
 	p.State, p.LiftedBy, p.LiftedAt, p.LiftNote = "lifted", a.UserID, &now, in.Note
 	h.Svc.audit(tx, a, "pause.lift", p.ID, p.Scope+" "+p.TargetID)
 	reply(c, 200, gin.H{"pause": p, "lifted": true}, "ok")
+}
+
+func familyIs(tx *gorm.DB, tenant, problemRevisionID, family string) bool {
+	f, err := familyOfRevision(tx, tenant, problemRevisionID)
+	return err == nil && f == family
 }

@@ -33,6 +33,7 @@ describe("DEV-125 pauses", () => {
     test("pause errors have teacher text", () => {
         expect(teacherError({ status: 423, code: "GENERATION_PAUSED" })).toContain("暂停");
         expect(teacherError({ status: 423, code: "CONTENT_PAUSED" })).not.toContain("错误代码");
+        expect(teacherError({ status: 503, code: "PAUSE_CHECK_UNAVAILABLE" })).toContain("没有执行");
     });
     test("the admin page mounts the panel with preview before confirm", () => {
         expect(src("src/pages/edu/admin.tsx")).toContain("<PausePanel scope={scope} />");
@@ -46,4 +47,5 @@ describe("DEV-125 pauses", () => {
 test("students see a plain pause message, never the raw server text", () => {
     const s = src("src/pages/edu/student.tsx");
     expect(s).toContain('CONTENT_PAUSED: "这份作业暂时停用');
+    expect(s).toContain("PAUSE_CHECK_UNAVAILABLE:");
 });
