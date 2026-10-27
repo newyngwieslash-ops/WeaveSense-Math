@@ -143,6 +143,7 @@ func (s *Service) CostReport(tx *gorm.DB, tenantID, period string) (CostReport, 
 
 func (h *API) registerCost(g *gin.RouterGroup) {
 	g.GET("/cost-report", h.costReport)
+	g.GET("/cost-report/breakdown", h.costBreakdown)
 	g.GET("/support-costs", h.supportCosts)
 	g.POST("/support-costs", h.addSupportCost)
 }
