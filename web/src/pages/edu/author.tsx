@@ -8,6 +8,8 @@ import { VariantSetPanel } from "@/components/edu/variant-set";
 import { edu, newClientKey, type EduScope } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { blockingCodeLabel } from "@/components/edu/render-check-logic";
+import { ManualLessonForm } from "@/components/edu/manual-lesson";
+import { MANUAL_NOTICE_TEACHER, MANUAL_TEMPLATE_FAMILY, MANUAL_UNVERIFIED } from "@/components/edu/manual-lesson-logic";
 import { JOB_STATE_TEXT, jobErrorText, lessonStateLine, STAGE_TEXT, teacherError } from "@/components/edu/teacher-errors";
 
 /**
@@ -29,6 +31,8 @@ export const FAMILY_TEMPLATES: Record<string, { label: string; structured: Recor
     "CONIC-CHORD-01": { label: "椭圆焦点弦长范围", structured: { family_id: "CONIC-CHORD-01", input_state: "sufficient", params: { a: "2", b: "sqrt(3)" } } },
     "CONIC-SLOPE-01": { label: "椭圆中点弦斜率积", structured: { family_id: "CONIC-SLOPE-01", input_state: "sufficient", params: { a: "2", b: "sqrt(3)" } } },
     "CONIC-PARABOLA-01": { label: "抛物线焦点弦数量积", structured: { family_id: "CONIC-PARABOLA-01", input_state: "sufficient", params: { p: "2" } } },
+    // 目录外题目：自动分析会返回 UNSUPPORTED_FAMILY，由老师人工编写讲解（DEV-039）。
+    [MANUAL_TEMPLATE_FAMILY]: { label: "目录外题目（人工编写讲解）", structured: { family_id: MANUAL_TEMPLATE_FAMILY, input_state: "sufficient", params: {} } },
 };
 
 type Job = { id: string; status: string; stage: string; progress: number; error?: { code?: string; message?: string } | null; solutionRevisionId?: string; lessonRevisionId?: string };
@@ -81,6 +85,7 @@ export default function TeacherAuthoring() {
     const [msg, setMsg] = useState("");
     const [pubs, setPubs] = useState<{ id: string; lessonRevisionId: string; title: string; familyId: string; createdAt: string }[]>([]);
     const [variantSetId, setVariantSetId] = useState("");
+    const [manual, setManual] = useState(false);
     const aj = useJob(scope, analyzeJob);
     const lj = useJob(scope, lessonJob);
 
@@ -103,9 +108,10 @@ export default function TeacherAuthoring() {
     }, [aj?.solutionRevisionId, scope]);
     const openLesson = useCallback(
         (id: string) => {
-            void edu<{ lesson: Lesson; publication?: { id: string } }>("get", `/lesson-revisions/${id}`, scope).then(async (r) => {
+            void edu<{ lesson: Lesson; publication?: { id: string }; quality?: { math?: { state?: string } } }>("get", `/lesson-revisions/${id}`, scope).then(async (r) => {
                 if (!r.ok) return;
                 setLesson(r.data.lesson);
+                setManual(r.data.quality?.math?.state === MANUAL_UNVERIFIED);
                 setPublicationId(r.data.publication?.id || "");
                 setPreview("");
                 if (r.data.lesson.previewArtifactId) {
@@ -157,6 +163,7 @@ export default function TeacherAuthoring() {
         setLessonJob("");
         setSolution(null);
         setLesson(null);
+        setManual(false);
         setMsg("已保存修订，请核对后确认题意");
     };
     const confirmRev = async () => {
@@ -265,6 +272,12 @@ export default function TeacherAuthoring() {
                         结论状态：{solution.solutionStatus}；数学状态：{solution.mathState}；证据层级：{solution.evidenceLevels}
                     </p>
                 ) : null}
+                {confirmed && rev ? (
+                    <details className="mt-3" open={aj?.error?.code === "UNSUPPORTED_FAMILY" || family === MANUAL_TEMPLATE_FAMILY}>
+                        <summary className="cursor-pointer text-sm font-medium">人工编写讲解（目录外题目）</summary>
+                        <ManualLessonForm scope={scope} revisionId={rev.id} onJob={setLessonJob} />
+                    </details>
+                ) : null}
             </section>
 
             <section className={`${box} mt-4`}>
@@ -289,7 +302,12 @@ export default function TeacherAuthoring() {
                             </button>
                         </div>
                         {classroom ? <Classroom key={lesson.id} scope={scope} lessonId={lesson.id} onClose={() => setClassroom(false)} /> : null}
-                        {lesson.blockingErrors ? null : (
+                        {manual ? (
+                            <p role="note" className="mt-2 rounded-md bg-stone-100 p-2 text-sm dark:bg-stone-800">
+                                {MANUAL_NOTICE_TEACHER}
+                            </p>
+                        ) : null}
+                        {lesson.blockingErrors || manual ? null : (
                             <details className="mt-3">
                                 <summary className="cursor-pointer text-sm font-medium">修改讲解（生成新修订）</summary>
                                 <div className="mt-2">
@@ -303,7 +321,9 @@ export default function TeacherAuthoring() {
 
             <section className={`${box} mt-4`}>
                 <h2 className="mb-2 font-semibold">4. 举一反三自测题组（可选）</h2>
-                {variantLesson ? (
+                {manual && variantLesson === lesson?.id ? (
+                    <p className="text-sm text-stone-500">人工编写的讲解不生成变式题组，也没有自测题。</p>
+                ) : variantLesson ? (
                     <VariantSetPanel scope={scope} lessonId={variantLesson} picked={variantSetId} onPick={setVariantSetId} />
                 ) : (
                     <p className="text-sm text-stone-500">先生成讲解或选择已发布的讲解。不选题组时，学生自测使用讲解自带的一道同构题。</p>

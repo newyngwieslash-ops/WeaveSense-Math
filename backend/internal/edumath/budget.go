@@ -20,7 +20,7 @@ import (
 var activeStatuses = []string{"queued", "running", "reconciliation_required"}
 
 // renderKinds produce rendered lesson media (the expensive, concurrency-bound work).
-var renderKinds = []string{"lesson_build", "lesson_edit"}
+var renderKinds = []string{"lesson_build", "lesson_edit", "manual_lesson"}
 
 // budgetZone is the calendar used for monthly periods (EDU_BUDGET_TZ, default Asia/Shanghai).
 func budgetZone() *time.Location {

@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router";
 import { stepKey, type FigureSpec } from "@/components/edu/figure-math";
 import { FigureBoundary, InteractiveFigure, PredictionPanel, useFigureUsage } from "@/components/edu/interactive-figure";
 import { SetSelfTest } from "@/components/edu/set-self-test";
+import { isManualLesson, MANUAL_NOTICE_STUDENT } from "@/components/edu/manual-lesson-logic";
 import { StepViewer } from "@/components/edu/step-viewer";
 import { clearOtherUsers, enqueue, flushQueue, readQueue, type PendingAttempt } from "@/lib/edu-offline-queue";
 import { edu, newClientKey, RESULT_LABEL, type EduAttempt, type EduMe, type HintBody, type LearningState, type StudentLesson } from "@/services/api/edu";
@@ -238,6 +239,11 @@ export function StudentAssignment() {
             {lesson ? (
                 <section className={box}>
                     <p className="whitespace-pre-wrap leading-7">{lesson.problem.text}</p>
+                    {isManualLesson(lesson.meta) ? (
+                        <p role="note" className="mt-2 rounded-md bg-stone-100 p-2 text-sm dark:bg-stone-800">
+                            {MANUAL_NOTICE_STUDENT}
+                        </p>
+                    ) : null}
                     <div className="mt-3">
                         {fig?.kind ? (
                             <>
@@ -307,7 +313,9 @@ export function StudentAssignment() {
 
             <section className={`${box} mt-4`}>
                 <h2 className="mb-2 font-semibold">举一反三自测</h2>
-                {!state?.selfTest ? (
+                {isManualLesson(lesson?.meta) && !state?.selfTest ? (
+                    <p className="text-sm text-stone-500">本题由老师人工编写，没有自测题。</p>
+                ) : !state?.selfTest ? (
                     <button className={ghost} onClick={() => void startSelfTest()}>
                         开始自测
                     </button>
@@ -364,6 +372,7 @@ export function StudentAssignment() {
 function errorText(code: string, fallback: string) {
     const m: Record<string, string> = {
         ASSIGNMENT_CLOSED: "作业已截止",
+        MANUAL_UNVERIFIED: "本题由老师人工编写，没有自测题，作答由老师批改",
         NOT_STARTED: "作业尚未开始",
         HINT_ORDER: "请按顺序获取提示",
         HINT_GATED: "这一层提示需要先作答一次",

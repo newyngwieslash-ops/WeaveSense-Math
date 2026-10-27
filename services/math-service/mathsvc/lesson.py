@@ -122,7 +122,8 @@ def student_projection(lesson, reveal="none"):
     out = {
         "schema_version": SCHEMA, "projection": "student", "reveal": reveal,
         "meta": dict({k: lesson["meta"][k] for k in ("family_id", "title", "language", "style")},
-                     **({"layout": lesson["meta"]["layout"]} if lesson["meta"].get("layout") else {})),
+                     **({"layout": lesson["meta"]["layout"]} if lesson["meta"].get("layout") else {}),
+                     **({"verification": lesson["meta"]["verification"]} if lesson["meta"].get("verification") else {})),
         "problem": lesson["problem"], "figure": lesson["figure"],
         "hints": [{"level": h["level"], "kind": h["kind"], "text": h["text"]} for h in lesson["hints"] if not h.get("gated")],
         "gated_hint_levels": [h["level"] for h in lesson["hints"] if h.get("gated")],
@@ -136,9 +137,9 @@ def student_projection(lesson, reveal="none"):
     if reveal == "none":
         guard(out, answer_markers(lesson))
     else:
-        k = lesson["check_answer_key"]
+        k = lesson.get("check_answer_key") or {}
         pub = public_givens(lesson)
-        guard(out, [m for m in (k["plain"], k["exact"]) if m and not any(m in g for g in pub)])
+        guard(out, [m for m in (k.get("plain", ""), k.get("exact", "")) if m and not any(m in g for g in pub)])
     return out
 
 

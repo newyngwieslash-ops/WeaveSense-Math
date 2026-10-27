@@ -45,7 +45,7 @@ export type EduAttempt = {
 export type StudentLesson = {
     projection: "student";
     reveal: string;
-    meta: { title: string; family_id: string };
+    meta: { title: string; family_id: string; verification?: string };
     problem: { text: string; unit?: string };
     figure?: unknown;
     hints: { level: number; kind: string; text: string }[];

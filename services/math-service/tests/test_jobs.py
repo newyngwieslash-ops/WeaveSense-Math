@@ -305,3 +305,58 @@ class LessonEditJobTests(unittest.TestCase):
         self.assertNotIn("captions", lay["invalidates"])
         with self.assertRaises(MathError):
             edits.impact([])
+
+
+MANUAL = {"title": "数列求和（人工）", "problem_text": "已知数列 a(n) = 2n − 1，求前 10 项和。",
+          "beats": [{"title": "观察", "lines": ["这是首项为 1、公差为 2 的等差数列。"]},
+                    {"title": "求和", "lines": ["用首末项求和公式。", "所以前 10 项和为 100。"], "reveals_answer": True}],
+          "answer": {"plain": "100"}, "hints": ["先判断数列类型。"]}
+
+
+class ManualLessonJobTests(unittest.TestCase):
+    """DEV-039, FR-M05: teacher written lesson outside the implemented families; never presented as verified."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.s = Store(self.dir)
+        self.w = Worker(self.s)
+
+    def run_manual(self, manual, key="m", family="SEQ-SUM-99"):
+        p = {"problem": {"family_id": family, "params": {}, "unit": ""}, "problem_hash": "sha256:x", "manual": manual}
+        j, _ = self.s.start("t1", "manual_lesson", key, p)
+        drain(self.w, j["job_id"])
+        return self.s.get("t1", j["job_id"], internal=True)
+
+    def test_manual_lesson_is_marked_unverified_and_hides_the_answer(self):
+        v = self.run_manual(MANUAL)
+        self.assertEqual(v["status"], "succeeded", v.get("error"))
+        self.assertEqual([s["name"] for s in v["stages"]], ["compose_manual", "project_student", "render_preview", "check_render"])
+        lesson = v["_checkpoint"]["compose_manual"]["lesson"]
+        self.assertEqual(lesson["meta"]["verification"], "manual_unverified")
+        self.assertEqual(lesson["meta"]["generator"], "teacher-manual")
+        self.assertEqual(lesson["quality"]["math"], "manual_unverified")
+        self.assertEqual(lesson["answer"]["exact"], "")
+        self.assertIsNone(lesson["check_question"])
+        student = v["_checkpoint"]["project_student"]["student"]
+        self.assertEqual(student["meta"]["verification"], "manual_unverified")
+        self.assertNotIn("100", _json.dumps(student, ensure_ascii=False))
+        kinds = {r["kind"]: r for r in v["result_refs"]}
+        _, sh = self.s.get_artifact("t1", kinds["preview_html_student"]["artifact_id"])
+        self.assertIn("未经自动数学验证".encode(), sh)
+        self.assertNotIn("所以前 10 项和为 100".encode(), sh)
+        rc = v["_checkpoint"]["check_render"]["render_check"]
+        self.assertEqual(rc["state"], "passed", rc["blocking"])
+        self.assertFalse(rc["math_verification"])
+
+    def test_manual_hint_that_states_the_answer_fails(self):
+        v = self.run_manual(dict(MANUAL, answer={"plain": "一百整"}, hints=["结果是一百整"]), key="leak")
+        self.assertEqual(v["status"], "failed")
+
+    def test_manual_content_is_validated(self):
+        for bad, code in ((dict(MANUAL, beats=[]), "INPUT_AMBIGUOUS"),
+                          (dict(MANUAL, beats=[{"title": "x", "lines": ["y"]}]), "INPUT_AMBIGUOUS"),
+                          (dict(MANUAL, problem_text="<script>x</script>"), "INPUT_AMBIGUOUS"),
+                          (dict(MANUAL, hints=["h"] * 6), "PARAMETER_LIMIT"),
+                          (dict(MANUAL, answer={}), "INPUT_AMBIGUOUS")):
+            v = self.run_manual(bad, key="b%d" % id(bad))
+            self.assertEqual((v["status"], v["error"]["code"]), ("failed", code))

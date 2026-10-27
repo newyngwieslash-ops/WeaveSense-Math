@@ -378,6 +378,11 @@ func (s *Service) Reconcile(ctx context.Context, tx *gorm.DB, job model.EduMathJ
 			return job, err
 		}
 	}
+	if job.Kind == "manual_lesson" {
+		if err := manualPayload(tx, job, payload); err != nil {
+			return job, err
+		}
+	}
 	v, err = s.Client.StartJob(ctx, job.TenantID, job.CreatedBy, job.Kind, "edu:"+job.ID, job.ID, payload)
 	if err != nil {
 		return job, nil
@@ -651,6 +656,8 @@ func (s *Service) materialize(ctx context.Context, tx *gorm.DB, job model.EduMat
 		return s.materializeVariantSet(ctx, tx, job, arts)
 	case "lesson_edit":
 		return s.materializeEdit(ctx, tx, job, arts)
+	case "manual_lesson":
+		return s.materializeManual(ctx, tx, job, arts)
 	case "lesson_build":
 		var n int64
 		tx.Model(&model.EduLessonRevision{}).Where("job_id = ?", job.ID).Count(&n)

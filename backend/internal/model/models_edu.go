@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -903,3 +903,18 @@ type EduFavorite struct {
 }
 
 func (EduFavorite) TableName() string { return "edu_favorites" }
+
+// EduManualInput is the content of a teacher written lesson job (DEV-039, FR-M05), kept so a job
+// whose outcome is proven not executed can be resubmitted with the same input. The lesson built from
+// it is marked manual_unverified: it carries no exact answer, no self-test and no variants.
+type EduManualInput struct {
+	ID          string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID    string    `json:"tenantId" gorm:"size:40;not null;index"`
+	JobID       string    `json:"jobId" gorm:"size:40;not null;uniqueIndex"`
+	Content     string    `json:"-" gorm:"type:text;not null"`
+	ContentHash string    `json:"contentHash" gorm:"size:80;not null"`
+	CreatedBy   string    `json:"createdBy" gorm:"size:40;not null"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+func (EduManualInput) TableName() string { return "edu_manual_inputs" }
