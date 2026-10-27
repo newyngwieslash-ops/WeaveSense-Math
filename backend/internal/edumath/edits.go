@@ -205,6 +205,9 @@ func (s *Service) StartLessonEdit(ctx context.Context, tx *gorm.DB, a Actor, les
 	if err != nil {
 		return model.EduMathJob{}, model.EduLessonEdit{}, err
 	}
+	if sol.MathState == ManualUnverified {
+		return model.EduMathJob{}, model.EduLessonEdit{}, errManual("a wording edit job (write a new manual lesson instead)")
+	}
 	if sol.MathState != "verified" || strings.Contains(l.BlockingErrors, "math_not_verified") {
 		return model.EduMathJob{}, model.EduLessonEdit{}, appErr(409, "VALIDATION_FAILED", "the solution is not verified; editing wording cannot fix it", "teacher_review")
 	}

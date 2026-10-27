@@ -81,6 +81,9 @@ func (s *Service) StartVariantSet(ctx context.Context, tx *gorm.DB, a Actor, les
 	if l.BlockingErrors != "" || l.State == "rejected" || l.State == "withdrawn" {
 		return model.EduMathJob{}, appErr(409, "VALIDATION_FAILED", "lesson revision has blocking errors or was withdrawn; variants are not generated from it", "teacher_fix")
 	}
+	if isManualSolution(tx, l) {
+		return model.EduMathJob{}, errManual("variant generation")
+	}
 	if err := rightsAllow(tx, a.TenantID, l.ProblemRevisionID, "derivative"); err != nil {
 		return model.EduMathJob{}, err
 	}

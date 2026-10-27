@@ -88,6 +88,8 @@ def page(lesson, audience):
     esc = html.escape
     fig = lesson["figure"]
     labels = (lesson["meta"].get("layout") or {}).get("figure_labels", True) is not False
+    if fig.get("kind") == "none":
+        return _page(lesson, audience, ['<p class="locked">本课件没有图形</p>'])
     if fig.get("kind") == "plane2d":
         views = ['<div class="views">', '<input type="radio" name="v" id="v0" checked>', svg2d(fig, labels=labels).replace("<svg ", '<svg class="f0" ', 1), "</div>"]
         return _page(lesson, audience, views)
@@ -115,6 +117,8 @@ def _page(lesson, audience, views):
     if lesson.get("answer"):
         ans = '<p class="answer">答案：%s</p>' % esc(lesson["answer"]["plain"])
     badge = "教师预览（静音）" if audience == "teacher" else "学生视图（静音）"
+    if lesson["meta"].get("verification") == "manual_unverified":
+        badge += " · 教师人工编写，未经自动数学验证"
     lay = lesson["meta"].get("layout") or {}
     css = CSS
     if lay.get("font_scale") == "large":

@@ -25,6 +25,9 @@ var clientKeyRe = regexp.MustCompile(`^[A-Za-z0-9_-]{8,64}$`)
 const maxResponse = 400
 
 type teacherLesson struct {
+	Meta struct {
+		Verification string `json:"verification"`
+	} `json:"meta"`
 	Answer struct {
 		Plain string `json:"plain"`
 		Latex string `json:"latex"`
@@ -109,8 +112,8 @@ func (h *API) lessonFor(c *gin.Context, tx *gorm.DB, tenantID string, pub model.
 	if err != nil {
 		return t, err
 	}
-	if json.Unmarshal(raw, &t) != nil || t.Answer.Exact == "" {
-		return t, ErrContract
+	if json.Unmarshal(raw, &t) != nil || (t.Answer.Exact == "") != (t.Meta.Verification == ManualUnverified) {
+		return t, ErrContract // only a teacher written lesson has no exact answer
 	}
 	return t, nil
 }
@@ -262,6 +265,11 @@ func (h *API) submitAttempt(c *gin.Context) {
 		if tx.Where("tenant_id = ? AND assignment_id = ? AND student_user_id = ? AND item = ? AND valid = ? AND kind = ?", a.TenantID, as.ID, a.UserID, in.Item, true, "answer").
 			Order("created_at desc").First(&last).Error == nil && in.ReviewItemID == "" && normResponse(last.Response) == normResponse(at.Response) {
 			at.Valid, at.InvalidReason, at.Result = false, "duplicate", "invalid"
+			break
+		}
+		if lesson.Meta.Verification == ManualUnverified {
+			// DEV-039: no verified answer to compare with; the teacher judges (never auto graded).
+			at.Valid, at.Result, at.Reason = true, "undetermined", "manual_lesson_teacher_judges"
 			break
 		}
 		exp := map[string]any{"exact": lesson.Answer.Exact, "plain": lesson.Answer.Plain}
@@ -476,6 +484,10 @@ func (h *API) startSelfTest(c *gin.Context) {
 	lesson, err := h.lessonFor(c, tx, a.TenantID, pub)
 	if err != nil {
 		h.fail(c, err)
+		return
+	}
+	if lesson.Meta.Verification == ManualUnverified && as.VariantSetID == "" {
+		h.fail(c, errManual("the self-test"))
 		return
 	}
 	var st model.EduSelfTest

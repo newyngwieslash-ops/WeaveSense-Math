@@ -139,6 +139,8 @@ def _text_figure(lesson, page_html):
     if _html.escape(lesson["problem"]["text"]) not in page_html:
         bad.append("problem_text_altered")
     pts = set(lesson["figure"]["points"])
+    if lesson["figure"].get("kind") == "none":
+        return bad  # no figure to agree with (teacher written lesson)
     for name in set(re.findall(r"(?<![A-Za-z])[A-Z][0-9]?(?![a-z])", lesson["problem"]["text"])):
         if name not in pts:
             bad.append("text_point_missing_in_figure")
