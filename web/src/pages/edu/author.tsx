@@ -9,6 +9,7 @@ import { edu, newClientKey, type EduScope } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { blockingCodeLabel } from "@/components/edu/render-check-logic";
 import { ManualLessonForm } from "@/components/edu/manual-lesson";
+import { ProblemImagePanel } from "@/components/edu/problem-image";
 import { TextIntake } from "@/components/edu/text-intake";
 import { MANUAL_NOTICE_TEACHER, MANUAL_TEMPLATE_FAMILY, MANUAL_UNVERIFIED } from "@/components/edu/manual-lesson-logic";
 import { JOB_STATE_TEXT, jobErrorText, lessonStateLine, STAGE_TEXT, teacherError } from "@/components/edu/teacher-errors";
@@ -262,6 +263,7 @@ export default function TeacherAuthoring() {
                     }}
                     onManual={() => pickFamily(MANUAL_TEMPLATE_FAMILY)}
                 />
+                <ProblemImagePanel scope={scope} problemId={rev?.problemId} />
                 <textarea aria-label="结构化题目输入（JSON）" className="mt-2 w-full rounded-md border p-2 font-mono text-xs" rows={8} value={json} onChange={(e) => setJson(e.target.value)} />
                 <div className="mt-2 flex gap-2">
                     <button className={ghost} onClick={() => void save()}>

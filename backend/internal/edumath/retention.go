@@ -88,7 +88,7 @@ func (s RetentionSummary) total() int {
 }
 
 func (s RetentionSummary) String() string {
-	return fmt.Sprintf("enrollments=%d learning_rows=%d roster_entries=%d artifacts=%d problem_images=%d", s.Enrollments, s.total()-s.RosterEntries-s.Artifacts-s.ProblemImages, s.RosterEntries, s.Artifacts, s.ProblemImages)
+	return fmt.Sprintf("enrollments=%d learning_rows=%d roster_entries=%d problem_images=%d artifacts=%d", s.Enrollments, s.total()-s.RosterEntries-s.Artifacts-s.ProblemImages, s.RosterEntries, s.ProblemImages, s.Artifacts)
 }
 
 // applyRetention computes (dry) or performs the cleanup for one tenant inside tx.
