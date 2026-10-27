@@ -133,6 +133,12 @@ func runAgentMath(t *testing.T, h *harness) {
 	if lv["status"] != "succeeded" || lv["lesson_state"] != "ready_for_review" || strings.Contains(string(raw), "<html") || strings.Contains(string(raw), "<!doctype") {
 		t.Fatalf("lesson view: %s", raw)
 	}
+	// DEV-101: the record says the assistant started this build; the content is still the template's.
+	if c, out, raw, _ := h.call("u_alice", "GET", "/api/edu/lesson-revisions/"+lv["lesson_revision_id"].(string)+"/editable", nil); c != 200 ||
+		data(out)["provenance"].(map[string]any)["initiated_by"] != "agent" || data(out)["provenance"].(map[string]any)["kind"] != "template_only" ||
+		!strings.HasSuffix(data(out)["provenance"].(map[string]any)["label"].(string), "；由智能助手发起生成，内容未由其撰写") {
+		t.Fatalf("agent started lesson provenance: %d %s", c, raw)
+	}
 
 	// FR-P04 on the real service: an exact internal target with a minted,
 	// tenant-bound token; only the read tools listed for the target are approvable

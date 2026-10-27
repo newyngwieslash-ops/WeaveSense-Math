@@ -138,22 +138,39 @@ def visible_text(page_html):
 
 
 PROVENANCE_LABEL = {
-    "deterministic-template": "由程序按题族模板自动生成，未使用生成式人工智能",
-    "teacher-manual": "老师人工编写，未使用生成式人工智能",
+    "deterministic-template": "讲解由程序按题族模板生成，平台未调用生成式人工智能撰写内容",
+    "teacher-manual": "讲解由老师人工编写，平台未调用生成式人工智能撰写内容",
 }
+PROVENANCE_KIND = {"deterministic-template": "template_only", "teacher-manual": "teacher_manual"}
+AI_PART_LABEL = {"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "intake": "题目识别", "figure": "图形"}
 
 
 def provenance(meta):
-    """DEV-101: how the content was produced. It is derived from the lesson's own
-    metadata (never from an edit), so review and teacher edits cannot remove it;
-    every format (student JSON, preview HTML, export) carries the same object."""
-    ai = bool(meta.get("ai_generated"))
+    """DEV-101: how this revision's content was produced, read from what the
+    lesson itself records (generator, ai_generated, ai_parts, edit_log); it is
+    never an editable field, so review and teacher edits cannot remove it.
+
+    The "no generative AI" wording is only used when the lesson explicitly
+    records ai_generated=False for a known generator; a missing flag is
+    reported as unrecorded, and any recorded model part (ai_generated=True or
+    a non-empty ai_parts, e.g. future TTS narration or OCR intake) makes the
+    label say the content contains AI generated parts. The claim is limited to
+    what the platform did: text a teacher typed or pasted is the teacher's."""
     gen = str(meta.get("generator") or "unknown")
+    flag = meta.get("ai_generated")
+    parts = [str(p) for p in (meta.get("ai_parts") or [])]
     edited = bool(meta.get("edit_log"))
-    label = "含人工智能生成内容" if ai else PROVENANCE_LABEL.get(gen, "生成方式未记录")
+    if flag is True or parts:
+        kind = "model_assisted"
+        label = "含人工智能生成内容" + ("（%s）" % "、".join(AI_PART_LABEL.get(p, p) for p in parts) if parts else "")
+    elif flag is False and gen in PROVENANCE_LABEL:
+        kind, label = PROVENANCE_KIND[gen], PROVENANCE_LABEL[gen]
+    else:
+        kind, label = "unknown", "生成方式未记录"
     if edited:
         label += "；含老师修改"
-    return {"ai_generated": ai, "generator": gen, "teacher_edited": edited, "label": label}
+    return {"kind": kind, "ai_generated": True if kind == "model_assisted" else (False if kind != "unknown" else None),
+            "generator": gen, "ai_parts": parts, "teacher_edited": edited, "label": label}
 
 
 def student_projection(lesson, reveal="none"):

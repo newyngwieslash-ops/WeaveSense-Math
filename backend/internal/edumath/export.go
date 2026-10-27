@@ -140,7 +140,7 @@ func (h *API) exportPublication(c *gin.Context) {
 		"problemRevisionId": pr.ID, "problemRevision": pr.Revision, "problemInputHash": pr.InputHash,
 		"solutionRevisionId": sol.ID, "solutionHash": sol.SolutionHash, "mathState": sol.MathState, "evidenceLevels": sol.EvidenceLevels,
 		"verification": verification, "audience": audience, "exportedAt": h.Svc.now().UTC(),
-		"provenance": provenanceOf(teacherRaw),
+		"provenance": h.Svc.lessonProvenance(tx, a.TenantID, l, teacherRaw),
 	}
 	title := p.Title
 	if title == "" {

@@ -506,7 +506,7 @@ func (h *API) studentAssignment(c *gin.Context) {
 	if r := studentRevision(tx, a.TenantID, a.UserID, as.ID); r != nil {
 		asg["revision"] = r
 	}
-	reply(c, 200, gin.H{"assignment": asg, "lesson": proj, "provenance": provenanceOf(teacher), "preview": gin.H{"url": u, "expiresAt": exp}}, "ok")
+	reply(c, 200, gin.H{"assignment": asg, "lesson": proj, "provenance": h.Svc.lessonProvenance(tx, a.TenantID, l, teacher), "preview": gin.H{"url": u, "expiresAt": exp}}, "ok")
 }
 
 // studentRevision is the student side of a revision notice (DEV-126): when the

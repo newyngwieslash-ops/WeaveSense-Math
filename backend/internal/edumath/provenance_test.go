@@ -7,7 +7,7 @@ import (
 	"yingce/backend/internal/model"
 )
 
-const templateLabel = "由程序按题族模板自动生成，未使用生成式人工智能"
+const templateLabel = "讲解由程序按题族模板生成，平台未调用生成式人工智能撰写内容"
 
 // TestContentProvenance covers DEV-101 on the real math service: the student JSON, the student and
 // teacher preview pages, both export files and the teacher editor carry the same provenance,
@@ -34,7 +34,8 @@ func TestContentProvenance(t *testing.T) {
 	}
 	d := data(out)
 	p := d["provenance"].(map[string]any)
-	if p["label"] != templateLabel || p["generator"] != "deterministic-template" || p["ai_generated"] != false || p["teacher_edited"] != false {
+	if p["label"] != templateLabel || p["generator"] != "deterministic-template" || p["ai_generated"] != false || p["teacher_edited"] != false ||
+		p["kind"] != "template_only" || p["initiated_by"] != "teacher" {
 		t.Fatalf("student provenance: %v", p)
 	}
 	if lp, _ := d["lesson"].(map[string]any)["meta"].(map[string]any)["provenance"].(map[string]any); lp == nil || lp["label"] != templateLabel {
@@ -51,7 +52,7 @@ func TestContentProvenance(t *testing.T) {
 		}
 		doc := data(out)["html"].(string)
 		man := data(out)["manifest"].(map[string]any)
-		if !strings.Contains(doc, "data-provenance>"+templateLabel+"<") || !strings.Contains(doc, `<meta name="content-provenance" content="{&#34;ai_generated&#34;:false`) ||
+		if !strings.Contains(doc, "data-provenance>"+templateLabel+"<") || !strings.Contains(doc, `<meta name="content-provenance" content="{&#34;kind&#34;:&#34;template_only&#34;,&#34;ai_generated&#34;:false`) ||
 			man["provenance"].(map[string]any)["label"] != templateLabel {
 			t.Fatalf("%s export provenance: %.400s %v", aud, doc, man["provenance"])
 		}
@@ -78,15 +79,22 @@ func TestContentProvenance(t *testing.T) {
 }
 
 func TestProvenanceOf(t *testing.T) {
-	for _, tc := range []struct{ doc, label string }{
-		{`{"meta":{"ai_generated":false,"generator":"deterministic-template"}}`, templateLabel},
-		{`{"meta":{"generator":"teacher-manual","edit_log":[{"class":"wording"}]}}`, "老师人工编写，未使用生成式人工智能；含老师修改"},
-		{`{"meta":{"ai_generated":true,"generator":"model-x","edit_log":[]}}`, "含人工智能生成内容"},
-		{`{"meta":{}}`, "生成方式未记录"},
-		{`not json`, "生成方式未记录"},
+	for _, tc := range []struct{ doc, kind, label string }{
+		{`{"meta":{"ai_generated":false,"generator":"deterministic-template"}}`, "template_only", templateLabel},
+		{`{"meta":{"ai_generated":false,"generator":"teacher-manual","edit_log":[{"class":"wording"}]}}`, "teacher_manual", "讲解由老师人工编写，平台未调用生成式人工智能撰写内容；含老师修改"},
+		{`{"meta":{"ai_generated":true,"generator":"model-x","edit_log":[]}}`, "model_assisted", "含人工智能生成内容"},
+		{`{"meta":{"ai_generated":false,"generator":"deterministic-template","ai_parts":["narration","audio"]}}`, "model_assisted", "含人工智能生成内容（旁白、配音）"},
+		{`{"meta":{"generator":"deterministic-template"}}`, "unknown", "生成方式未记录"},
+		{`{"meta":{"ai_generated":false,"generator":"other"}}`, "unknown", "生成方式未记录"},
+		{`{"meta":{}}`, "unknown", "生成方式未记录"},
+		{`not json`, "unknown", "生成方式未记录"},
 	} {
-		if got := provenanceOf([]byte(tc.doc)).Label; got != tc.label {
-			t.Errorf("%s: %q, want %q", tc.doc, got, tc.label)
+		p := provenanceOf([]byte(tc.doc))
+		if p.Kind != tc.kind || p.Label != tc.label {
+			t.Errorf("%s: %s %q, want %s %q", tc.doc, p.Kind, p.Label, tc.kind, tc.label)
+		}
+		if (p.Kind == "unknown") != (p.AIGenerated == nil) || p.Kind == "model_assisted" && !*p.AIGenerated {
+			t.Errorf("%s: ai_generated %v for %s", tc.doc, p.AIGenerated, p.Kind)
 		}
 	}
 }

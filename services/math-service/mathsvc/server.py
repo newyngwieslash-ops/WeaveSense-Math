@@ -89,6 +89,9 @@ class App:
             job, _ = self.start_job(tenant, TOOL_KIND[name], {"idempotency_key": key, "payload": payload})
             return job
         if name == "math_media_render_start":
+            # DEV-101 contract: a future TTS or MP4 provider must add its parts
+            # ("narration", "audio") to the lesson's meta.ai_parts, so the
+            # provenance label stops saying the platform used no generative AI.
             raise MathError("PROVIDER_UNAVAILABLE", "no TTS/MP4 provider is configured for this service")
         if name == "math_job_get":
             return self.store.get(tenant, args.get("job_id", ""))
