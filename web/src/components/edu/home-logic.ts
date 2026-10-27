@@ -9,6 +9,7 @@ export type HomeView = {
     urgentHelp: number;
     runningJobs: { id: string; kind: string; status: string; createdAt: string }[];
     openIncidents: number;
+    revisionNotices?: number;
     reviewMode: string;
     sample: { sample: boolean; familyId: string; title: string; note: string };
     firstRun: boolean;
@@ -22,6 +23,7 @@ export const JOB_STATUS_LABEL: Record<string, string> = { queued: "排队中", r
 export function todoLines(v: HomeView): string[] {
     const out: string[] = [];
     if (v.openIncidents > 0) out.push(`${v.openIncidents} 个内容事故未关闭`);
+    if ((v.revisionNotices ?? 0) > 0) out.push(`${v.revisionNotices} 条修订通知未读：任务所用内容已更正，请迁移或确认`);
     if (v.urgentHelp > 0) out.push(`${v.urgentHelp} 条内容报错或无法访问的求助`);
     if (v.pendingReview.length > 0) out.push(`${v.pendingReview.length} 份讲解等待你审核`);
     const normal = v.openHelp - v.urgentHelp;

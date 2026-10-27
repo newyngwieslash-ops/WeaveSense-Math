@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import json as _json
 import os
+import resource
+import signal
 import subprocess
 import sys
 import tempfile
@@ -86,15 +88,30 @@ class JobTests(unittest.TestCase):
         self.assertTrue(out["ok"], out)
 
     def test_stage_cpu_limit_is_timeout_undetermined(self):
+        # The stage must be ended by RLIMIT_CPU, not by the wall clock ceiling. Assert that
+        # mechanism directly: on a loaded CI runner one CPU second can take far longer than
+        # ten wall seconds, so elapsed wall time is not a reliable signal.
+        seen = {}
         with mock.patch.object(jobs, "WALL_FACTOR", 1000):
             real = subprocess.run
 
             def spin(cmd, **kw):
-                return real([sys.executable, "-c", "while True: pass"], **kw)
+                try:
+                    p = real([sys.executable, "-c", "while True: pass"], **kw)
+                except subprocess.TimeoutExpired:
+                    seen["wall_timeout"] = True
+                    raise
+                seen["returncode"] = p.returncode
+                return p
+            before = resource.getrusage(resource.RUSAGE_CHILDREN)
             with mock.patch("subprocess.run", side_effect=spin):
                 out, ms = jobs.isolated_stage("solve", PROB, {}, 1)
+            after = resource.getrusage(resource.RUSAGE_CHILDREN)
         self.assertEqual(out["error"]["code"], "TIMEOUT_UNDETERMINED")
-        self.assertLess(ms, 10000)
+        self.assertNotIn("wall_timeout", seen)
+        self.assertIn(seen.get("returncode"), (-signal.SIGXCPU, -signal.SIGKILL))
+        child_cpu = (after.ru_utime + after.ru_stime) - (before.ru_utime + before.ru_stime)
+        self.assertLess(child_cpu, 5.0)
 
     def test_stage_subprocess_gets_no_platform_secrets(self):
         seen = {}

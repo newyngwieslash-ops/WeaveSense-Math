@@ -96,19 +96,22 @@ func (h *API) home(c *gin.Context) {
 	for _, j := range jobs {
 		runJobs = append(runJobs, gin.H{"id": j.ID, "kind": j.Kind, "status": j.Status, "createdAt": j.CreatedAt})
 	}
+	var notices int64
+	tx.Model(&model.EduRevisionNotice{}).Where("tenant_id = ? AND teacher_user_id = ? AND state = 'unread'", a.TenantID, a.UserID).Count(&notices)
 	var incidents int64
 	tx.Model(&model.EduContentIncident{}).Where("tenant_id = ? AND workspace_id = ? AND state = ?", a.TenantID, a.WorkspaceID, "open").Count(&incidents)
 	reply(c, 200, gin.H{
-		"myLessons":     mine,
-		"pendingReview": pending,
-		"classes":       classes,
-		"openHelp":      openHelp,
-		"urgentHelp":    urgent,
-		"runningJobs":   runJobs,
-		"openIncidents": incidents,
-		"reviewMode":    h.Svc.policy(tx, a.TenantID),
-		"sample":        gin.H{"sample": true, "familyId": "SOLID-ANGLE-02", "title": "示例：正四棱锥侧棱与底面所成角", "note": "原创示例题，仅用于熟悉流程，不计入使用与经营指标"},
-		"firstRun":      len(rows) == 0 && len(ks) == 0,
-		"demoClass":     demoSummary(tx, a), // separate from classes; never counted above
+		"myLessons":       mine,
+		"pendingReview":   pending,
+		"classes":         classes,
+		"openHelp":        openHelp,
+		"urgentHelp":      urgent,
+		"runningJobs":     runJobs,
+		"openIncidents":   incidents,
+		"revisionNotices": notices,
+		"reviewMode":      h.Svc.policy(tx, a.TenantID),
+		"sample":          gin.H{"sample": true, "familyId": "SOLID-ANGLE-02", "title": "示例：正四棱锥侧棱与底面所成角", "note": "原创示例题，仅用于熟悉流程，不计入使用与经营指标"},
+		"firstRun":        len(rows) == 0 && len(ks) == 0,
+		"demoClass":       demoSummary(tx, a), // separate from classes; never counted above
 	}, "ok")
 }

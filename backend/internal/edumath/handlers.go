@@ -77,6 +77,7 @@ func (h *API) Register(api *gin.RouterGroup) {
 	h.registerObservability(g)
 	h.registerRestore(g)
 	h.registerPauses(g)
+	h.registerIncidentSOP(g)
 }
 
 func (h *API) fail(c *gin.Context, err error) {
