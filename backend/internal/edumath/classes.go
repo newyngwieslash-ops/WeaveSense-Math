@@ -334,6 +334,9 @@ func (h *API) roster(c *gin.Context) {
 		return
 	}
 	k, err := classForStaff(tx, a, c.Param("id"))
+	if err == nil {
+		err = h.individualAccess(c, tx, a, k.ID)
+	}
 	if err != nil {
 		h.fail(c, err)
 		return

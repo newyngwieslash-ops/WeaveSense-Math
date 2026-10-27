@@ -20,9 +20,10 @@ import { edu } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { apiClient } from "@/services/api/request";
 import { teacherError } from "@/components/edu/teacher-errors";
+import { OrgAdminPanel } from "@/components/edu/org-admin";
 
 /**
- * 机构管理后台：账本对账与审计导出、对账发现的负责人与处理状态、机构预算与公平限流、
+ * 机构管理后台：机构概览、人员与角色、审核与同意策略、个体记录访问与访问记录（DEV-102），账本对账与审计导出、对账发现的负责人与处理状态、机构预算与公平限流、
  * 周期交付成本。只有租户所有者、管理员或 org_admin 能打开；非管理员由服务端返回 403。
  */
 const box = "rounded-lg border border-stone-200 p-4 dark:border-stone-700";
@@ -139,7 +140,7 @@ export default function EduAdmin() {
     return (
         <div className="mx-auto flex max-w-5xl flex-col gap-4 p-6">
             <div className="flex items-center gap-3">
-                <h1 className="text-lg font-semibold">机构管理：账本、预算与成本</h1>
+                <h1 className="text-lg font-semibold">机构管理</h1>
                 <select className={input} value={ws} onChange={(e) => setWs(e.target.value)} aria-label="工作区">
                     {workspaces.map((w) => (
                         <option key={w.id} value={w.id}>
@@ -157,6 +158,7 @@ export default function EduAdmin() {
                 <p className={box}>只有机构所有者、管理员或教育管理员可以查看账本与成本。</p>
             ) : (
                 <>
+                    <OrgAdminPanel scope={scope} onMsg={setMsg} />
                     <section className={box} aria-label="账本对账">
                         <div className="mb-3 flex items-center gap-2">
                             <h2 className="font-medium">账本对账</h2>

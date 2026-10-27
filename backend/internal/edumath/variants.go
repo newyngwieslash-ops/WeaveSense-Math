@@ -404,6 +404,10 @@ func (h *API) staffAssignmentByID(c *gin.Context, tx *gorm.DB, a Actor) (model.E
 		h.fail(c, err)
 		return as, false
 	}
+	if err := h.individualAccess(c, tx, a, as.ClassID); err != nil {
+		h.fail(c, err)
+		return as, false
+	}
 	return as, true
 }
 

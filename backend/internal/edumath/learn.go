@@ -717,6 +717,10 @@ func (h *API) staffAssignment(c *gin.Context) (Actor, *gorm.DB, model.EduAssignm
 		h.fail(c, err)
 		return a, tx, as, false
 	}
+	if err := h.individualAccess(c, tx, a, as.ClassID); err != nil {
+		h.fail(c, err)
+		return a, tx, as, false
+	}
 	return a, tx, as, true
 }
 
@@ -755,6 +759,10 @@ func (h *API) teacherJudge(c *gin.Context) {
 		return
 	}
 	if _, err := classForStaff(tx, a, as.ClassID); err != nil {
+		h.fail(c, err)
+		return
+	}
+	if err := h.individualAccess(c, tx, a, as.ClassID); err != nil {
 		h.fail(c, err)
 		return
 	}
