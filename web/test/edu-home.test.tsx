@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { authorLink, catalogQuery, catalogStateLabel, demoSummaryLines, isLabeledDemo, todoLines, type HomeView } from "../src/components/edu/home-logic";
+import { authorLink, catalogQuery, catalogStateLabel, favoriteRequest, demoSummaryLines, isLabeledDemo, todoLines, type HomeView } from "../src/components/edu/home-logic";
 
 const base: HomeView = {
     myLessons: [],
@@ -32,6 +32,9 @@ describe("catalog search (DEV-081)", () => {
         expect(catalogQuery("  ", "", "")).toBe("/catalog");
         expect(catalogQuery("四棱锥", "SOLID-ANGLE-02", "published")).toBe("/catalog?q=%E5%9B%9B%E6%A3%B1%E9%94%A5&family=SOLID-ANGLE-02&state=published");
         expect(new URLSearchParams(catalogQuery("x".repeat(80), "", "").split("?")[1]).get("q")).toHaveLength(60);
+        expect(catalogQuery("", "", "", true)).toBe("/catalog?favorites=1");
+        expect(favoriteRequest({ lessonRevisionId: "elr_1", favorite: false })).toEqual({ method: "put", path: "/lesson-revisions/elr_1/favorite" });
+        expect(favoriteRequest({ lessonRevisionId: "a/b", favorite: true })).toEqual({ method: "delete", path: "/lesson-revisions/a%2Fb/favorite" });
     });
     test("publication state wins over the lesson state", () => {
         const it = { lessonRevisionId: "l", problemId: "p", title: "t", familyId: "f", state: "approved", mine: true, createdAt: "" };

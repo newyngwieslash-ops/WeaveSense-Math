@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 86
+const CurrentSchemaVersion int64 = 87
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -397,6 +397,13 @@ var schemaMigrations = []migration{
 	{version: 86, name: "edu_lesson_render_check_v86", checksum: "sha256:edu-lesson-render-check-v86-20261027", apply: func(tx *gorm.DB) error {
 		// docs/math-workbench: presentation check columns on lesson revisions (DEV-082); existing rows stay empty (not run).
 		return tx.AutoMigrate(&model.EduLessonRevision{})
+	}},
+	{version: 87, name: "edu_favorites_v87", checksum: "sha256:edu-favorites-v87-20261027", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: teacher favorites for catalog reuse (DEV-081), new table under FORCE RLS.
+		if err := tx.AutoMigrate(&model.EduFavorite{}); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
 	}},
 }
 

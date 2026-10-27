@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -889,3 +889,17 @@ type EduDemoRecord struct {
 }
 
 func (EduDemoRecord) TableName() string { return "edu_demo_records" }
+
+// EduFavorite is a teacher's private bookmark on a lesson revision of the current workspace (DEV-081,
+// AC-33). It holds only ids; favoriting never copies content, and the lesson is still read through the
+// staff checks of the workspace, so a favorite cannot reach a lesson the teacher can no longer see.
+type EduFavorite struct {
+	ID               string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID         string    `json:"tenantId" gorm:"size:40;not null;index;uniqueIndex:ux_edu_fav,priority:1"`
+	WorkspaceID      string    `json:"workspaceId" gorm:"size:40;not null"`
+	UserID           string    `json:"userId" gorm:"size:40;not null;uniqueIndex:ux_edu_fav,priority:2"`
+	LessonRevisionID string    `json:"lessonRevisionId" gorm:"size:40;not null;uniqueIndex:ux_edu_fav,priority:3"`
+	CreatedAt        time.Time `json:"createdAt"`
+}
+
+func (EduFavorite) TableName() string { return "edu_favorites" }

@@ -36,15 +36,16 @@ export function authorLink(ws: string, opts: { lesson?: string; sample?: string 
     return `/edu/author?${q.toString()}`;
 }
 
-export type CatalogItem = { lessonRevisionId: string; problemId: string; title: string; familyId: string; state: string; publicationId?: string; publicationState?: string; mine: boolean; createdAt: string };
+export type CatalogItem = { lessonRevisionId: string; problemId: string; title: string; familyId: string; state: string; publicationId?: string; publicationState?: string; mine: boolean; favorite?: boolean; createdAt: string };
 
-/** 检索参数（DEV-081）：空值不发送，检索词至多 60 字。 */
-export function catalogQuery(q: string, family: string, state: string): string {
+/** 检索参数（DEV-081）：空值不发送，检索词至多 60 字；只看收藏时带 favorites=1。 */
+export function catalogQuery(q: string, family: string, state: string, favorites = false): string {
     const p = new URLSearchParams();
     const t = q.trim().slice(0, 60);
     if (t) p.set("q", t);
     if (family) p.set("family", family);
     if (state) p.set("state", state);
+    if (favorites) p.set("favorites", "1");
     const s = p.toString();
     return s ? `/catalog?${s}` : "/catalog";
 }
@@ -75,4 +76,9 @@ export function demoSummaryLines(v: DemoView): string[] {
     const d = v.dashboard;
     if (!v.class || !d) return [];
     return [`${d.students} 名虚构学生，${d.attempted} 人已作答，${d.correct} 人正确`, `${d.hintUsers} 人用过提示`, `${d.openHelp} 条虚构提问待回复`];
+}
+
+/** 收藏只属于本人；切换收藏用同一路径，收藏为 PUT，取消为 DELETE。 */
+export function favoriteRequest(it: Pick<CatalogItem, "lessonRevisionId" | "favorite">): { method: "put" | "delete"; path: string } {
+    return { method: it.favorite ? "delete" : "put", path: `/lesson-revisions/${encodeURIComponent(it.lessonRevisionId)}/favorite` };
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { DemoClassPanel } from "@/components/edu/demo-class";
-import { authorLink, catalogQuery, catalogStateLabel, JOB_STATUS_LABEL, LESSON_STATE_LABEL, todoLines, type CatalogItem, type HomeView } from "@/components/edu/home-logic";
+import { authorLink, catalogQuery, catalogStateLabel, favoriteRequest, JOB_STATUS_LABEL, LESSON_STATE_LABEL, todoLines, type CatalogItem, type HomeView } from "@/components/edu/home-logic";
 import { edu } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { teacherError } from "@/components/edu/teacher-errors";
@@ -22,9 +22,16 @@ export default function EduTeacherHome() {
     const [msg, setMsg] = useState("");
     const [q, setQ] = useState("");
     const [cstate, setCstate] = useState("");
+    const [favOnly, setFavOnly] = useState(false);
     const [items, setItems] = useState<CatalogItem[] | null>(null);
+    const toggleFavorite = async (it: CatalogItem) => {
+        const req = favoriteRequest(it);
+        const r = await edu(req.method, req.path, scope);
+        if (!r.ok) return setMsg(teacherError(r));
+        setItems((xs) => (xs || []).map((x) => (x.lessonRevisionId === it.lessonRevisionId ? { ...x, favorite: !it.favorite } : x)).filter((x) => !favOnly || x.favorite));
+    };
     const search = () =>
-        void edu<{ items: CatalogItem[] }>("get", catalogQuery(q, "", cstate), scope).then((r) => {
+        void edu<{ items: CatalogItem[] }>("get", catalogQuery(q, "", cstate, favOnly), scope).then((r) => {
             if (!r.ok) return setMsg(teacherError(r));
             setItems(r.data.items);
         });
@@ -170,6 +177,10 @@ export default function EduTeacherHome() {
                                 <option value="review">待审核</option>
                                 <option value="rejected">已退回</option>
                             </select>
+                            <label className="flex items-center gap-1 text-sm">
+                                <input type="checkbox" checked={favOnly} onChange={(e) => setFavOnly(e.target.checked)} />
+                                只看我的收藏
+                            </label>
                             <button type="button" className={btn} onClick={search}>
                                 检索
                             </button>
@@ -185,12 +196,17 @@ export default function EduTeacherHome() {
                                             <span className="text-stone-500">
                                                 {it.familyId} {catalogStateLabel(it)}
                                                 {it.mine ? "（我的）" : ""}
-                                            </span>
+                                            </span>{" "}
+                                            <button type="button" className="text-xs underline" aria-pressed={!!it.favorite} onClick={() => void toggleFavorite(it)}>
+                                                {it.favorite ? "取消收藏" : "收藏"}
+                                            </button>
                                         </li>
                                     ))}
                                 </ul>
                             ) : (
-                                <p className="mt-2 text-sm text-stone-500">没有匹配的讲解。</p>
+                                <p role="status" className="mt-2 text-sm text-stone-500">
+                                    {favOnly ? "还没有收藏的讲解。下一步：在检索结果中点“收藏”" : "没有匹配的讲解。下一步：换个检索词或状态"}
+                                </p>
                             )
                         ) : null}
                     </section>

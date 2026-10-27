@@ -8,7 +8,7 @@ import { apiClient } from "./request";
 export type EduScope = { tenant?: string; workspace?: string };
 export type EduResult<T> = { ok: true; status: number; data: T } | { ok: false; status: number; code: string; message: string; offline?: boolean; detail?: unknown };
 
-export async function edu<T>(method: "get" | "post" | "put", path: string, scope: EduScope, body?: unknown): Promise<EduResult<T>> {
+export async function edu<T>(method: "get" | "post" | "put" | "delete", path: string, scope: EduScope, body?: unknown): Promise<EduResult<T>> {
     const headers: Record<string, string> = {};
     if (scope.tenant) headers["X-Edu-Tenant"] = scope.tenant;
     if (scope.workspace) headers["X-Workspace-Id"] = scope.workspace;
