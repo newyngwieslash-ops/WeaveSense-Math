@@ -98,12 +98,28 @@ jobs:
         run: |
           python3 ../.github/scripts/test_check_dependency_tests.py
           python3 ../.github/scripts/check-dependency-tests.py "$RUNNER_TEMP/go-tests.jsonl"
+      # DEV-126 升级准入：求解/验证器、渲染模板、模型与智能体、课程规则、价格与成本、权限相关路径
+      # 有变更时，对应的依赖套件必须在本次运行中真实执行并通过；无法确定变更集时要求全部套件。
+      - name: Education upgrade admission
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 ../.github/scripts/test_edu_upgrade_admission.py
+          if [ -n "$BASE_SHA" ] && git fetch -q --depth=1 origin "$BASE_SHA" && git diff --name-only "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed.txt"; then
+            echo "changed paths: $(wc -l < "$RUNNER_TEMP/changed.txt")"
+          else
+            echo ALL > "$RUNNER_TEMP/changed.txt"
+          fi
+          python3 ../.github/scripts/edu-upgrade-admission.py "$RUNNER_TEMP/go-tests.jsonl" "$RUNNER_TEMP/changed.txt" "$RUNNER_TEMP/edu-upgrade-admission.json"
       - name: Upload Go test timings
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: go-test-timings
-          path: ${{ runner.temp }}/go-tests.jsonl
+          path: |
+            ${{ runner.temp }}/go-tests.jsonl
+            ${{ runner.temp }}/edu-upgrade-admission.json
           if-no-files-found: ignore
 
   math-service:

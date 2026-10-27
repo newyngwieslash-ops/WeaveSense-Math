@@ -7,6 +7,7 @@ import { edu } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { teacherError } from "@/components/edu/teacher-errors";
 import { TeacherTimePanel } from "@/components/edu/teacher-time";
+import { RevisionNoticePanel } from "@/components/edu/incident-sop";
 
 /**
  * 教师首页（DEV-067）：我的讲解、待我审核、我的班级、学生问题、运行中的任务与内容事故。
@@ -101,6 +102,7 @@ export default function EduTeacherHome() {
                         ) : (
                             <p className="text-sm text-stone-500">没有待办。</p>
                         )}
+                        {(view.revisionNotices ?? 0) > 0 && <RevisionNoticePanel scope={scope} />}
                     </section>
                     <section className={box}>
                         <h2 className="mb-2 font-semibold">待我审核（{view.reviewMode === "second_reviewer" ? "须他人审核" : "可自审"}）</h2>

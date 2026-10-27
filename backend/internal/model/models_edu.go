@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}, &EduPause{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}, &EduPause{}, &EduIncidentReview{}, &EduRevisionNotice{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -1078,3 +1078,39 @@ type EduPause struct {
 }
 
 func (EduPause) TableName() string { return "edu_pauses" }
+
+// EduIncidentReview is the post-incident review of a resolved content incident
+// (DEV-126): root cause, how it was detected, what was corrected and what
+// follows. One per incident; it is written once and not edited.
+type EduIncidentReview struct {
+	ID                string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID          string    `json:"tenantId" gorm:"size:40;not null;index"`
+	IncidentID        string    `json:"incidentId" gorm:"size:40;not null;uniqueIndex"`
+	RootCause         string    `json:"rootCause" gorm:"size:800;not null"`
+	Detection         string    `json:"detection" gorm:"size:400;not null"`
+	CorrectiveActions string    `json:"correctiveActions" gorm:"size:800;not null"`
+	FollowUps         string    `json:"followUps" gorm:"size:800"`
+	CreatedBy         string    `json:"createdBy" gorm:"size:40;not null"`
+	CreatedAt         time.Time `json:"createdAt"`
+}
+
+func (EduIncidentReview) TableName() string { return "edu_incident_reviews" }
+
+// EduRevisionNotice tells one teacher of a class that a task of that class uses
+// content an incident has fixed (DEV-126). State: unread, acknowledged, or
+// migrated once the task moved to another publication.
+type EduRevisionNotice struct {
+	ID                string     `json:"id" gorm:"primaryKey;size:40"`
+	TenantID          string     `json:"tenantId" gorm:"size:40;not null;index"`
+	IncidentID        string     `json:"incidentId" gorm:"size:40;not null;uniqueIndex:ux_edu_rev_notice,priority:1"`
+	AssignmentID      string     `json:"assignmentId" gorm:"size:40;not null;uniqueIndex:ux_edu_rev_notice,priority:2;index"`
+	TeacherUserID     string     `json:"teacherUserId" gorm:"size:40;not null;uniqueIndex:ux_edu_rev_notice,priority:3;index"`
+	ClassID           string     `json:"classId" gorm:"size:40;not null"`
+	FromPublicationID string     `json:"fromPublicationId" gorm:"size:40;not null"`
+	FixPublicationID  string     `json:"fixPublicationId" gorm:"size:40;not null"`
+	State             string     `json:"state" gorm:"size:16;not null;index"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	ClosedAt          *time.Time `json:"closedAt,omitempty"`
+}
+
+func (EduRevisionNotice) TableName() string { return "edu_revision_notices" }

@@ -16,8 +16,8 @@ describe("DEV-125 pauses", () => {
         expect(pauseInputError("publication", "", "错误内容需要暂停")).toBe("请填写暂停对象");
         expect(pauseInputError("generation", "", "错误内容需要暂停")).toBe("");
         expect(pauseInputError("family", "a b", "错误内容需要暂停")).toContain("字符");
-        expect(pauseInputError("renderer", "manim@0.18", "短")).toContain("原因");
-        expect(pauseInputError("renderer", "manim@0.18", "渲染错位需要暂停")).toBe("");
+        expect(pauseInputError("renderer", "preview-svg/1.1.0", "短")).toContain("原因");
+        expect(pauseInputError("renderer", "preview-svg/1.1.0", "渲染错位需要暂停")).toBe("");
     });
     test("impact says what is blocked and what is kept", () => {
         const t = impactText({ assignments: 2, publications: 1, students: 30, openJobs: 1 });

@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 94
+const CurrentSchemaVersion int64 = 95
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -450,6 +450,13 @@ var schemaMigrations = []migration{
 	{version: 94, name: "edu_pauses_v94", checksum: "sha256:edu-pauses-v94-20261027", apply: func(tx *gorm.DB) error {
 		// docs/math-workbench: reversible pauses by generation, family, publication or renderer (DEV-125), new table under FORCE RLS.
 		if err := tx.AutoMigrate(&model.EduPause{}); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 95, name: "edu_incident_reviews_v95", checksum: "sha256:edu-incident-reviews-v95-20261028", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: post-incident reviews and teacher revision notices (DEV-126), new tables under FORCE RLS.
+		if err := tx.AutoMigrate(&model.EduIncidentReview{}, &model.EduRevisionNotice{}); err != nil {
 			return err
 		}
 		return applyFlowRLS(tx)

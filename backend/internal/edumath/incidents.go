@@ -235,6 +235,10 @@ func (s *Service) ResolveIncident(tx *gorm.DB, a Actor, id, fixPubID, note strin
 		return inc, appErr(409, "REVISION_CONFLICT", "incident already resolved", "reload")
 	}
 	s.audit(tx, a, "incident.resolve", inc.ID, inc.FixPublicationID)
+	// DEV-126: tell every current teacher of a class still using the incident version.
+	if _, err := s.createRevisionNotices(tx, inc); err != nil {
+		return inc, err
+	}
 	return inc, nil
 }
 
@@ -311,6 +315,9 @@ func (s *Service) MigrateAssignment(tx *gorm.DB, a Actor, assignmentID, toPubID,
 		return nil, errors.New("assignment changed during migration")
 	}
 	s.audit(tx, a, "assignment.migrate", old.ID, nu.ID+" pub="+pub.ID)
+	if err := closeRevisionNotices(tx, a.TenantID, old.ID, s.now()); err != nil {
+		return nil, err
+	}
 	preview["confirmed"], preview["toAssignmentId"], preview["migrationId"] = true, nu.ID, m.ID
 	return preview, nil
 }
@@ -377,6 +384,10 @@ func (h *API) listIncidents(c *gin.Context) {
 	if p := c.Query("publicationId"); p != "" {
 		q = q.Where("publication_id = ?", p)
 	}
+	// DEV-126: resolved blocking incidents still waiting for their review.
+	if c.Query("reviewPending") == "1" {
+		q = q.Where("state = 'resolved' AND severity = 'blocking' AND NOT EXISTS (SELECT 1 FROM edu_incident_reviews r WHERE r.incident_id = edu_content_incidents.id AND r.tenant_id = edu_content_incidents.tenant_id)")
+	}
 	var out []model.EduContentIncident
 	q.Order("created_at desc").Limit(200).Find(&out)
 	reply(c, 200, out, "ok")
@@ -392,7 +403,9 @@ func (h *API) getIncident(c *gin.Context) {
 		h.fail(c, ErrNotFound)
 		return
 	}
-	reply(c, 200, incidentOut(inc), "ok")
+	out := incidentOut(inc)
+	out["sop"] = incidentSOPView(tx, inc)
+	reply(c, 200, out, "ok")
 }
 
 func (h *API) resolveIncident(c *gin.Context) {
@@ -413,7 +426,9 @@ func (h *API) resolveIncident(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
-	reply(c, 200, incidentOut(inc), "ok")
+	out := incidentOut(inc)
+	out["sop"] = incidentSOPView(tx, inc)
+	reply(c, 200, out, "ok")
 }
 
 func (h *API) migrateAssignment(c *gin.Context) {
