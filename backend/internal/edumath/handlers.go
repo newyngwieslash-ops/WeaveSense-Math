@@ -69,6 +69,7 @@ func (h *API) Register(api *gin.RouterGroup) {
 	h.registerAdminLists(g)
 	h.registerOrg(g)
 	h.registerExport(g)
+	h.registerRetention(g)
 }
 
 func (h *API) fail(c *gin.Context, err error) {
