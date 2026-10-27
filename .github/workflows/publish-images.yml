@@ -63,22 +63,22 @@ jobs:
       matrix:
         include:
           # Web 的构建阶段固定 BUILDPLATFORM，静态文件只编译一次。
-          - image: open-ai-canvas-web
+          - image: weavesense-math-web
             dockerfile: Dockerfile
             arch: multi
             platforms: linux/amd64,linux/arm64
             runner: ubuntu-24.04
-          - image: open-ai-canvas-backend
+          - image: weavesense-math-backend
             dockerfile: backend/Dockerfile
             arch: amd64
             platforms: linux/amd64
             runner: ubuntu-24.04
-          - image: open-ai-canvas-backend
+          - image: weavesense-math-backend
             dockerfile: backend/Dockerfile
             arch: arm64
             platforms: linux/arm64
             runner: ubuntu-24.04-arm
-          - image: open-ai-canvas-yingce-agent
+          - image: weavesense-math-yingce-agent
             dockerfile: yingce-agent/Dockerfile
             arch: multi
             platforms: linux/amd64,linux/arm64
@@ -146,7 +146,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [open-ai-canvas-web, open-ai-canvas-backend, open-ai-canvas-yingce-agent]
+        image: [weavesense-math-web, weavesense-math-backend, weavesense-math-yingce-agent]
     # 不同提交可并行编译，但同一镜像的可变标签更新必须串行。
     concurrency:
       group: image-tags-${{ matrix.image }}-${{ github.ref }}
@@ -170,7 +170,7 @@ jobs:
           IMAGE: ghcr.io/${{ needs.prepare.outputs.owner }}/${{ matrix.image }}
           VERSION_TAG: ${{ needs.prepare.outputs.image_tag }}
           DIGEST_DIR: ${{ runner.temp }}/digests
-          EXPECTED_DIGESTS: ${{ matrix.image == 'open-ai-canvas-backend' && '2' || '1' }}
+          EXPECTED_DIGESTS: ${{ matrix.image == 'weavesense-math-backend' && '2' || '1' }}
         run: bash .github/scripts/promote-image.sh
 
   release:
