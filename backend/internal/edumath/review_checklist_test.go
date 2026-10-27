@@ -24,13 +24,18 @@ func runReviewChecklist(t *testing.T, h *harness) {
 	revID := h.confirmedRevision("2", "1")
 	_, out, _, _ := h.call("u_alice", "POST", "/api/edu/problem-revisions/"+revID+"/analyze", map[string]any{"idempotencyKey": "rc-a"})
 	job := h.waitJob("u_alice", data(out)["id"].(string))
+	if job["status"] != "succeeded" {
+		b, _ := json.Marshal(job)
+		t.Fatalf("analyze did not succeed: %s", b)
+	}
 	lesson := func(key string) model.EduLessonRevision {
 		_, out, _, _ := h.call("u_alice", "POST", "/api/edu/solution-revisions/"+job["solutionRevisionId"].(string)+"/lesson", map[string]any{"idempotencyKey": key})
 		lj := h.waitJob("u_alice", data(out)["id"].(string))
 		var l model.EduLessonRevision
 		h.db.First(&l, "id = ?", lj["lessonRevisionId"])
 		if l.State != "ready_for_review" {
-			t.Fatalf("lesson %s state %s", l.ID, l.State)
+			b, _ := json.Marshal(lj)
+			t.Fatalf("lesson %s state %s: %s", l.ID, l.State, b)
 		}
 		return l
 	}

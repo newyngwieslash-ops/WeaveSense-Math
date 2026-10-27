@@ -6,15 +6,19 @@
 * every stage result is checkpointed; after a restart a running job resumes at
   the first stage without a checkpoint (no recomputation of finished stages);
 * cancel is cooperative between stages; partial artifacts stay listed;
-* each stage runs in a fresh subprocess with CPU/memory limits, an empty
-  environment (no platform secrets) and a wall-clock timeout. A timeout is
-  reported as TIMEOUT_UNDETERMINED, never as "no solution".
+* each stage runs in a fresh subprocess with memory limits and an empty
+  environment (no platform secrets). The stage budget is CPU time (RLIMIT_CPU),
+  so a busy host does not turn a cheap stage into a timeout; a wall-clock
+  ceiling of WALL_FACTOR times the budget still ends a stage that blocks.
+  Either limit is reported as TIMEOUT_UNDETERMINED, never as "no solution".
 """
 
 import hashlib
 import json
+import math
 import os
 import resource
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -210,26 +214,43 @@ class Store:
         return {"artifact_id": aid, "kind": r[1], "audience": r[2], "media_type": r[3], "sha256": r[4], "size": r[5], "job_id": r[7]}, data
 
 
-def _limits():
-    mem = catalog.LIMITS["worker_memory_mb"] * 1024 * 1024
-    resource.setrlimit(resource.RLIMIT_AS, (mem, mem))
-    resource.setrlimit(resource.RLIMIT_CPU, (60, 60))
-    resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
-    os.setsid()
+# Wall-clock ceiling relative to the CPU budget: only a stage that blocks or is
+# starved for a long time reaches it; computation is bounded by RLIMIT_CPU.
+WALL_FACTOR = 6
+
+
+def _limits(cpu_s):
+    def apply():
+        mem = catalog.LIMITS["worker_memory_mb"] * 1024 * 1024
+        resource.setrlimit(resource.RLIMIT_AS, (mem, mem))
+        # SIGXCPU at the soft limit, SIGKILL one second later.
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 1))
+        resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+        os.setsid()
+    return apply
+
+
+def _timeout(stage, timeout, ms):
+    return {"ok": False, "error": MathError("TIMEOUT_UNDETERMINED", "stage %s exceeded %ss; result undetermined (not 'no solution')" % (stage, timeout)).to_dict()}, ms
 
 
 def isolated_stage(stage, payload, prior, timeout):
-    """Run one stage in a fresh subprocess with an empty environment."""
+    """Run one stage in a fresh subprocess with an empty environment.
+
+    timeout is the stage's CPU budget in seconds."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = {"PATH": "/usr/bin:/bin", "PYTHONHASHSEED": "0", "LANG": "C.UTF-8"}
     req = json.dumps({"payload": payload, "prior": prior}, ensure_ascii=False).encode("utf-8")
+    cpu_s = max(1, int(math.ceil(timeout)))
     t0 = time.monotonic()
     try:
         p = subprocess.run([sys.executable, "-E", "-s", "-m", "mathsvc.runner", stage], input=req, capture_output=True,
-                           timeout=timeout, env=env, preexec_fn=_limits, cwd=root)
+                           timeout=timeout * WALL_FACTOR, env=env, preexec_fn=_limits(cpu_s), cwd=root)
     except subprocess.TimeoutExpired:
-        return {"ok": False, "error": MathError("TIMEOUT_UNDETERMINED", "stage %s exceeded %ss; result undetermined (not 'no solution')" % (stage, timeout)).to_dict()}, int((time.monotonic() - t0) * 1000)
+        return _timeout(stage, timeout, int((time.monotonic() - t0) * 1000))
     ms = int((time.monotonic() - t0) * 1000)
+    if p.returncode in (-signal.SIGXCPU, -signal.SIGKILL):
+        return _timeout(stage, timeout, ms)
     try:
         return json.loads(p.stdout.decode("utf-8")), ms
     except ValueError:
