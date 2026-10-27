@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +16,67 @@ import (
 	"yingce/backend/internal/model"
 )
 
-// pgTestDB: fresh database as the NON-superuser role from FLOW_TEST_PG_RLS_DSN.
+// pgTemplate is migrated once per test binary; every PG test clones it with
+// CREATE DATABASE ... TEMPLATE instead of running the full migration again.
+// Migrating took most of each PG test's time and pushed the package past the
+// 20 minute go test timeout on CI runners.
+var pgTemplate struct {
+	once sync.Once
+	name string
+	dsn  string
+	err  error
+}
+
+func preparePGTemplate(base *gorm.DB, dsn string) (string, error) {
+	pgTemplate.once.Do(func() {
+		name := fmt.Sprintf("edu_rt_tpl_%d", time.Now().UnixNano())
+		if err := base.Exec("CREATE DATABASE " + name).Error; err != nil {
+			pgTemplate.err = err
+			return
+		}
+		pgTemplate.name, pgTemplate.dsn = name, dsn
+		u, _ := url.Parse(dsn)
+		u.Path = "/" + name
+		db, err := database.Open(database.Config{Driver: "postgres", DSN: u.String()})
+		if err != nil {
+			pgTemplate.err = err
+			return
+		}
+		// The template must have no open connections when it is cloned.
+		defer func() {
+			if s, e := db.DB(); e == nil {
+				s.Close()
+			}
+		}()
+		if err := database.MigrateSchema(db); err != nil {
+			pgTemplate.err = err
+			return
+		}
+		for _, id := range []string{"u_alice", "u_bob", "u_carol"} {
+			if err := db.Create(&model.User{ID: id, Username: id}).Error; err != nil {
+				pgTemplate.err = err
+				return
+			}
+		}
+	})
+	return pgTemplate.name, pgTemplate.err
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if pgTemplate.name != "" {
+		if base, err := database.Open(database.Config{Driver: "postgres", DSN: pgTemplate.dsn}); err == nil {
+			base.Exec("DROP DATABASE IF EXISTS " + pgTemplate.name + " WITH (FORCE)")
+			if s, e := base.DB(); e == nil {
+				s.Close()
+			}
+		}
+	}
+	os.Exit(code)
+}
+
+// pgTestDB: fresh database as the NON-superuser role from FLOW_TEST_PG_RLS_DSN,
+// cloned from the migrated template (schema, FORCE RLS policies and test users).
 func pgTestDB(t *testing.T) *gorm.DB {
 	dsn := strings.TrimSpace(os.Getenv("FLOW_TEST_PG_RLS_DSN"))
 	if dsn == "" {
@@ -25,8 +86,17 @@ func pgTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if s, e := base.DB(); e == nil {
+			s.Close()
+		}
+	})
+	tpl, err := preparePGTemplate(base, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
 	name := fmt.Sprintf("edu_rt_%d", time.Now().UnixNano())
-	if err := base.Exec("CREATE DATABASE " + name).Error; err != nil {
+	if err := base.Exec("CREATE DATABASE " + name + " TEMPLATE " + tpl).Error; err != nil {
 		t.Fatal(err)
 	}
 	u, _ := url.Parse(dsn)
@@ -41,14 +111,6 @@ func pgTestDB(t *testing.T) *gorm.DB {
 		}
 		base.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
 	})
-	if err := database.MigrateSchema(db); err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []string{"u_alice", "u_bob", "u_carol"} {
-		if err := db.Create(&model.User{ID: id, Username: id}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
 	return db
 }
 
