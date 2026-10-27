@@ -26,20 +26,23 @@ test("temporary Agent protocol modules resolve their real session dependency", (
     suite("test/agent-api-reliability.test.ts");
 }, 25_000);
 
-test("Bun executes a real module through a file URL containing spaces and Chinese", async () => {
+// The bundler runs in a child process: an in-process Bun.build shares the module
+// resolver with the test runner and, on slower CI runners, raced later test files'
+// "@/lib/..." resolution ("Cannot find module") depending on file order.
+test("Bun executes a real module through a file URL containing spaces and Chinese", () => {
     const dir = mkdtempSync(join(tmpdir(), "canvas-entry-中文 space-"));
     try {
         const entry = join(dir, "入口.ts");
         const modulePath = fileURLToPath(new URL("../src/lib/canvas/agent-launcher-position.ts", import.meta.url));
         writeFileSync(entry, `export { clampAgentLauncherPosition } from ${JSON.stringify(modulePath)};`);
-        const build = await Bun.build({ entrypoints: [fileURLToPath(pathToFileURL(entry))], target: "browser", format: "cjs" });
-        expect(build.success).toBe(true);
+        const build = spawnSync(process.execPath, ["build", fileURLToPath(pathToFileURL(entry)), "--target=browser", "--format=cjs"], { cwd, encoding: "utf8", timeout: 20_000 });
+        expect(build.status, build.stderr).toBe(0);
         const module = { exports: {} as Record<string, (...args: unknown[]) => unknown> };
-        runInNewContext(await build.outputs[0].text(), { module, exports: module.exports });
+        runInNewContext(build.stdout, { module, exports: module.exports });
         expect(module.exports.clampAgentLauncherPosition({ right: -1, bottom: -1 }, { width: 1280, height: 800 })).toEqual({ right: 20, bottom: 20 });
     } finally {
         expect(dirname(dir)).toBe(resolve(tmpdir()));
         expect(basename(dir)).toStartWith("canvas-entry-");
         rmSync(dir, { recursive: true, force: true });
     }
-});
+}, 25_000);
