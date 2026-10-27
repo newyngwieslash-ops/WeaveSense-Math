@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { edu, type EduScope } from "@/services/api/edu";
 
 import { demoSummaryLines, isLabeledDemo, type DemoView } from "./home-logic";
+import { teacherError } from "./teacher-errors";
 
 /**
  * 示例班级（DEV-067）：虚构学生与虚构学习记录，用来熟悉班级反馈面板。
@@ -16,7 +17,7 @@ export function DemoClassPanel({ scope, onChange }: { scope: EduScope; onChange?
     const load = useCallback(
         (method: "get" | "post", path: string) =>
             void edu<DemoView>(method, path, scope).then((r) => {
-                if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+                if (!r.ok) return setMsg(teacherError(r));
                 if (!isLabeledDemo(r.data)) return setMsg("示例数据缺少演示标注，已拒绝展示");
                 setMsg("");
                 setView(r.data);
@@ -43,7 +44,11 @@ export function DemoClassPanel({ scope, onChange }: { scope: EduScope; onChange?
                 ) : null}
             </div>
             <p className="mt-1 text-xs text-amber-800">{view?.label || "虚构班级与虚构学习记录，不是真实学生，不计入任何统计、计费与导出"}</p>
-            {msg ? <p className="text-sm text-red-600">{msg}</p> : null}
+            {msg ? (
+                <p role="status" aria-live="polite" className="text-sm text-red-600">
+                    {msg}
+                </p>
+            ) : null}
             {view?.class ? (
                 <>
                     <ul className="mt-2 ml-4 list-disc text-sm">
@@ -54,10 +59,10 @@ export function DemoClassPanel({ scope, onChange }: { scope: EduScope; onChange?
                     {view.dashboard?.commonErrors.length ? <p className="mt-1 text-sm">常见错误（虚构）：{view.dashboard.commonErrors.join("；")}</p> : null}
                     <ul className="mt-2 text-xs text-stone-600">
                         {(view.records || [])
-                            .filter((r) => r.kind === "help")
-                            .map((r) => (
-                                <li key={r.id}>
-                                    {r.studentName}（虚构）：{r.message}
+                            .filter((rec) => rec.kind === "help")
+                            .map((rec) => (
+                                <li key={rec.id}>
+                                    {rec.studentName}（虚构）：{rec.message}
                                 </li>
                             ))}
                     </ul>

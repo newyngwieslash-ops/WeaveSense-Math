@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { edu, type EduScope } from "@/services/api/edu";
 
 import { extensionDueISO, INVITE_STATUS_LABEL, type ExtensionRow, type InviteRow, type RosterRow } from "./edu-admin-logic";
+import { teacherError } from "./teacher-errors";
 
 /**
  * 教师端班级管理：建班、邀请码（明文只在创建时显示一次）、撤销、名册、退出班级、同意记录，
@@ -33,25 +34,29 @@ export function ClassAdmin({ scope, classId, onCreated }: { scope: EduScope; cla
 
     const create = async () => {
         const r = await edu<{ id: string }>("post", "/classes", scope, { name: name.trim() });
-        if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(teacherError(r));
         setName("");
         onCreated(r.data.id);
     };
     const invite = async () => {
         const r = await edu<{ code: string }>("post", `/classes/${classId}/invites`, scope, { ttlHours: ttl, maxUses });
-        if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(teacherError(r));
         setCode(r.data.code);
         reload();
     };
     const act = async (path: string, body: unknown, ok: string) => {
         const r = await edu("post", path, scope, body);
-        setMsg(r.ok ? ok : `${r.code}：${r.message}`);
+        setMsg(r.ok ? ok : teacherError(r));
         reload();
     };
 
     return (
         <div className="space-y-3 text-sm">
-            {msg ? <p className="text-amber-700">{msg}</p> : null}
+            {msg ? (
+                <p role="status" aria-live="polite" className="text-amber-700">
+                    {msg}
+                </p>
+            ) : null}
             <div className="flex gap-2">
                 <input className="h-8 flex-1 rounded-md border px-2" placeholder="新班级名称" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} />
                 <button className={btn} disabled={!name.trim()} onClick={() => void create()}>
@@ -139,18 +144,22 @@ export function ExtensionPanel({ scope, classId, assignmentId, dueAt }: { scope:
         const due = extensionDueISO(local, dueAt);
         if (!due.ok) return setMsg(due.error);
         const r = await edu("post", `/assignments/${assignmentId}/extensions`, scope, { studentUserId: student, dueAt: due.iso, reason });
-        setMsg(r.ok ? "已设置延期" : `${r.code}：${r.message}`);
+        setMsg(r.ok ? "已设置延期" : teacherError(r));
         reload();
     };
     const remove = async (sid: string) => {
         const r = await edu("post", `/assignments/${assignmentId}/extensions/${sid}/remove`, scope, {});
-        setMsg(r.ok ? "已取消延期" : `${r.code}：${r.message}`);
+        setMsg(r.ok ? "已取消延期" : teacherError(r));
         reload();
     };
     return (
         <div className="text-sm">
             <p className="text-xs text-stone-500">原截止 {dueAt ? new Date(dueAt).toLocaleString() : "未设置（不能延期）"}；时间按本机时区输入，服务端以 UTC 保存。</p>
-            {msg ? <p className="text-amber-700">{msg}</p> : null}
+            {msg ? (
+                <p role="status" aria-live="polite" className="text-amber-700">
+                    {msg}
+                </p>
+            ) : null}
             <div className="mt-1 flex flex-wrap gap-2">
                 <select className="h-8 rounded-md border px-2" value={student} onChange={(e) => setStudent(e.target.value)}>
                     <option value="">选择学生</option>

@@ -4,6 +4,7 @@ import { edu, type EduScope } from "@/services/api/edu";
 
 import { blockingLabel, dropReasonLabel, gradingScopeLabel, parseBlocking, replaceParamsError, selfTestPreview, VARIANT_STATE_LABEL, variantApprovable, variantShortfall, type VariantItem, type VariantSet } from "./edu-admin-logic";
 import { SetSelfTest } from "./set-self-test";
+import { teacherError, jobErrorText } from "./teacher-errors";
 
 /**
  * 教师端：为已生成的讲解修订生成“举一反三”变式题组，逐题独立验证后审核（AC-22）。
@@ -41,7 +42,7 @@ function ReplaceItemForm({ scope, set, item, onStarted }: { scope: EduScope; set
             note,
             idempotencyKey: crypto.randomUUID(),
         });
-        if (!r.ok) return setErr(r.code === "RIGHTS_RESTRICTED" ? "来源权利不允许学生使用或改编（已过期、已撤回或未授予）" : `${r.code}：${r.message}`);
+        if (!r.ok) return setErr(r.code === "RIGHTS_RESTRICTED" ? "来源权利不允许学生使用或改编（已过期、已撤回或未授予）" : teacherError(r));
         setErr("");
         onStarted(r.data);
     };
@@ -118,19 +119,19 @@ export function VariantSetPanel({ scope, lessonId, onPick, picked }: { scope: Ed
 
     const generate = async () => {
         const r = await edu<JobRow>("post", `/lesson-revisions/${lessonId}/variant-sets`, scope, { count, idempotencyKey: crypto.randomUUID() });
-        if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(teacherError(r));
         setMsg("");
         setJob(r.data);
     };
     const show = async (id: string) => {
         const r = await edu<VariantSet>("get", `/variant-sets/${id}`, scope);
         if (r.ok) setOpen(r.data);
-        else setMsg(`${r.code}：${r.message}`);
+        else setMsg(teacherError(r));
     };
     const review = async (decision: "approved" | "rejected") => {
         if (!open) return;
         const r = await edu("post", `/variant-sets/${open.id}/review`, scope, { setHash: open.setHash, decision, comment });
-        if (!r.ok) return setMsg(r.code === "POLICY_REVOKED" ? "按机构审核策略，需要其他老师审核" : `${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(r.code === "POLICY_REVOKED" ? "按机构审核策略，需要其他老师审核" : teacherError(r));
         setComment("");
         await show(open.id);
         reload();
@@ -155,12 +156,16 @@ export function VariantSetPanel({ scope, lessonId, onPick, picked }: { scope: Ed
                 {job ? (
                     <span>
                         任务 {job.id.slice(-8)}：{job.status}
-                        {job.error?.code ? `（${job.error.code}：${job.error.message || ""}）` : ""}
+                        {job.error?.code ? `（${jobErrorText(job.error)}）` : ""}
                     </span>
                 ) : null}
             </div>
             <p className="mt-1 text-xs text-stone-500">变式只改数字，属于近迁移；每题独立求解与验证，答案与原题或彼此重复的会被剔除，不足请求数不补凑。</p>
-            {msg ? <p className="mt-1 text-amber-700">{msg}</p> : null}
+            {msg ? (
+                <p role="status" aria-live="polite" className="mt-1 text-amber-700">
+                    {msg}
+                </p>
+            ) : null}
             <ul className="mt-2 space-y-1">
                 {sets.map((s) => (
                     <li key={s.id} className="flex flex-wrap items-center gap-2">
