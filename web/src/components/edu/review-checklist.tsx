@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import { edu, type EduScope } from "@/services/api/edu";
 
+import { QualityPanel } from "./quality-panel";
+import type { Quality } from "./quality-panel-logic";
 import { RenderCheckPanel } from "./render-check-panel";
 import type { RenderCheck } from "./render-check-logic";
 import { canApprove, canReject, ITEM_LABEL, parseFindings, REVIEW_ITEMS, targetLabel, VERDICT_LABEL, WHOLE_TARGETS, type Checklist, type Finding, type ReviewItem, type Verdict } from "./review-checklist-logic";
@@ -23,6 +25,7 @@ export function ReviewChecklist({ scope, lesson, onDone }: { scope: EduScope; le
     const [hints, setHints] = useState<number[]>([]);
     const [reviews, setReviews] = useState<ReviewRecord[]>([]);
     const [renderCheck, setRenderCheck] = useState<RenderCheck | null | undefined>(undefined);
+    const [quality, setQuality] = useState<Quality | null>(null);
     const [checklist, setChecklist] = useState<Checklist>({});
     const [findings, setFindings] = useState<Finding[]>([]);
     const [draft, setDraft] = useState<Finding>({ target: "lesson", item: "method", note: "" });
@@ -35,10 +38,11 @@ export function ReviewChecklist({ scope, lesson, onDone }: { scope: EduScope; le
             setBeats(r.data.beats || []);
             setHints((r.data.hints || []).map((h) => h.level));
         });
-        void edu<{ reviews: ReviewRecord[]; renderCheck?: RenderCheck | null }>("get", `/lesson-revisions/${lesson.id}`, scope).then((r) => {
+        void edu<{ reviews: ReviewRecord[]; renderCheck?: RenderCheck | null; quality?: Quality }>("get", `/lesson-revisions/${lesson.id}`, scope).then((r) => {
             if (!r.ok) return;
             setReviews(r.data.reviews || []);
             setRenderCheck(r.data.renderCheck ?? null);
+            setQuality(r.data.quality ?? null);
         });
     }, [lesson.id, scope]);
 
@@ -53,6 +57,7 @@ export function ReviewChecklist({ scope, lesson, onDone }: { scope: EduScope; le
 
     return (
         <div className="mt-2 space-y-2 text-sm">
+            {quality ? <QualityPanel quality={quality} /> : null}
             {renderCheck !== undefined ? <RenderCheckPanel check={renderCheck} /> : null}
             {past.map((r) => (
                 <div key={r.id} className="rounded-md border border-amber-300 p-2 dark:border-amber-700">

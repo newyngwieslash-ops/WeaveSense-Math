@@ -276,6 +276,24 @@ func runG1(t *testing.T, h *harness) {
 	if b, _ := json.Marshal(rc); strings.Contains(string(b), "√22") {
 		t.Fatal("render check summary must not carry lesson text")
 	}
+	// DEV-075: quality panel keeps math, teaching and presentation apart; no combined score, no autoplay.
+	qp, _ := data(out)["quality"].(map[string]any)
+	if qp == nil || qp["combinedScore"] != false {
+		t.Fatalf("quality panel: %v", qp)
+	}
+	qm, qt, qpr, qa := qp["math"].(map[string]any), qp["teaching"].(map[string]any), qp["presentation"].(map[string]any), qp["audio"].(map[string]any)
+	if qm["state"] != "verified" || len(qm["evidenceLevels"].([]any)) == 0 || qm["source"] != "math_service_verify" {
+		t.Fatalf("quality math: %v", qm)
+	}
+	if qt["state"] != "not_reviewed" || qt["humanOnly"] != true || qpr["state"] != "passed" || qpr["mathVerification"] != false {
+		t.Fatalf("quality teaching/presentation before review: %v %v", qt, qpr)
+	}
+	if qa["autoplay"] != false || qa["state"] != "not_generated" {
+		t.Fatalf("quality audio: %v", qa)
+	}
+	if b, _ := json.Marshal(qp); strings.Contains(string(b), "√22") {
+		t.Fatal("quality panel must not carry the answer")
+	}
 
 	// Review/publish binding (constraint 3).
 	if code, _, _, _ := h.call("u_alice", "POST", "/api/edu/lesson-revisions/"+lessonID+"/publish", map[string]any{"lessonHash": hash}); code != 409 {
@@ -293,6 +311,10 @@ func runG1(t *testing.T, h *harness) {
 	code, out, raw, _ = h.call("u_alice", "POST", "/api/edu/lesson-revisions/"+lessonID+"/review", map[string]any{"lessonHash": hash, "decision": "approved", "comment": "自审：已核对"})
 	if code != 200 || data(out)["selfReview"] != true {
 		t.Fatalf("self review: %d %s", code, raw)
+	}
+	_, out, _, _ = h.call("u_alice", "GET", "/api/edu/lesson-revisions/"+lessonID, nil)
+	if qt := data(out)["quality"].(map[string]any)["teaching"].(map[string]any); qt["state"] != "approved" || qt["boundHash"] != hash || qt["selfReview"] != true {
+		t.Fatalf("quality teaching after review: %v", qt)
 	}
 	code, out, raw, _ = h.call("u_alice", "POST", "/api/edu/lesson-revisions/"+lessonID+"/publish", map[string]any{"lessonHash": hash})
 	if code != 200 {
