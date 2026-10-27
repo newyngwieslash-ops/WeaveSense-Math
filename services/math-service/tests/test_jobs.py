@@ -341,6 +341,36 @@ class LessonEditJobTests(unittest.TestCase):
             v = self.edit([bad], key="lay-bad-%s-%s" % (bad["field"], bad["value"]))
             self.assertEqual(v["status"], "failed", bad)
 
+    def test_figure_text_edit(self):
+        """DEV-073: figure description and prediction wording are editable; geometry, frames
+        and math are not; an answer typed into the figure text is refused for students."""
+        import json as _json
+        ex = self.base["figure"]["explore"]
+        v = self.edit([{"target": "figure", "field": "description", "value": "拖动旋转，观察线与面。"},
+                       {"target": "figure", "field": "prediction_prompt", "value": "先猜一猜：哪个角最大？"},
+                       {"target": "figure", "field": "prediction_options", "value": ["甲", "乙", "说不准"]}], key="fig")
+        self.assertEqual(v["status"], "succeeded", v.get("error"))
+        lesson = v["_checkpoint"]["apply_edits"]["lesson"]
+        nx = lesson["figure"]["explore"]
+        self.assertEqual((nx["description"], nx["prediction"]["prompt"], nx["prediction"]["options"]),
+                         ("拖动旋转，观察线与面。", "先猜一猜：哪个角最大？", ["甲", "乙", "说不准"]))
+        self.assertEqual(nx["prediction"]["id"], ex["prediction"]["id"])
+        self.assertEqual({k: x for k, x in lesson["figure"].items() if k != "explore"}, {k: x for k, x in self.base["figure"].items() if k != "explore"})
+        self.assertEqual(lesson["beats"], self.base["beats"])
+        self.assertEqual(v["_checkpoint"]["apply_edits"]["impact"]["classes"], ["figure_text"])
+        self.assertEqual(lesson["meta"]["edit_log"][0], {"class": "figure_text", "target": "figure", "field": "description"})
+        kinds = {r["kind"]: r for r in v["result_refs"]}
+        _, sd = self.s.get_artifact("t1", kinds["lesson_student"]["artifact_id"])
+        self.assertEqual(_json.loads(sd)["figure"]["explore"]["prediction"]["options"], ["甲", "乙", "说不准"])
+        v = self.edit([{"target": "figure", "field": "description", "value": "答案是 " + self.base["answer"]["plain"]}], key="fig-leak")
+        self.assertEqual((v["status"], v["error"]["code"]), ("failed", "VALIDATION_FAILED"))
+        for i, bad in enumerate(({"target": "figure", "field": "prediction_options", "value": ["只有一个"]},
+                                 {"target": "figure", "field": "prediction_options", "value": ["同", "同"]},
+                                 {"target": "figure", "field": "points", "value": {}},
+                                 {"target": "figure", "field": "description", "value": ""})):
+            v = self.edit([bad], key="fig-bad-%d" % i)
+            self.assertEqual(v["status"], "failed", bad)
+
     def test_impact_classes(self):
         from mathsvc import edits
         self.assertEqual(edits.impact([{"target": "pronunciation", "term": "棱", "reading": "léng"}])["invalidates"], ["captions", "media"])

@@ -6,6 +6,8 @@ import type { LessonDuration } from "./lesson-plan-logic";
  */
 export type EditableBeat = { id: string; title: string; say: string; board: string[] | null; reveals_answer?: boolean };
 export type EditableHint = { level: number; kind: string; text: string };
+/** 图形里老师可改的文字（DEV-073）；几何、帧和预测 id 只随题目修订变化。 */
+export type EditableFigure = { description: string; prediction?: { id: string; prompt: string; options: string[] } | null } | null;
 export type Editable = {
     lessonRevisionId: string;
     lessonHash: string;
@@ -20,19 +22,30 @@ export type Editable = {
     limits: { maxEdits: number; maxText: number; maxBoardLines: number; maxLine: number };
     teaching?: { goal: string; style: string; targetMinutes: number };
     duration?: LessonDuration;
+    figure?: EditableFigure;
 };
 export type Draft = {
     beats: Record<string, { title: string; say: string; board: string }>;
     hints: Record<number, string>;
     pronunciations: { term: string; reading: string }[];
+    /** 旧草稿没有这一项，按原修订处理。 */
+    figure?: { description: string; prompt: string; options: string } | null;
 };
 export type LessonEdit =
     | { target: "beat"; id: string; field: "title" | "say"; value: string }
     | { target: "beat"; id: string; field: "board"; value: string[] }
     | { target: "hint"; level: number; field: "text"; value: string }
-    | { target: "pronunciation"; term: string; reading: string };
+    | { target: "pronunciation"; term: string; reading: string }
+    | { target: "figure"; field: "description" | "prediction_prompt"; value: string }
+    | { target: "figure"; field: "prediction_options"; value: string[] };
 
-export const EDIT_CLASS_LABEL: Record<string, string> = { reasoning: "推理（板书）", wording: "措辞", pronunciation: "读音" };
+export const EDIT_CLASS_LABEL: Record<string, string> = {
+    reasoning: "推理（板书）",
+    wording: "措辞",
+    pronunciation: "读音",
+    layout: "版式",
+    figure_text: "图形文字",
+};
 export const INVALIDATES_LABEL: Record<string, string> = {
     review: "审核结论",
     student_projection: "学生版讲解",
@@ -57,7 +70,12 @@ export function draftOf(e: Editable): Draft {
     const hints: Draft["hints"] = {};
     for (const h of e.hints) hints[h.level] = h.text;
     const pronunciations = Object.entries(e.pronunciations || {}).map(([term, reading]) => ({ term, reading }));
-    return { beats, hints, pronunciations };
+    return { beats, hints, pronunciations, figure: figureDraft(e.figure) };
+}
+
+function figureDraft(f: EditableFigure | undefined): Draft["figure"] {
+    if (!f) return null;
+    return { description: f.description || "", prompt: f.prediction?.prompt || "", options: (f.prediction?.options || []).join("\n") };
 }
 
 /** diffEdits 只输出与原修订不同的字段；删除读音以空 reading 表示。 */
@@ -80,6 +98,16 @@ export function diffEdits(e: Editable, d: Draft): LessonEdit[] {
     for (const p of d.pronunciations) if (p.term.trim()) after[p.term.trim()] = p.reading.trim();
     for (const [term, reading] of Object.entries(after)) if (before[term] !== reading) out.push({ target: "pronunciation", term, reading });
     for (const term of Object.keys(before)) if (!(term in after)) out.push({ target: "pronunciation", term, reading: "" });
+    const f = e.figure;
+    const df = d.figure ?? figureDraft(f);
+    if (f && df) {
+        if (df.description.trim() !== (f.description || "")) out.push({ target: "figure", field: "description", value: df.description.trim() });
+        if (f.prediction) {
+            if (df.prompt.trim() !== f.prediction.prompt) out.push({ target: "figure", field: "prediction_prompt", value: df.prompt.trim() });
+            const opts = boardLines(df.options);
+            if (opts.join("\n") !== f.prediction.options.join("\n")) out.push({ target: "figure", field: "prediction_options", value: opts });
+        }
+    }
     return out;
 }
 
@@ -91,6 +119,10 @@ export function draftProblems(e: Editable, edits: LessonEdit[]): string[] {
         if (x.target === "beat" && x.field === "board") {
             if (x.value.length < 1 || x.value.length > e.limits.maxBoardLines) p.push(`板书需 1 到 ${e.limits.maxBoardLines} 行`);
             if (x.value.some((l) => l.length > e.limits.maxLine)) p.push(`板书每行不超过 ${e.limits.maxLine} 字`);
+        } else if (x.target === "figure" && x.field === "prediction_options") {
+            if (x.value.length < 2 || x.value.length > 6) p.push("预测选项需 2 到 6 个");
+            if (new Set(x.value).size !== x.value.length) p.push("预测选项不能重复");
+            if (x.value.some((o) => o.length > 60)) p.push("每个预测选项不超过 60 字");
         } else if (x.target !== "pronunciation" && (!x.value || x.value.length > e.limits.maxText)) {
             p.push(`文字需 1 到 ${e.limits.maxText} 字`);
         }
@@ -111,4 +143,44 @@ export function estimateText(est: { maxComputeMs?: number; maxCostMicro?: number
     if (!est) return "";
     if (!est.unitMicro) return `最多 ${Math.round((est.maxComputeMs || 0) / 1000)} 秒计算；当前价目 ${est.priceVersion || ""} 未对计算计费`;
     return `最多 ${Math.round((est.maxComputeMs || 0) / 1000)} 秒计算，费用上限 ${est.maxCostMicro} 微额度（价目 ${est.priceVersion}，按实际用量结算）`;
+}
+
+/** 版本对比（DEV-073）：服务端逐字段比较同一题目的两版讲解，这里只负责文案。 */
+export type LessonChange = { section: string; key: string; field: string; before: unknown; after: unknown };
+const SECTION_LABEL: Record<string, string> = {
+    problem: "题目",
+    answer: "答案",
+    beat: "步骤",
+    hint: "提示",
+    figure: "图形",
+    pronunciation: "读音",
+    teaching: "讲解设置",
+    layout: "版式",
+};
+const FIELD_LABEL: Record<string, string> = {
+    title: "标题",
+    say: "讲解",
+    board: "板书",
+    text: "文字",
+    plain: "答案",
+    latex: "公式",
+    description: "说明",
+    prompt: "预测问题",
+    options: "预测选项",
+    reading: "读音",
+    goal: "目标",
+    style: "风格",
+    targetMinutes: "目标时长",
+    layout: "版式",
+};
+export function changeLabel(c: LessonChange): string {
+    const where = c.section === "beat" ? `步骤 ${c.key}` : c.section === "hint" ? `提示 ${c.key}` : c.section === "pronunciation" ? `读音「${c.key}」` : SECTION_LABEL[c.section] || c.section;
+    const kind = c.before == null ? "（新增）" : c.after == null ? "（删除）" : "";
+    return `${where} ${FIELD_LABEL[c.field] || c.field}${kind}`;
+}
+export function changeValue(v: unknown): string {
+    if (v == null) return "无";
+    if (Array.isArray(v)) return v.map(String).join(" / ") || "空";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v) || "空";
 }

@@ -80,6 +80,8 @@ REQUIRED = {
     ("edumath", "TestLessonPlan"),
     ("edumath", "TestPGLessonPlan"),
     ("edumath", "TestLessonDurationEstimate"),
+    ("edumath", "TestLessonCompare"),
+    ("edumath", "TestCompareLessonsFields"),
     ("edumath", "TestPGProblemImages"),
 }
 
