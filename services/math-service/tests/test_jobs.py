@@ -2,6 +2,7 @@
 import json as _json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -71,6 +72,29 @@ class JobTests(unittest.TestCase):
         out, _ = jobs.isolated_stage("solve", PROB, {}, 0.001)
         self.assertFalse(out["ok"])
         self.assertEqual(out["error"]["code"], "TIMEOUT_UNDETERMINED")
+
+    def test_stage_budget_is_cpu_time_not_wall_clock(self):
+        # A busy host must not turn a cheap stage into TIMEOUT_UNDETERMINED (flaky
+        # TestReviewChecklist: project_student "exceeded 5s" while starved of CPU).
+        hogs = [subprocess.Popen([sys.executable, "-c", "while True: pass"]) for _ in range(8 * (os.cpu_count() or 1))]
+        try:
+            out, ms = jobs.isolated_stage("validate_input", PROB, {}, 2)
+        finally:
+            for h in hogs:
+                h.kill()
+                h.wait()
+        self.assertTrue(out["ok"], out)
+
+    def test_stage_cpu_limit_is_timeout_undetermined(self):
+        with mock.patch.object(jobs, "WALL_FACTOR", 1000):
+            real = subprocess.run
+
+            def spin(cmd, **kw):
+                return real([sys.executable, "-c", "while True: pass"], **kw)
+            with mock.patch("subprocess.run", side_effect=spin):
+                out, ms = jobs.isolated_stage("solve", PROB, {}, 1)
+        self.assertEqual(out["error"]["code"], "TIMEOUT_UNDETERMINED")
+        self.assertLess(ms, 10000)
 
     def test_stage_subprocess_gets_no_platform_secrets(self):
         seen = {}
