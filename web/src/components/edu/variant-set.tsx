@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { edu, type EduScope } from "@/services/api/edu";
 
-import { dropReasonLabel, selfTestPreview, VARIANT_STATE_LABEL, variantApprovable, variantShortfall, type VariantSet } from "./edu-admin-logic";
+import { blockingLabel, dropReasonLabel, gradingScopeLabel, parseBlocking, replaceParamsError, selfTestPreview, VARIANT_STATE_LABEL, variantApprovable, variantShortfall, type VariantItem, type VariantSet } from "./edu-admin-logic";
 import { SetSelfTest } from "./set-self-test";
 
 /**
@@ -12,6 +12,79 @@ import { SetSelfTest } from "./set-self-test";
 const btn = "inline-flex h-8 items-center rounded-md bg-stone-900 px-3 text-sm text-white disabled:opacity-40 dark:bg-stone-100 dark:text-stone-900";
 const ghost = "inline-flex h-8 items-center rounded-md border border-stone-300 px-2 text-sm disabled:opacity-40 dark:border-stone-600";
 const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
+
+type SourceRow = { id: string; title: string; state: string; allowStudent: boolean; allowDerivative: boolean; expiresAt?: string | null };
+
+/** 教师用自有数字替换一题（DEV-078）：需要选择记录了学生使用与改编权利的来源，结果是待审核的新题组。 */
+function ReplaceItemForm({ scope, set, item, onStarted }: { scope: EduScope; set: VariantSet; item: VariantItem; onStarted: (j: JobRow) => void }) {
+    const names = Object.keys(item.params);
+    const [params, setParams] = useState<Record<string, string>>({});
+    const [sources, setSources] = useState<SourceRow[]>([]);
+    const [source, setSource] = useState("");
+    const [note, setNote] = useState("");
+    const [err, setErr] = useState("");
+    useEffect(() => {
+        void edu<SourceRow[]>("get", "/source-assets", scope).then((r) => {
+            if (!r.ok) return;
+            const now = Date.now();
+            setSources(r.data.filter((s) => s.state === "active" && s.allowStudent && s.allowDerivative && (!s.expiresAt || Date.parse(s.expiresAt) > now)));
+        });
+    }, [scope]);
+    const submit = async () => {
+        const e = replaceParamsError(names, params);
+        if (e) return setErr(e);
+        if (!source) return setErr("请选择记录了学生使用与改编权利的来源");
+        const r = await edu<JobRow>("post", `/variant-sets/${set.id}/replace`, scope, {
+            itemId: item.id,
+            params: Object.fromEntries(names.map((n) => [n, (params[n] || "").trim()])),
+            sourceAssetId: source,
+            note,
+            idempotencyKey: crypto.randomUUID(),
+        });
+        if (!r.ok) return setErr(r.code === "RIGHTS_RESTRICTED" ? "来源权利不允许学生使用或改编（已过期、已撤回或未授予）" : `${r.code}：${r.message}`);
+        setErr("");
+        onStarted(r.data);
+    };
+    const id = `rp-${set.id}-${item.id}`;
+    return (
+        <fieldset className="mt-1 rounded-md border border-dashed p-2" aria-describedby={`${id}-hint`}>
+            <legend className="px-1 text-xs font-medium">用自有题替换第 {item.id} 题</legend>
+            <p id={`${id}-hint`} className="text-xs text-stone-500">
+                同一题族只改数字；题面按题族模板生成，每题重新独立验证。替换生成新题组，需重新审核后才能布置，原题组不变。
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+                {names.map((n) => (
+                    <label key={n} htmlFor={`${id}-${n}`} className="text-xs">
+                        {n} <input id={`${id}-${n}`} className="h-7 w-20 rounded-md border px-1" value={params[n] || ""} placeholder={item.params[n]} onChange={(e) => setParams({ ...params, [n]: e.target.value })} />
+                    </label>
+                ))}
+                <label htmlFor={`${id}-src`} className="text-xs">
+                    来源与权利{" "}
+                    <select id={`${id}-src`} className="h-7 rounded-md border px-1" value={source} onChange={(e) => setSource(e.target.value)}>
+                        <option value="">请选择</option>
+                        {sources.map((s) => (
+                            <option key={s.id} value={s.id}>
+                                {s.title}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+                <label htmlFor={`${id}-note`} className="text-xs">
+                    说明 <input id={`${id}-note`} className="h-7 w-40 rounded-md border px-1" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} />
+                </label>
+                <button type="button" className={ghost} onClick={() => void submit()}>
+                    提交替换
+                </button>
+            </div>
+            {sources.length === 0 ? <p className="mt-1 text-xs text-amber-700">本工作区没有允许学生使用与改编的有效来源，请先在来源管理中登记。</p> : null}
+            {err ? (
+                <p role="alert" className="mt-1 text-xs text-amber-700">
+                    {err}
+                </p>
+            ) : null}
+        </fieldset>
+    );
+}
 
 type JobRow = { id: string; status: string; stage: string; error?: { code?: string; message?: string } | null; variantSetId?: string };
 
@@ -23,6 +96,7 @@ export function VariantSetPanel({ scope, lessonId, onPick, picked }: { scope: Ed
     const [comment, setComment] = useState("");
     const [studentView, setStudentView] = useState(false);
     const [msg, setMsg] = useState("");
+    const [replacing, setReplacing] = useState("");
 
     const reload = useCallback(() => {
         if (!lessonId) return;
@@ -110,7 +184,8 @@ export function VariantSetPanel({ scope, lessonId, onPick, picked }: { scope: Ed
                         题组哈希 {open.setHash.slice(0, 18)}；{VARIANT_STATE_LABEL[open.state] || open.state}；审核策略 {open.reviewMode || "未知"}
                     </p>
                     {variantShortfall(open) ? <p className="text-amber-700">{variantShortfall(open)}</p> : null}
-                    {open.blockingErrors ? <p className="text-red-700">阻断错误：{open.blockingErrors}，不可通过</p> : null}
+                    {open.supersedesSetId ? <p className="text-xs text-stone-500">由题组 {open.supersedesSetId.slice(-6)} 替换一题生成；原题组保持不变。</p> : null}
+                    {open.blockingErrors ? <p className="text-red-700">阻断错误：{parseBlocking(open.blockingErrors).map(blockingLabel).join("；")}，不可通过</p> : null}
                     <ol className="mt-2 list-decimal space-y-2 pl-5">
                         {open.items.map((it) => (
                             <li key={it.id}>
@@ -122,7 +197,26 @@ export function VariantSetPanel({ scope, lessonId, onPick, picked }: { scope: Ed
                                         .join("，")}
                                     ；数学状态 {it.math_state}；证据 {(it.evidence_levels || []).join("、")}；{it.transfer === "near" ? "近迁移（仅改数字）" : it.transfer}
                                 </p>
+                                {it.source === "teacher_own" ? <p className="text-xs">教师自有题（已记录来源权利）</p> : null}
+                                <p className="text-xs text-stone-500">{gradingScopeLabel(open.grading?.[it.id])}</p>
                                 {open.answerKeys?.[it.id] ? <p className="text-xs">参考答案（仅教师可见）：{open.answerKeys[it.id].plain}</p> : null}
+                                {!open.blockingErrors ? (
+                                    replacing === it.id ? (
+                                        <ReplaceItemForm
+                                            scope={scope}
+                                            set={open}
+                                            item={it}
+                                            onStarted={(j) => {
+                                                setReplacing("");
+                                                setJob(j);
+                                            }}
+                                        />
+                                    ) : (
+                                        <button type="button" className={`${ghost} mt-1`} onClick={() => setReplacing(it.id)}>
+                                            用自有题替换
+                                        </button>
+                                    )
+                                ) : null}
                             </li>
                         ))}
                     </ol>

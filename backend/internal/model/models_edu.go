@@ -504,7 +504,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -531,9 +531,34 @@ type EduVariantSet struct {
 	CreatedBy         string     `json:"createdBy" gorm:"size:40"`
 	CreatedAt         time.Time  `json:"createdAt"`
 	ReviewedAt        *time.Time `json:"reviewedAt,omitempty"`
+	// SupersedesSetID and ReplacementID are set when the set was produced by replacing one item of an
+	// earlier set with the teacher's own authorized numbers (DEV-078); the earlier set is never changed.
+	SupersedesSetID string `json:"supersedesSetId,omitempty" gorm:"size:40;index"`
+	ReplacementID   string `json:"replacementId,omitempty" gorm:"size:40"`
 }
 
 func (EduVariantSet) TableName() string { return "edu_variant_sets" }
+
+// EduVariantReplacement records a teacher's request to replace one item of a variant set with their own
+// numbers in the same family (DEV-078). The source asset carries the rights (student and derivative use);
+// the full ordered item list sent to the math service is kept so a proven not executed submit can be resent.
+type EduVariantReplacement struct {
+	ID            string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID      string    `json:"tenantId" gorm:"size:40;not null;index"`
+	WorkspaceID   string    `json:"workspaceId" gorm:"size:40;not null"`
+	BaseSetID     string    `json:"baseSetId" gorm:"size:40;not null;index"`
+	BaseSetHash   string    `json:"baseSetHash" gorm:"size:80;not null"`
+	ItemID        string    `json:"itemId" gorm:"size:16;not null"`
+	ParamsJSON    string    `json:"-" gorm:"type:text;not null"`
+	ItemsJSON     string    `json:"-" gorm:"type:text;not null"`
+	SourceAssetID string    `json:"sourceAssetId" gorm:"size:40;not null"`
+	Note          string    `json:"note,omitempty" gorm:"size:200"`
+	JobID         string    `json:"jobId" gorm:"size:40;not null;index"`
+	CreatedBy     string    `json:"createdBy" gorm:"size:40;not null"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+func (EduVariantReplacement) TableName() string { return "edu_variant_replacements" }
 
 // EduVariantReview binds a decision to the exact set hash (constraint 3).
 type EduVariantReview struct {

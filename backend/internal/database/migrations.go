@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 84
+const CurrentSchemaVersion int64 = 85
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -383,6 +383,13 @@ var schemaMigrations = []migration{
 	// idempotent, so a database that already has the table only records v84. See docs/math-workbench/07.
 	{version: 84, name: "canvas_workflow_execution", checksum: "sha256:canvas-workflow-execution-v84", apply: func(tx *gorm.DB) error {
 		if err := tx.AutoMigrate(&model.CanvasWorkflowExecution{}); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 85, name: "edu_variant_replacements_v85", checksum: "sha256:edu-variant-replacements-v85-20261027", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: teacher's own item replacement in variant sets (DEV-078), new table under FORCE RLS.
+		if err := tx.AutoMigrate(model.EduModels()...); err != nil {
 			return err
 		}
 		return applyFlowRLS(tx)

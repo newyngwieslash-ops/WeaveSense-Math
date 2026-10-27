@@ -192,6 +192,8 @@ func runVariants(t *testing.T, h *harness) {
 		t.Fatalf("dashboard counts the unit once: %s", raw)
 	}
 
+	runVariantReplace(t, h, setID, vs["setHash"].(string), mk)
+
 	// Per student extension (AC-21): only u_dan's due moves; validation and membership checks.
 	ext := "/api/edu/assignments/" + asID + "/extensions"
 	sh := time.FixedZone("UTC+8", 8*3600)
@@ -239,6 +241,101 @@ func runVariants(t *testing.T, h *harness) {
 		t.Fatalf("removed extension closes writes: %d %v", c, out)
 	}
 	h.now.Store(0)
+}
+
+// runVariantReplace covers DEV-078: a teacher replaces one item with their own numbers under recorded
+// rights; the math service re-verifies the whole list; the result is a new set needing its own review, the
+// approved base set is unchanged, an own item that repeats an answer blocks the new set instead of vanishing,
+// and the automatic grading scope is stated per item.
+func runVariantReplace(t *testing.T, h *harness, setID, setHash string, mk func(map[string]any) (int, map[string]any)) {
+	t.Helper()
+	rp := "/api/edu/variant-sets/" + setID + "/replace"
+	good := map[string]string{"a": "5", "h": "2"}
+	if c, out, _, _ := h.call("u_alice", "POST", rp, map[string]any{"itemId": "v2", "params": good, "idempotencyKey": "rp-0"}); c != 409 || errCode(out) != "RIGHTS_RESTRICTED" {
+		t.Fatalf("own item without a source asset: %d %v", c, out)
+	}
+	_, out, _, _ := h.call("u_alice", "POST", "/api/edu/source-assets", map[string]any{"title": "自编变式", "kind": "teacher_original", "allowStudent": true})
+	noDeriv := data(out)["id"].(string)
+	if c, out, _, _ := h.call("u_alice", "POST", rp, map[string]any{"itemId": "v2", "params": good, "sourceAssetId": noDeriv, "idempotencyKey": "rp-1"}); c != 409 || errCode(out) != "RIGHTS_RESTRICTED" {
+		t.Fatalf("source without derivative use: %d %v", c, out)
+	}
+	_, out, _, _ = h.call("u_alice", "POST", "/api/edu/source-assets", map[string]any{"title": "自编变式（可改编）", "kind": "teacher_original", "allowStudent": true, "allowDerivative": true})
+	srcID := data(out)["id"].(string)
+	for name, body := range map[string]map[string]any{
+		"code in a value": {"itemId": "v2", "params": map[string]string{"a": "__import__('os')", "h": "2"}},
+		"unknown item":    {"itemId": "v9", "params": good},
+		"no params":       {"itemId": "v2", "params": map[string]string{}},
+	} {
+		body["sourceAssetId"], body["idempotencyKey"] = srcID, "rp-bad-"+name
+		if c, _, raw, _ := h.call("u_alice", "POST", rp, body); c != 400 {
+			t.Fatalf("%s must be 400, got %d %s", name, c, raw)
+		}
+	}
+	if c, _, _, _ := h.call("u_bob", "POST", rp, map[string]any{"itemId": "v2", "params": good, "sourceAssetId": srcID, "idempotencyKey": "rp-stu"}); c != 403 && c != 404 {
+		t.Fatalf("a student must not replace items, got %d", c)
+	}
+	c, out, raw, _ := h.call("u_alice", "POST", rp, map[string]any{"itemId": "v2", "params": good, "sourceAssetId": srcID, "note": "换成本班练过的数", "idempotencyKey": "rp-ok"})
+	if c != 202 || data(out)["replacementId"] == nil {
+		t.Fatalf("replace: %d %s", c, raw)
+	}
+	job := h.waitJob("u_alice", data(out)["id"].(string))
+	newID, _ := job["variantSetId"].(string)
+	if job["status"] != "succeeded" || newID == "" || newID == setID {
+		t.Fatalf("replace job: %v", job)
+	}
+	if c, again, _, _ := h.call("u_alice", "POST", rp, map[string]any{"itemId": "v2", "params": good, "sourceAssetId": srcID, "note": "换成本班练过的数", "idempotencyKey": "rp-ok"}); c != 202 || data(again)["id"] != job["id"] {
+		t.Fatalf("replay must return the same job: %d %v", c, again)
+	}
+	if c, again, _, _ := h.call("u_alice", "POST", rp, map[string]any{"itemId": "v1", "params": good, "sourceAssetId": srcID, "idempotencyKey": "rp-ok"}); c != 409 || errCode(again) != "REVISION_CONFLICT" {
+		t.Fatalf("key reuse with another item: %d %v", c, again)
+	}
+	_, out, raw, _ = h.call("u_alice", "GET", "/api/edu/variant-sets/"+newID, nil)
+	nv := data(out)
+	items := nv["items"].([]any)
+	if nv["state"] != "ready_for_review" || nv["supersedesSetId"] != setID || nv["setHash"] == setHash || len(items) != 2 {
+		t.Fatalf("new set: %s", raw)
+	}
+	v1, v2 := items[0].(map[string]any), items[1].(map[string]any)
+	if v1["change_type"] != "numbers_only" || v2["change_type"] != "teacher_own" || v2["source"] != "teacher_own" || v2["math_state"] != "verified" ||
+		v2["params"].(map[string]any)["a"] != "5" || v2["transfer"] != "near" {
+		t.Fatalf("items after replacement: %s", raw)
+	}
+	g := nv["grading"].(map[string]any)["v2"].(map[string]any)
+	if g["auto"] != true || g["covers"] != "final_answer" || g["steps"] != "not_graded" {
+		t.Fatalf("grading scope: %v", g)
+	}
+	// The approved base set is untouched and still assignable; the new set is not, until it is reviewed.
+	_, out, _, _ = h.call("u_alice", "GET", "/api/edu/variant-sets/"+setID, nil)
+	if data(out)["state"] != "approved" || data(out)["setHash"] != setHash {
+		t.Fatalf("base set changed: %v", data(out))
+	}
+	if c, out := mk(map[string]any{"title": "替换后", "variantSetId": newID}); c != 409 || errCode(out) != "VALIDATION_FAILED" {
+		t.Fatalf("unreviewed replacement set must not be assignable: %d %v", c, out)
+	}
+	if c, _, raw, _ := h.call("u_alice", "POST", "/api/edu/variant-sets/"+newID+"/review", map[string]any{"setHash": nv["setHash"], "decision": "approved"}); c != 200 {
+		t.Fatalf("approve replacement set: %d %s", c, raw)
+	}
+	if c, out := mk(map[string]any{"title": "替换后", "variantSetId": newID}); c != 201 {
+		t.Fatalf("approved replacement set is assignable: %d %v", c, out)
+	}
+	// h/a = 1/2 repeats the parent answer: the own item is reported, the new set is blocked, not shortened.
+	c, out, raw, _ = h.call("u_alice", "POST", rp, map[string]any{"itemId": "v1", "params": map[string]string{"a": "4", "h": "2"}, "sourceAssetId": srcID, "idempotencyKey": "rp-dup"})
+	if c != 202 {
+		t.Fatalf("replace dup: %d %s", c, raw)
+	}
+	job = h.waitJob("u_alice", data(out)["id"].(string))
+	dupID, _ := job["variantSetId"].(string)
+	_, out, raw, _ = h.call("u_alice", "GET", "/api/edu/variant-sets/"+dupID, nil)
+	if data(out)["state"] != "rejected" || !strings.Contains(data(out)["blockingErrors"].(string), "teacher_item_dropped:answer_reused") {
+		t.Fatalf("own item repeating an answer must block the set: %s", raw)
+	}
+	if c, _, _, _ := h.call("u_alice", "POST", "/api/edu/variant-sets/"+dupID+"/replace", map[string]any{"itemId": "v1", "params": good, "sourceAssetId": srcID, "idempotencyKey": "rp-chain"}); c != 409 {
+		t.Fatalf("a blocked set is not a base for further replacement, got %d", c)
+	}
+	var rep model.EduVariantReplacement
+	if h.db.First(&rep, "base_set_id = ? AND item_id = ?", setID, "v2").Error != nil || rep.SourceAssetID != srcID || strings.HasPrefix(rep.JobID, "pending:") || rep.BaseSetHash != setHash {
+		t.Fatalf("replacement record: %+v", rep)
+	}
 }
 
 func mustJSON(v any) []byte {

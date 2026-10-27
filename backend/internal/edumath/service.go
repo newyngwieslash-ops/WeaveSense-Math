@@ -374,13 +374,9 @@ func (s *Service) Reconcile(ctx context.Context, tx *gorm.DB, job model.EduMathJ
 		}
 	}
 	if job.Kind == "variant_set" {
-		var opt struct {
-			Count int `json:"count"`
+		if err := variantJobPayload(tx, job, payload); err != nil {
+			return job, err
 		}
-		if json.Unmarshal([]byte(job.Options), &opt) != nil || opt.Count < 1 {
-			return job, fmt.Errorf("%w: variant_set job options", ErrContract)
-		}
-		payload["count"] = opt.Count
 	}
 	v, err = s.Client.StartJob(ctx, job.TenantID, job.CreatedBy, job.Kind, "edu:"+job.ID, job.ID, payload)
 	if err != nil {
