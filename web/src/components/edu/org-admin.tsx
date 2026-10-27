@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { edu, type EduScope } from "@/services/api/edu";
 import { teacherError } from "@/components/edu/teacher-errors";
 import { DataRequestsPanel } from "@/components/edu/data-requests";
+import { OpsGrantsPanel } from "@/components/edu/ops-grants";
 import {
     accessRowText,
     CONSENT_LABEL,
@@ -295,6 +296,8 @@ export function OrgAdminPanel({ scope, onMsg }: { scope: EduScope; onMsg: (m: st
             ) : null}
 
             <DataRequestsPanel scope={scope} onMsg={onMsg} />
+
+            <OpsGrantsPanel scope={scope} classes={ov.classes} onMsg={onMsg} />
 
             <section className={box} aria-labelledby="org-individual">
                 <h2 id="org-individual" className="mb-2 font-medium">

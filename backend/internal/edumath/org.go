@@ -29,9 +29,11 @@ var ErrPurposeRequired = &AppError{Status: http.StatusForbidden, Code: "ACCESS_P
 var orgLogActions = []string{"org.individual_access", "policy.set", "budget.set", "class.teacher.add", "class.create",
 	"class.roster.import", "class.roster.reissue", "class.roster.revoke", "class.enrollment.withdraw", "ledger.export",
 	"role.bind", "role.renew", "role.revoke", "export.content", "export.report", "retention.set", "retention.run",
-	"datareq.create", "datareq.verify", "datareq.reject", "datareq.complete", "datareq.replay"}
+	"datareq.create", "datareq.verify", "datareq.reject", "datareq.complete", "datareq.replay",
+	"ops.grant", "ops.revoke", "ops.read"}
 var orgLogDetail = map[string]bool{"org.individual_access": true, "policy.set": true, "retention.set": true, "retention.run": true,
-	"datareq.create": true, "datareq.reject": true, "datareq.complete": true, "datareq.replay": true}
+	"datareq.create": true, "datareq.reject": true, "datareq.complete": true, "datareq.replay": true,
+	"ops.grant": true, "ops.revoke": true, "ops.read": true}
 
 func (h *API) registerOrg(g *gin.RouterGroup) {
 	g.GET("/org/overview", h.orgOverview)
