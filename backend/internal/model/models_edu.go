@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -938,3 +938,27 @@ type EduRetentionPolicy struct {
 }
 
 func (EduRetentionPolicy) TableName() string { return "edu_retention_policies" }
+
+// EduDataRequest is a data subject request about one student (DEV-107): identity
+// verification, then completion with a per category outcome. Completed delete
+// requests double as deletion markers replayed after a backup restore.
+type EduDataRequest struct {
+	ID              string     `json:"id" gorm:"primaryKey;size:40"`
+	TenantID        string     `json:"tenantId" gorm:"size:40;not null;index:ix_edu_datareq,priority:1"`
+	StudentUserID   string     `json:"studentUserId" gorm:"size:40;not null;index:ix_edu_datareq,priority:2"`
+	Kind            string     `json:"kind" gorm:"size:16;not null"`      // access | withdraw | delete
+	Requester       string     `json:"requester" gorm:"size:16;not null"` // student | guardian | institution
+	Reason          string     `json:"reason" gorm:"size:200"`
+	Status          string     `json:"status" gorm:"size:16;not null;index"` // received | verified | completed | rejected
+	VerificationRef string     `json:"verificationRef,omitempty" gorm:"size:120"`
+	VerifiedBy      string     `json:"verifiedBy,omitempty" gorm:"size:40"`
+	VerifiedAt      *time.Time `json:"verifiedAt,omitempty"`
+	Outcome         string     `json:"outcome,omitempty" gorm:"type:text"` // JSON, counts and dates only
+	ResolvedBy      string     `json:"resolvedBy,omitempty" gorm:"size:40"`
+	ResolvedAt      *time.Time `json:"resolvedAt,omitempty"`
+	CreatedBy       string     `json:"createdBy" gorm:"size:40"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+}
+
+func (EduDataRequest) TableName() string { return "edu_data_requests" }
