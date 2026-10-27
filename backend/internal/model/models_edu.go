@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -985,3 +985,40 @@ type EduOpsGrant struct {
 }
 
 func (EduOpsGrant) TableName() string { return "edu_ops_grants" }
+
+// EduMetricEvent is one de-identified product metric event (DEV-116, FR-O01). Its ID is derived from the
+// source row, so collecting the same source again is a no-op and metrics count each fact once. It holds
+// no names, free text, answers or problem content: only ids of teaching objects, a per-tenant pseudonym
+// of the acting user, enumerated attributes and server times.
+type EduMetricEvent struct {
+	ID            string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID      string    `json:"tenantId" gorm:"size:40;not null;index:ix_edu_metric_type,priority:1"`
+	Type          string    `json:"type" gorm:"size:40;not null;index:ix_edu_metric_type,priority:2"`
+	Source        string    `json:"source" gorm:"size:80;not null"`
+	Subject       string    `json:"subject" gorm:"size:32;not null;index"` // pseudonym; "system" for system actors
+	Role          string    `json:"role" gorm:"size:12;not null"`          // teacher | student | system
+	ObjectID      string    `json:"objectId,omitempty" gorm:"size:40"`
+	ClassID       string    `json:"classId,omitempty" gorm:"size:40;index"`
+	AssignmentID  string    `json:"assignmentId,omitempty" gorm:"size:40"`
+	PublicationID string    `json:"publicationId,omitempty" gorm:"size:40"`
+	FamilyID      string    `json:"familyId,omitempty" gorm:"size:40"`
+	Attrs         string    `json:"attrs,omitempty" gorm:"size:300"`   // enumerated attributes only (JSON object)
+	Terminal      string    `json:"terminal,omitempty" gorm:"size:16"` // empty = not collected
+	OccurredAt    time.Time `json:"occurredAt" gorm:"index:ix_edu_metric_type,priority:3"`
+	CollectedAt   time.Time `json:"collectedAt"`
+	AppVersion    string    `json:"appVersion" gorm:"size:40"`
+	SchemaVersion int       `json:"schemaVersion"`
+}
+
+func (EduMetricEvent) TableName() string { return "edu_metric_events" }
+
+// EduMetricState is the per-tenant collector state: the pseudonym salt (never exported) and how far
+// collection has run.
+type EduMetricState struct {
+	TenantID       string    `json:"tenantId" gorm:"primaryKey;size:40"`
+	Salt           string    `json:"-" gorm:"size:64;not null"`
+	CollectedUntil time.Time `json:"collectedUntil"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+func (EduMetricState) TableName() string { return "edu_metric_states" }

@@ -312,6 +312,14 @@ func deleteStudentLearning(tx *gorm.DB, tenant, student, classID string, dry boo
 			}
 		}
 	}
+	mn, err := deleteStudentMetrics(tx, tenant, student, classID, dry)
+	if err != nil {
+		return touched, err
+	}
+	if mn > 0 {
+		touched = true
+		sum.LearningRows["edu_metric_events"] += mn
+	}
 	rq := func(q *gorm.DB) *gorm.DB {
 		q = q.Where("tenant_id = ? AND claimed_by = ?", tenant, student)
 		if classID != "" {

@@ -51,6 +51,7 @@ func (s *Service) Run(ctx context.Context, every time.Duration) {
 	defer t.Stop()
 	ledgerEvery, nextLedger := LedgerReconcileEvery(), time.Now().Add(time.Minute)
 	retentionEvery, nextRetention := RetentionEvery(), time.Now().Add(10*time.Minute)
+	metricsEvery, nextMetrics := MetricsEvery(), time.Now().Add(5*time.Minute)
 	for {
 		c, cancel := context.WithTimeout(ctx, every*10)
 		_, _ = s.SyncOnce(c, 50)
@@ -70,6 +71,14 @@ func (s *Service) Run(ctx context.Context, every time.Duration) {
 				slog.Info("edumath scheduled retention", "tenants", n)
 			}
 			nextRetention = time.Now().Add(retentionEvery)
+		}
+		if metricsEvery > 0 && time.Now().After(nextMetrics) {
+			if n, ins, err := s.MetricsAll(ctx); err != nil {
+				slog.Warn("edumath scheduled metric collection failed", "error", err)
+			} else {
+				slog.Info("edumath scheduled metric collection", "tenants", n, "inserted", ins)
+			}
+			nextMetrics = time.Now().Add(metricsEvery)
 		}
 		select {
 		case <-ctx.Done():
