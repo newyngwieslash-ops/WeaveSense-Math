@@ -7,6 +7,8 @@ import { ReviewChecklist } from "@/components/edu/review-checklist";
 import { VariantSetPanel } from "@/components/edu/variant-set";
 import { edu, newClientKey, type EduScope } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
+import { blockingCodeLabel } from "@/components/edu/render-check-logic";
+import { JOB_STATE_TEXT, jobErrorText, lessonStateLine, STAGE_TEXT, teacherError } from "@/components/edu/teacher-errors";
 
 /**
  * 教师备课：结构化录入 → 确认题意（绑定输入哈希）→ 数学分析任务 → 生成讲解任务 →
@@ -144,11 +146,11 @@ export default function TeacherAuthoring() {
         }
         if (rev) {
             const r = await edu<Revision>("post", `/problems/${rev.problemId}/revisions`, scope, { baseRevision: rev.revision, structured });
-            if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+            if (!r.ok) return setMsg(teacherError(r));
             setRev(r.data);
         } else {
             const r = await edu<{ revision: Revision }>("post", "/problems", scope, { familyId: family, title: title || FAMILY_TEMPLATES[family].label, structured });
-            if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+            if (!r.ok) return setMsg(teacherError(r));
             setRev(r.data.revision);
         }
         setAnalyzeJob("");
@@ -160,25 +162,25 @@ export default function TeacherAuthoring() {
     const confirmRev = async () => {
         if (!rev) return;
         const r = await edu<Revision>("post", `/problem-revisions/${rev.id}/confirm`, scope, { inputHash: rev.inputHash });
-        if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(teacherError(r));
         setRev({ ...rev, ...r.data });
     };
     const analyze = async () => {
         if (!rev) return;
         const r = await edu<Job>("post", `/problem-revisions/${rev.id}/analyze`, scope, { idempotencyKey: `${analyzeKey}-${rev.id}` });
-        if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(teacherError(r));
         setAnalyzeJob(r.data.id);
     };
     const buildLesson = async () => {
         if (!solution) return;
         const r = await edu<Job>("post", `/solution-revisions/${solution.id}/lesson`, scope, { idempotencyKey: `${lessonKey}-${solution.id}` });
-        if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(teacherError(r));
         setLessonJob(r.data.id);
     };
     const publish = async () => {
         if (!lesson) return;
         const r = await edu<{ id: string }>("post", `/lesson-revisions/${lesson.id}/publish`, scope, { lessonHash: lesson.lessonHash });
-        if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(teacherError(r));
         setPublicationId(r.data.id);
     };
     const createAssignment = async () => {
@@ -192,13 +194,13 @@ export default function TeacherAuthoring() {
             unitPolicy: assign.unitPolicy,
             variantSetId: variantSetId || undefined,
         });
-        setMsg(r.ok ? "已布置到班级" : `${r.code}：${r.message}`);
+        setMsg(r.ok ? "已布置到班级" : teacherError(r));
     };
     const jobLine = (j: Job | null) =>
         j ? (
             <p className="mt-2 text-sm">
-                任务 {j.id.slice(-8)}：{j.status} {j.stage ? `· ${j.stage}` : ""}
-                {j.error?.code ? `（${j.error.code}）` : ""}
+                任务 {j.id.slice(-8)}：{JOB_STATE_TEXT[j.status] || j.status} {j.stage && !TERMINAL.has(j.status) ? `· ${STAGE_TEXT[j.stage] || j.stage}` : ""}
+                {j.status === "failed" ? `。${jobErrorText(j.error)}` : ""}
                 {j.status === "reconciliation_required" ? "，供应商结果未知，等待服务端对账，不会自动重复计费" : ""}
                 {!TERMINAL.has(j.status) ? (
                     <button className={`${ghost} ml-2 h-7`} onClick={() => void edu("post", `/jobs/${j.id}/cancel`, scope, {})}>
@@ -212,27 +214,31 @@ export default function TeacherAuthoring() {
     return (
         <main className="mx-auto w-full max-w-3xl px-4 py-6 text-foreground">
             <h1 className="mb-4 text-xl font-semibold">备课</h1>
-            {msg ? <p className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">{msg}</p> : null}
+            {msg ? (
+                <p role="status" aria-live="polite" className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                    {msg}
+                </p>
+            ) : null}
             <section className={box}>
                 <h2 className="mb-2 font-semibold">1. 题目与参数</h2>
                 <div className="flex flex-wrap gap-2">
-                    <select className="h-9 rounded-md border px-2" value={ws} onChange={(e) => setWs(e.target.value)}>
+                    <select aria-label="工作区" className="h-9 rounded-md border px-2" value={ws} onChange={(e) => setWs(e.target.value)}>
                         {workspaces.map((w) => (
                             <option key={w.id} value={w.id}>
                                 {w.name}
                             </option>
                         ))}
                     </select>
-                    <select className="h-9 rounded-md border px-2" value={family} disabled={!!rev} onChange={(e) => pickFamily(e.target.value)}>
+                    <select aria-label="题型" className="h-9 rounded-md border px-2" value={family} disabled={!!rev} onChange={(e) => pickFamily(e.target.value)}>
                         {Object.entries(FAMILY_TEMPLATES).map(([k, v]) => (
                             <option key={k} value={k}>
                                 {v.label}
                             </option>
                         ))}
                     </select>
-                    <input className="h-9 flex-1 rounded-md border px-2" placeholder="标题" value={title} onChange={(e) => setTitle(e.target.value)} />
+                    <input aria-label="标题" className="h-9 flex-1 rounded-md border px-2" placeholder="标题" value={title} onChange={(e) => setTitle(e.target.value)} />
                 </div>
-                <textarea className="mt-2 w-full rounded-md border p-2 font-mono text-xs" rows={8} value={json} onChange={(e) => setJson(e.target.value)} />
+                <textarea aria-label="结构化题目输入（JSON）" className="mt-2 w-full rounded-md border p-2 font-mono text-xs" rows={8} value={json} onChange={(e) => setJson(e.target.value)} />
                 <div className="mt-2 flex gap-2">
                     <button className={ghost} onClick={() => void save()}>
                         {rev ? "保存为新修订" : "保存"}
@@ -270,8 +276,7 @@ export default function TeacherAuthoring() {
                 {lesson ? (
                     <>
                         <p className="mt-2 text-sm">
-                            状态 {lesson.state}，讲解哈希 {lesson.lessonHash.slice(0, 12)}
-                            {lesson.blockingErrors ? `；阻断错误 ${lesson.blockingErrors}，不可发布` : ""}
+                            {lessonStateLine(lesson.state, lesson.blockingErrors, blockingCodeLabel)}，讲解哈希 {lesson.lessonHash.slice(0, 12)}
                         </p>
                         {preview ? <iframe title="教师预览" src={preview} sandbox="allow-scripts" className="mt-2 h-96 w-full rounded-md border" /> : null}
                         <ReviewChecklist key={lesson.id + lesson.state} scope={scope} lesson={lesson} onDone={(decision) => setLesson({ ...lesson, state: decision })} />

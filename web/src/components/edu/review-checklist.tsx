@@ -5,6 +5,7 @@ import { edu, type EduScope } from "@/services/api/edu";
 import { RenderCheckPanel } from "./render-check-panel";
 import type { RenderCheck } from "./render-check-logic";
 import { canApprove, canReject, ITEM_LABEL, parseFindings, REVIEW_ITEMS, targetLabel, VERDICT_LABEL, WHOLE_TARGETS, type Checklist, type Finding, type ReviewItem, type Verdict } from "./review-checklist-logic";
+import { teacherError } from "./teacher-errors";
 
 /**
  * 教师端审核清单（DEV-076）：逐项选择通过、有问题或不适用；退回可定位到步骤、提示或整份讲解的某一部分。
@@ -43,7 +44,7 @@ export function ReviewChecklist({ scope, lesson, onDone }: { scope: EduScope; le
 
     const submit = async (decision: "approved" | "rejected") => {
         const r = await edu<{ id: string }>("post", `/lesson-revisions/${lesson.id}/review`, scope, { lessonHash: lesson.lessonHash, decision, comment, checklist, findings });
-        if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(teacherError(r));
         setMsg("");
         onDone(decision);
     };
@@ -146,7 +147,11 @@ export function ReviewChecklist({ scope, lesson, onDone }: { scope: EduScope; le
                     <p className="text-xs text-stone-500">通过需逐项选择且没有“有问题”项或定位意见；退回需至少一条定位意见、一个“有问题”项或一段意见。</p>
                 </>
             ) : null}
-            {msg ? <p className="text-red-600">{msg}</p> : null}
+            {msg ? (
+                <p role="alert" className="text-red-600">
+                    {msg}
+                </p>
+            ) : null}
         </div>
     );
 }

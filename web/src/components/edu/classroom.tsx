@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { edu, type EduScope } from "@/services/api/edu";
 
 import { keyAction, shownBeat, step, type ClassroomBeat } from "./classroom-logic";
+import { teacherError } from "./teacher-errors";
 
 /** 课堂演示（DEV-077）：大字号逐步投屏，键盘翻页，含答案步骤需教师揭示。数据来自教师可见的讲解修订。 */
 const ctl = "inline-flex h-9 items-center rounded-md border border-stone-400 px-3 text-sm disabled:opacity-40";
@@ -16,7 +17,7 @@ export function Classroom({ scope, lessonId, onClose }: { scope: EduScope; lesso
 
     useEffect(() => {
         void edu<{ beats: ClassroomBeat[] }>("get", `/lesson-revisions/${lessonId}/editable`, scope).then((r) => {
-            if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+            if (!r.ok) return setMsg(teacherError(r));
             setBeats(r.data.beats || []);
             setMsg("");
         });
@@ -68,7 +69,11 @@ export function Classroom({ scope, lessonId, onClose }: { scope: EduScope; lesso
                 </button>
                 <span>方向键翻页，A 揭示答案</span>
             </div>
-            {msg ? <p>{msg}</p> : null}
+            {msg ? (
+                <p role="status" aria-live="polite">
+                    {msg}
+                </p>
+            ) : null}
             {s ? (
                 <div className="min-h-64" aria-live="polite">
                     <h3 className="mb-4 text-3xl font-semibold">{s.title}</h3>

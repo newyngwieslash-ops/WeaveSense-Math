@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClassAdmin, ExtensionPanel } from "@/components/edu/class-admin";
 import { edu, RESULT_LABEL, type EduAttempt } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
+import { emptyState, teacherError } from "@/components/edu/teacher-errors";
 
 /**
  * 教师端课堂视图：班级、作业、学情分布、求助分组与回复、逐条作答与人工判定、开放答案。
@@ -40,6 +41,7 @@ export default function TeacherClassroom() {
     const [fig, setFig] = useState<FigureSummary | null>(null);
     const [attempts, setAttempts] = useState<EduAttempt[]>([]);
     const [msg, setMsg] = useState("");
+    const [loaded, setLoaded] = useState({ classes: false, assignments: false, attempts: false });
 
     useEffect(() => {
         void listIntelWorkspaces().then((l) => {
@@ -49,47 +51,71 @@ export default function TeacherClassroom() {
     }, []);
     const loadClasses = useCallback(() => {
         if (!ws) return;
-        void edu<EduClass[]>("get", "/classes", scope).then((r) => (r.ok ? setClasses(r.data) : setMsg(r.message)));
+        void edu<EduClass[]>("get", "/classes", scope).then((r) => {
+            if (!r.ok) return setMsg(teacherError(r));
+            setClasses(r.data);
+            setLoaded((x) => ({ ...x, classes: true }));
+        });
     }, [ws, scope]);
     useEffect(loadClasses, [loadClasses]);
     useEffect(() => {
         if (!classId) return;
-        void edu<EduAssignmentRow[]>("get", `/classes/${classId}/assignments`, scope).then((r) => r.ok && setAssignments(r.data));
+        void edu<EduAssignmentRow[]>("get", `/classes/${classId}/assignments`, scope).then((r) => {
+            if (!r.ok) return setMsg(teacherError(r));
+            setAssignments(r.data);
+            setLoaded((x) => ({ ...x, assignments: true }));
+        });
     }, [classId, scope]);
 
     const load = useCallback(() => {
         if (!asId) return;
-        void edu<Dashboard>("get", `/assignments/${asId}/dashboard`, scope).then((r) => (r.ok ? setDash(r.data) : setMsg(r.message)));
+        void edu<Dashboard>("get", `/assignments/${asId}/dashboard`, scope).then((r) => (r.ok ? setDash(r.data) : setMsg(teacherError(r))));
         void edu<HelpGroup[]>("get", `/assignments/${asId}/help`, scope).then((r) => r.ok && setHelp(r.data));
         void edu<FigureSummary>("get", `/assignments/${asId}/figure-summary`, scope).then((r) => setFig(r.ok ? r.data : null));
-        void edu<{ attempts: EduAttempt[] }>("get", `/assignments/${asId}/attempts`, scope).then((r) => r.ok && setAttempts(r.data.attempts));
+        void edu<{ attempts: EduAttempt[] }>("get", `/assignments/${asId}/attempts`, scope).then((r) => {
+            if (!r.ok) return;
+            setAttempts(r.data.attempts);
+            setLoaded((x) => ({ ...x, attempts: true }));
+        });
     }, [asId, scope]);
     useEffect(load, [load]);
 
     const judge = async (id: string, result: string) => {
         const r = await edu("post", `/attempts/${id}/judge`, scope, { result });
-        setMsg(r.ok ? "已记录老师判定" : r.message);
+        setMsg(r.ok ? "已记录老师判定" : teacherError(r));
         load();
     };
     const release = async () => {
         if (!confirm("开放后学生可查看完整讲解和答案，且无法撤回。确定开放？")) return;
         const r = await edu("post", `/assignments/${asId}/release-answer`, scope, {});
-        setMsg(r.ok ? "答案已开放" : r.message);
+        setMsg(r.ok ? "答案已开放" : teacherError(r));
     };
+
+    const empty = emptyState({
+        classes: loaded.classes ? classes.length : -1,
+        classId,
+        assignments: loaded.assignments ? assignments.length : -1,
+        asId,
+        attempts: loaded.attempts ? attempts.length : -1,
+    });
 
     return (
         <main className="mx-auto w-full max-w-5xl px-4 py-6 text-foreground">
             <h1 className="mb-4 text-xl font-semibold">课堂与学情</h1>
-            {msg ? <p className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">{msg}</p> : null}
+            {msg ? (
+                <p role="status" aria-live="polite" className="mb-3 rounded-md bg-amber-50 p-2 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                    {msg}
+                </p>
+            ) : null}
             <div className="mb-4 flex flex-wrap gap-2">
-                <select className="h-9 rounded-md border px-2" value={ws} onChange={(e) => setWs(e.target.value)}>
+                <select aria-label="工作区" className="h-9 rounded-md border px-2" value={ws} onChange={(e) => setWs(e.target.value)}>
                     {workspaces.map((w) => (
                         <option key={w.id} value={w.id}>
                             {w.name}
                         </option>
                     ))}
                 </select>
-                <select className="h-9 rounded-md border px-2" value={classId} onChange={(e) => setClassId(e.target.value)}>
+                <select aria-label="班级" className="h-9 rounded-md border px-2" value={classId} onChange={(e) => setClassId(e.target.value)}>
                     <option value="">选择班级</option>
                     {classes.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -97,7 +123,7 @@ export default function TeacherClassroom() {
                         </option>
                     ))}
                 </select>
-                <select className="h-9 rounded-md border px-2" value={asId} onChange={(e) => setAsId(e.target.value)}>
+                <select aria-label="作业" className="h-9 rounded-md border px-2" value={asId} onChange={(e) => setAsId(e.target.value)}>
                     <option value="">选择作业</option>
                     {assignments.map((a) => (
                         <option key={a.id} value={a.id}>
@@ -112,6 +138,11 @@ export default function TeacherClassroom() {
                 ) : null}
             </div>
 
+            {empty ? (
+                <p role="status" className="mb-4 rounded-md border border-dashed border-stone-300 p-3 text-sm dark:border-stone-600">
+                    {empty}
+                </p>
+            ) : null}
             <details className={`${box} mb-4`}>
                 <summary className="cursor-pointer font-semibold">班级、邀请码与名册</summary>
                 <div className="mt-2">
@@ -218,7 +249,7 @@ function HelpPanel({ asId, scope, groups, onDone }: { asId: string; scope: { wor
     const [err, setErr] = useState("");
     const send = async (g: HelpGroup) => {
         const r = await edu("post", `/assignments/${asId}/help/reply`, scope, { groupKey: g.groupKey, body: text[g.groupKey] || "", public: !!pub[g.groupKey] });
-        if (!r.ok) return setErr(r.code === "PERSONAL_INFO" ? "公开回复中疑似包含学生个人信息，请修改后再发" : r.message);
+        if (!r.ok) return setErr(r.code === "PERSONAL_INFO" ? "公开回复中疑似包含学生个人信息，请修改后再发" : teacherError(r));
         setErr("");
         setText((t) => ({ ...t, [g.groupKey]: "" }));
         onDone();
@@ -227,7 +258,11 @@ function HelpPanel({ asId, scope, groups, onDone }: { asId: string; scope: { wor
     return (
         <section className={`${box} mt-4`}>
             <h2 className="mb-2 font-semibold">求助（按优先级）</h2>
-            {err ? <p className="mb-2 text-sm text-red-600">{err}</p> : null}
+            {err ? (
+                <p role="alert" className="mb-2 text-sm text-red-600">
+                    {err}
+                </p>
+            ) : null}
             {groups.map((g) => (
                 <div key={g.groupKey} className="mb-3 border-b border-stone-100 pb-3 dark:border-stone-800">
                     <p className="text-sm font-medium">
@@ -235,8 +270,8 @@ function HelpPanel({ asId, scope, groups, onDone }: { asId: string; scope: { wor
                         {g.beatId ? ` · ${g.beatId}` : ""} · 待处理 {g.open}
                     </p>
                     <ul className="ml-4 list-disc text-sm text-stone-600 dark:text-stone-300">
-                        {g.requests.map((r) => (
-                            <li key={r.id}>{r.message || "（无补充说明）"}</li>
+                        {g.requests.map((req) => (
+                            <li key={req.id}>{req.message || "（无补充说明）"}</li>
                         ))}
                     </ul>
                     <div className="mt-2 flex flex-wrap items-center gap-2">

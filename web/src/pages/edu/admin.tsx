@@ -19,6 +19,7 @@ import {
 import { edu } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
 import { apiClient } from "@/services/api/request";
+import { teacherError } from "@/components/edu/teacher-errors";
 
 /**
  * 机构管理后台：账本对账与审计导出、对账发现的负责人与处理状态、机构预算与公平限流、
@@ -76,7 +77,7 @@ export default function EduAdmin() {
         void edu<LedgerAnomaly[]>("get", "/ledger/anomalies", scope).then((r) => {
             if (!r.ok) {
                 setDenied(r.status === 403);
-                setMsg(r.message);
+                setMsg(teacherError(r));
                 return;
             }
             setDenied(false);
@@ -97,7 +98,7 @@ export default function EduAdmin() {
 
     const reconcile = async () => {
         const r = await edu<{ jobs: number; findings: number }>("post", "/ledger/reconcile", scope, {});
-        setMsg(r.ok ? `已对账 ${r.data.jobs} 个作业，发现 ${r.data.findings} 项` : r.message);
+        setMsg(r.ok ? `已对账 ${r.data.jobs} 个作业，发现 ${r.data.findings} 项` : teacherError(r));
         load();
     };
     const exportCSV = async () => {
@@ -121,7 +122,7 @@ export default function EduAdmin() {
             return;
         }
         const r = await edu("post", `/ledger/anomalies/${row.id}`, scope, { status, owner: e.owner, note: e.note });
-        setMsg(r.ok ? `已更新为${STATUS_LABEL[status]}` : r.message);
+        setMsg(r.ok ? `已更新为${STATUS_LABEL[status]}` : teacherError(r));
         load();
     };
     const saveBudget = async () => {
@@ -131,7 +132,7 @@ export default function EduAdmin() {
             return;
         }
         const r = await edu("put", "/budget", scope, { ...p.value, reason });
-        setMsg(r.ok ? "限额已保存并写入审计" : r.message);
+        setMsg(r.ok ? "限额已保存并写入审计" : teacherError(r));
         load();
     };
 

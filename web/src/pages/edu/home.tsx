@@ -5,6 +5,7 @@ import { DemoClassPanel } from "@/components/edu/demo-class";
 import { authorLink, catalogQuery, catalogStateLabel, JOB_STATUS_LABEL, LESSON_STATE_LABEL, todoLines, type CatalogItem, type HomeView } from "@/components/edu/home-logic";
 import { edu } from "@/services/api/edu";
 import { listIntelWorkspaces, type IntelWorkspace } from "@/services/api/intelligence";
+import { teacherError } from "@/components/edu/teacher-errors";
 
 /**
  * 教师首页（DEV-067）：我的讲解、待我审核、我的班级、学生问题、运行中的任务与内容事故。
@@ -24,7 +25,7 @@ export default function EduTeacherHome() {
     const [items, setItems] = useState<CatalogItem[] | null>(null);
     const search = () =>
         void edu<{ items: CatalogItem[] }>("get", catalogQuery(q, "", cstate), scope).then((r) => {
-            if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+            if (!r.ok) return setMsg(teacherError(r));
             setItems(r.data.items);
         });
 
@@ -39,7 +40,7 @@ export default function EduTeacherHome() {
         void edu<HomeView>("get", "/home", scope).then((r) => {
             if (!r.ok) {
                 setView(null);
-                return setMsg(r.status === 403 ? "你在此工作区没有教师、审核或管理角色。" : `${r.code}：${r.message}`);
+                return setMsg(r.status === 403 ? "你在此工作区没有教师、审核或管理角色。" : teacherError(r));
             }
             setMsg("");
             setView(r.data);
@@ -64,7 +65,11 @@ export default function EduTeacherHome() {
                     班级与学情
                 </Link>
             </div>
-            {msg ? <p className="text-sm text-red-600">{msg}</p> : null}
+            {msg ? (
+                <p role="status" aria-live="polite" className="text-sm text-red-600">
+                    {msg}
+                </p>
+            ) : null}
             {view ? (
                 <div className="space-y-4">
                     {view.firstRun ? (

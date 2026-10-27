@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { edu, type EduScope } from "@/services/api/edu";
 
 import { conflictOf, diffEdits, draftKey, draftOf, draftProblems, EDIT_CLASS_LABEL, estimateText, INHERIT_LABEL, INVALIDATES_LABEL, type Draft, type Editable } from "./lesson-edit-logic";
+import { teacherError, jobErrorText } from "./teacher-errors";
 
 /**
  * 教师端：讲解的结构化编辑（AC-17/18）。只改字段，不改 HTML 或代码；保存生成新修订，原修订与已发布版本不变。
@@ -34,7 +35,7 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
 
     const load = useCallback(() => {
         void edu<Editable>("get", `/lesson-revisions/${lessonId}/editable`, scope).then((r) => {
-            if (!r.ok) return setMsg(`${r.code}：${r.message}`);
+            if (!r.ok) return setMsg(teacherError(r));
             setEd(r.data);
             const saved = window.localStorage.getItem(draftKey(lessonId, r.data.lessonHash));
             setDraft(saved ? (JSON.parse(saved) as Draft) : draftOf(r.data));
@@ -81,7 +82,7 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
     const setBeat = (id: string, field: "title" | "say" | "board", v: string) => change({ ...draft, beats: { ...draft.beats, [id]: { ...draft.beats[id], [field]: v } } });
     const preview = async () => {
         const r = await edu<Impact>("post", `/lesson-revisions/${lessonId}/edit-impact`, scope, { edits });
-        if (!r.ok) return setMsg(r.code === "POLICY_REVOKED" ? "这部分不能在讲解里修改，请新建题目修订" : `${r.code}：${r.message}`);
+        if (!r.ok) return setMsg(r.code === "POLICY_REVOKED" ? "这部分不能在讲解里修改，请新建题目修订" : teacherError(r));
         setMsg("");
         setImpact(r.data);
     };
@@ -99,7 +100,7 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
         }
         const c = conflictOf(r.detail);
         if (c) return setConflict(c);
-        setMsg(r.code === "BUDGET_EXCEEDED" ? "额度不足，未提交计算" : `${r.code}：${r.message}`);
+        setMsg(r.code === "BUDGET_EXCEEDED" ? "额度不足，未提交计算" : teacherError(r));
     };
     const unverified = ed.quality?.edited_unverified || [];
 
@@ -188,10 +189,14 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
             ) : null}
             {job ? (
                 <p className="text-sm" data-testid="edit-job">
-                    {job.status === "succeeded" ? "已生成新修订，待审核" : job.status === "failed" ? `生成失败：${job.error?.code || ""} ${job.error?.message || ""}（草稿仍保留）` : `正在重新生成（${job.stage || job.status}）`}
+                    {job.status === "succeeded" ? "已生成新修订，待审核" : job.status === "failed" ? `生成失败：${jobErrorText(job.error)}（草稿仍保留）` : `正在重新生成（${job.stage || job.status}）`}
                 </p>
             ) : null}
-            {msg ? <p className="text-sm text-red-700">{msg}</p> : null}
+            {msg ? (
+                <p role="status" aria-live="polite" className="text-sm text-red-700">
+                    {msg}
+                </p>
+            ) : null}
             {history.length > 1 ? (
                 <details className="text-sm">
                     <summary>修订历史</summary>
