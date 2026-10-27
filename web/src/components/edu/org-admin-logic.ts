@@ -32,6 +32,7 @@ export const ACTION_LABEL: Record<string, string> = {
     "class.roster.reissue": "重发认领码",
     "class.roster.revoke": "作废名单条目",
     "class.enrollment.withdraw": "移出学生",
+    "assignment.withdraw": "撤回任务",
     "ledger.export": "导出账本",
     "role.bind": "授予角色",
     "role.renew": "续期角色",
@@ -87,7 +88,7 @@ export function accessRowText(r: AccessRow): string {
     const purpose =
         r.action === "org.individual_access" && r.detail
             ? `；目的：${r.detail.split(" | ").slice(1).join(" | ")}`
-            : (r.action.startsWith("retention.") || r.action.startsWith("datareq.") || r.action.startsWith("ops.")) && r.detail
+            : (r.action.startsWith("retention.") || r.action.startsWith("datareq.") || r.action.startsWith("ops.") || r.action === "assignment.withdraw") && r.detail
               ? `；${retentionDetail(r.detail)}`
               : "";
     return `${label}（${r.actorId}，对象 ${r.subject}）${purpose}`;

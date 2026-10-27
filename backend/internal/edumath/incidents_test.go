@@ -73,8 +73,16 @@ func runIncidents(t *testing.T, h *harness) {
 	if code, _, _, _ := h.call("u_bob", "GET", pA, nil, stu...); code != 200 {
 		t.Fatalf("minor must not freeze access, got %d", code)
 	}
-	// Escalate to blocking: the whole chain runs on the same incident.
+	// DEV-112: blocking without confirm only previews the impact and changes nothing.
 	code, out, raw, _ = h.call("u_alice", "POST", inc, map[string]any{"severity": "blocking", "reason": "答案错误：线面角应重新计算"})
+	if code != 200 || data(out)["dryRun"] != true || data(out)["impact"].(map[string]any)["students"].(float64) != 1 {
+		t.Fatalf("blocking preview: %d %s", code, raw)
+	}
+	if code, _, _, _ := h.call("u_bob", "GET", pA, nil, stu...); code != 200 {
+		t.Fatalf("a preview must not freeze access, got %d", code)
+	}
+	// Escalate to blocking: the whole chain runs on the same incident.
+	code, out, raw, _ = h.call("u_alice", "POST", inc, map[string]any{"severity": "blocking", "reason": "答案错误：线面角应重新计算", "confirm": true})
 	if code != 201 || data(out)["incident"].(map[string]any)["id"] != incID || data(out)["incident"].(map[string]any)["severity"] != "blocking" {
 		t.Fatalf("blocking: %d %s", code, raw)
 	}

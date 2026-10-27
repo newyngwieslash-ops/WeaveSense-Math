@@ -26,6 +26,7 @@ const BY_CODE: Record<string, [string, string]> = {
     TIMEOUT_UNDETERMINED: ["计算超时，结果未确定（不代表无解）", "稍后重试，或简化条件"],
     PROVIDER_UNAVAILABLE: ["数学服务暂时不可用", "稍后重试；持续出现请联系管理员"],
     ASSIGNMENT_CLOSED: ["任务已截止", "需要时为学生设置延期"],
+    ASSIGNMENT_WITHDRAWN: ["任务已经撤回", "刷新任务列表；需要时重新布置"],
     ANSWER_NOT_RELEASED: ["答案尚未开放", "按任务的答案策略开放后再查看"],
     PERSONAL_INFO: ["公开回复中疑似包含学生个人信息", "删去个人信息后再发"],
     DATA_REQUEST_OPEN: ["这名学生已有同类请求未处理完", "先完成或拒绝那一条，再登记新的请求"],

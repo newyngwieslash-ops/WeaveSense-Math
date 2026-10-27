@@ -150,3 +150,22 @@ export function replaceParamsError(names: string[], params: Record<string, strin
     }
     return "";
 }
+
+/** DEV-112：撤回任务前服务端给出的影响范围。 */
+export type AssignmentImpact = { students: number; studentsWithAttempts: number; attempts: number; openHelp: number; extensions: number };
+
+export function assignmentImpactText(i: AssignmentImpact): string {
+    const parts = [`将对班级 ${i.students} 名在读学生隐藏此任务`, `其中 ${i.studentsWithAttempts} 人已作答（共 ${i.attempts} 次作答，记录保留不删除）`];
+    if (i.openHelp > 0) parts.push(`${i.openHelp} 条求助尚未处理`);
+    if (i.extensions > 0) parts.push(`${i.extensions} 条个人延期随之失效`);
+    return parts.join("；") + "。撤回后不能恢复，需要时重新布置。";
+}
+
+/** 撤回原因与服务端一致：4 到 200 字，不含尖括号和换行。 */
+export function withdrawReasonProblem(reason: string): string {
+    const r = reason.trim();
+    if ([...r].length < 4) return "请填写撤回原因（至少 4 个字）";
+    if ([...r].length > 200) return "撤回原因不超过 200 字";
+    if (/[<>\r\n]/.test(r)) return "撤回原因不能包含尖括号或换行";
+    return "";
+}

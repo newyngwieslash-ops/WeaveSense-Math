@@ -105,6 +105,8 @@ function devRoutes() {
         { path: "/dev/previs-repro", element: fullScreenDeferred(<PrevisReproLab />), errorElement: <RouteErrorPage /> },
         // 学生作业页的浏览器 E2E 入口（scripts/edu-chrome-e2e.mjs）；身份由测试后端注入，生产构建不包含。
         { path: "/dev/edu-learn/:id", element: fullScreenDeferred(<EduStudentAssignment />), errorElement: <RouteErrorPage /> },
+        // 教师课堂页的浏览器 E2E 入口（DEV-112 影响确认）；身份由测试后端注入，生产构建不包含。
+        { path: "/dev/edu-teach", element: fullScreenDeferred(<EduTeacherClassroom />), errorElement: <RouteErrorPage /> },
     ];
 }
 
