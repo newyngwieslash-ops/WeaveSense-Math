@@ -1,0 +1,75 @@
+/**
+ * 机构管理（DEV-102）。概览只显示汇总数字，不显示学生身份；机构管理员查看自己不任课班级的
+ * 个体学生记录时必须说明业务目的，服务端逐次写审计并列入访问记录。地域约束（DEV-105）
+ * 与保留清理（DEV-106）尚未生效，界面如实显示。
+ */
+export type OrgClass = { id: string; name: string; workspaceId: string; courseId?: string; teachers: number; students: number; activeAssignments: number; youTeach: boolean };
+export type OrgOverview = {
+    tenantId: string;
+    staff: { teacher: number; reviewer: number; org_admin: number };
+    courses: number;
+    classes: OrgClass[];
+    students: { enrolled: number; guardianConsent: number; consentMissing: number };
+    policy: { reviewMode: string; consentMode: string; editReviewInherit: string; updatedAt?: string };
+    region: { state: string; blockedBy: string };
+    retention: { state: string; reference: string };
+};
+export type RoleRow = { binding: { id: string; userId: string; role: string; workspaceId?: string; status: string; expiresAt?: string }; effective: string };
+export type AccessRow = { id: string; action: string; actorId: string; subject: string; createdAt: string; detail?: string };
+
+export const ROLE_LABEL: Record<string, string> = { teacher: "教师", reviewer: "审核员", org_admin: "教育管理员" };
+export const REVIEW_MODE_LABEL: Record<string, string> = { self_allowed: "允许教师自审", second_reviewer: "必须由第二人审核" };
+export const CONSENT_LABEL: Record<string, string> = { guardian_required: "需要监护人同意", not_applicable: "不适用（须写明理由）" };
+export const INHERIT_LABEL: Record<string, string> = { none: "任何修改都重新审核", pronunciation_only: "只改读音时继承审核", presentation_only: "只改呈现时继承审核" };
+export const EFFECTIVE_LABEL: Record<string, string> = { active: "有效", expired: "已到期", revoked: "已撤销" };
+export const ACTION_LABEL: Record<string, string> = {
+    "org.individual_access": "查看个体学生记录",
+    "policy.set": "修改审核与同意策略",
+    "budget.set": "修改预算",
+    "class.teacher.add": "指派任课教师",
+    "class.create": "创建班级",
+    "class.roster.import": "导入名单",
+    "class.roster.reissue": "重发认领码",
+    "class.roster.revoke": "作废名单条目",
+    "class.enrollment.withdraw": "移出学生",
+    "ledger.export": "导出账本",
+    "role.bind": "授予角色",
+    "role.renew": "续期角色",
+    "role.revoke": "撤销角色",
+};
+
+export const PURPOSE_MIN = 4;
+export const PURPOSE_MAX = 200;
+
+/** 业务目的的本地检查，与服务端一致；返回空串表示可以提交。 */
+export function purposeProblem(p: string): string {
+    const t = p.trim();
+    const n = [...t].length;
+    if (n < PURPOSE_MIN) return `请写明查看目的（至少 ${PURPOSE_MIN} 个字），例如“家长投诉核查”`;
+    if (n > PURPOSE_MAX) return `查看目的不能超过 ${PURPOSE_MAX} 字`;
+    if (/[<>\r\n]/.test(t)) return "查看目的不能包含尖括号或换行";
+    return "";
+}
+
+export function consentLine(s: OrgOverview["students"]): string {
+    if (s.enrolled === 0) return "还没有学生加入班级";
+    return `在读学生 ${s.enrolled} 人，已登记监护人同意 ${s.guardianConsent} 人${s.consentMissing > 0 ? `，缺少同意 ${s.consentMissing} 人（缺少同意的学生不能开始学习）` : ""}`;
+}
+
+export function staffLine(s: OrgOverview["staff"]): string {
+    return `教师 ${s.teacher} 人，审核员 ${s.reviewer} 人，教育管理员 ${s.org_admin} 人`;
+}
+
+export function regionLine(r: OrgOverview["region"]): string {
+    return r.state === "not_configured" ? "供应商地域与出站约束尚未配置（待部署与供应商确认，见 DEV-105）；在此之前不要把真实学生数据接入外部模型。" : `供应商地域：${r.state}`;
+}
+
+export function retentionLine(r: OrgOverview["retention"]): string {
+    return r.state === "suggested_not_enforced" ? "数据保留期为建议值，尚未执行自动清理（待机构确认，见 09 第 3.3 节）。" : `数据保留：${r.state}`;
+}
+
+export function accessRowText(r: AccessRow): string {
+    const label = ACTION_LABEL[r.action] || r.action;
+    const purpose = r.action === "org.individual_access" && r.detail ? `；目的：${r.detail.split(" | ").slice(1).join(" | ")}` : "";
+    return `${label}（${r.actorId}，对象 ${r.subject}）${purpose}`;
+}

@@ -5,13 +5,15 @@ import { apiClient } from "./request";
  * 因此这里自行解包，保留机器可读的错误码，页面只按错误码分支。
  * 学生请求携带 X-Edu-Tenant，教师请求携带 X-Workspace-Id；权限全部由服务端判定。
  */
-export type EduScope = { tenant?: string; workspace?: string };
+/** purpose：机构管理员查看非任课班级的个体学生记录时说明的业务目的（DEV-102），服务端写审计。 */
+export type EduScope = { tenant?: string; workspace?: string; purpose?: string };
 export type EduResult<T> = { ok: true; status: number; data: T } | { ok: false; status: number; code: string; message: string; offline?: boolean; detail?: unknown };
 
 export async function edu<T>(method: "get" | "post" | "put" | "delete", path: string, scope: EduScope, body?: unknown): Promise<EduResult<T>> {
     const headers: Record<string, string> = {};
     if (scope.tenant) headers["X-Edu-Tenant"] = scope.tenant;
     if (scope.workspace) headers["X-Workspace-Id"] = scope.workspace;
+    if (scope.purpose) headers["X-Edu-Access-Purpose"] = encodeURIComponent(scope.purpose);
     try {
         const res = await apiClient.request({ method, url: `/edu${path}`, data: body, headers, validateStatus: () => true });
         const env = (res.data || {}) as { code?: number; data?: unknown; msg?: string };

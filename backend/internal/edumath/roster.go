@@ -206,6 +206,9 @@ func (h *API) rosterEntries(c *gin.Context) {
 		return
 	}
 	k, err := classForStaff(tx, a, c.Param("id"))
+	if err == nil {
+		err = h.individualAccess(c, tx, a, k.ID)
+	}
 	if err != nil {
 		h.fail(c, err)
 		return
@@ -224,6 +227,9 @@ func (h *API) rosterEntry(c *gin.Context) (Actor, *gorm.DB, model.EduRosterEntry
 	k, err := classForStaff(tx, a, c.Param("id"))
 	if err == nil && tx.First(&e, "id = ? AND tenant_id = ? AND class_id = ?", c.Param("eid"), a.TenantID, k.ID).Error != nil {
 		err = ErrNotFound
+	}
+	if err == nil {
+		err = h.individualAccess(c, tx, a, k.ID)
 	}
 	if err != nil {
 		h.fail(c, err)
