@@ -50,6 +50,7 @@ func (s *Service) Run(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	ledgerEvery, nextLedger := LedgerReconcileEvery(), time.Now().Add(time.Minute)
+	retentionEvery, nextRetention := RetentionEvery(), time.Now().Add(10*time.Minute)
 	for {
 		c, cancel := context.WithTimeout(ctx, every*10)
 		_, _ = s.SyncOnce(c, 50)
@@ -61,6 +62,14 @@ func (s *Service) Run(ctx context.Context, every time.Duration) {
 				slog.Info("edumath scheduled ledger reconcile", "tenants", n, "findings", found)
 			}
 			nextLedger = time.Now().Add(ledgerEvery)
+		}
+		if retentionEvery > 0 && time.Now().After(nextRetention) {
+			if n, err := s.RetentionAll(ctx); err != nil {
+				slog.Warn("edumath scheduled retention failed", "error", err)
+			} else {
+				slog.Info("edumath scheduled retention", "tenants", n)
+			}
+			nextRetention = time.Now().Add(retentionEvery)
 		}
 		select {
 		case <-ctx.Done():

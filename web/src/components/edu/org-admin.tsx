@@ -11,12 +11,18 @@ import {
     purposeProblem,
     PURPOSE_MAX,
     regionLine,
+    RETENTION_LABEL,
+    retentionImpact,
     retentionLine,
+    retentionProblem,
     REVIEW_MODE_LABEL,
     ROLE_LABEL,
     staffLine,
     type AccessRow,
     type OrgOverview,
+    type RetentionDays,
+    type RetentionSummary,
+    type RetentionView,
     type RoleRow,
 } from "@/components/edu/org-admin-logic";
 
@@ -38,6 +44,10 @@ export function OrgAdminPanel({ scope, onMsg }: { scope: EduScope; onMsg: (m: st
     const [policy, setPolicy] = useState({ reviewMode: "self_allowed", consentMode: "guardian_required", editReviewInherit: "none", reason: "" });
     const [look, setLook] = useState({ classId: "", purpose: "" });
     const [roster, setRoster] = useState<RosterRow[] | null>(null);
+    const [ret, setRet] = useState<RetentionView | null>(null);
+    const [retDays, setRetDays] = useState<RetentionDays | null>(null);
+    const [retReason, setRetReason] = useState("");
+    const [retDry, setRetDry] = useState<RetentionSummary | null>(null);
 
     const load = useCallback(async () => {
         if (!scope.workspace) return;
@@ -50,9 +60,14 @@ export function OrgAdminPanel({ scope, onMsg }: { scope: EduScope; onMsg: (m: st
         setDenied(false);
         setOv(r.data);
         setPolicy((p) => ({ ...p, reviewMode: r.data.policy.reviewMode, consentMode: r.data.policy.consentMode, editReviewInherit: r.data.policy.editReviewInherit }));
-        const [rr, lr] = await Promise.all([edu<RoleRow[]>("get", `/roles?tenantId=${encodeURIComponent(r.data.tenantId)}`, scope), edu<AccessRow[]>("get", "/org/access-log", scope)]);
+        const [rr, lr, rt] = await Promise.all([edu<RoleRow[]>("get", `/roles?tenantId=${encodeURIComponent(r.data.tenantId)}`, scope), edu<AccessRow[]>("get", "/org/access-log", scope), edu<RetentionView>("get", "/retention", scope)]);
         setRoles(rr.ok ? rr.data : []);
         setLog(lr.ok ? lr.data : []);
+        setRet(rt.ok ? rt.data : null);
+        if (rt.ok) {
+            const p = rt.data.policy;
+            setRetDays({ tempDays: p.tempDays, imageDays: p.imageDays, learningDays: p.learningDays, backupDays: p.backupDays });
+        }
     }, [scope]);
     useEffect(() => {
         void load();
@@ -71,6 +86,26 @@ export function OrgAdminPanel({ scope, onMsg }: { scope: EduScope; onMsg: (m: st
         if (!revokeReason.trim()) return onMsg("撤销角色前请填写撤销理由");
         const r = await edu("post", "/roles/revoke", scope, { tenantId: ov.tenantId, userId: row.binding.userId, role: row.binding.role, reason: revokeReason.trim() });
         onMsg(r.ok ? "已撤销，相关权限立即失效" : teacherError(r));
+        void load();
+    };
+    const confirmRetention = async () => {
+        if (!ret || !retDays) return;
+        const bad = retentionProblem(retDays, ret.bounds, retReason);
+        if (bad) return onMsg(bad);
+        const r = await edu("put", "/retention", scope, { ...retDays, reason: retReason.trim() });
+        onMsg(r.ok ? "保留期已确认并写入审计；此后按期自动清理" : teacherError(r));
+        setRetDry(null);
+        void load();
+    };
+    const runRetention = async (confirm: boolean) => {
+        const r = await edu<{ dryRun: boolean; summary: RetentionSummary }>("post", "/retention/run", scope, { confirm });
+        if (!r.ok) return onMsg(teacherError(r));
+        if (r.data.dryRun) {
+            setRetDry(r.data.summary);
+            return onMsg("已计算影响范围，确认无误后再执行清理");
+        }
+        setRetDry(null);
+        onMsg(`清理完成：${retentionImpact(r.data.summary)}`);
         void load();
     };
     const savePolicy = async () => {
@@ -210,6 +245,53 @@ export function OrgAdminPanel({ scope, onMsg }: { scope: EduScope; onMsg: (m: st
                     </button>
                 </div>
             </section>
+
+            {ret && retDays ? (
+                <section className={box} aria-labelledby="org-retention">
+                    <h2 id="org-retention" className="mb-2 font-medium">
+                        数据保留
+                    </h2>
+                    <p className="mb-2 text-sm text-stone-500">
+                        {ret.confirmed ? `已由 ${ret.policy.confirmedBy || "机构管理员"} 确认${ret.policy.reason ? `（${ret.policy.reason}）` : ""}，按期自动清理。` : "下列天数是建议值，机构确认前不会清理任何数据。"}
+                        账本、用量与审计记录单独保存，不在清理范围内；备份保留由部署方执行。
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {(Object.keys(RETENTION_LABEL) as (keyof RetentionDays)[]).map((k) => (
+                            <label key={k} className="flex items-center gap-2 text-sm">
+                                <span className="flex-1">{RETENTION_LABEL[k]}</span>
+                                <input
+                                    className={`${input} w-20`}
+                                    type="number"
+                                    min={ret.bounds[k][0]}
+                                    max={ret.bounds[k][1]}
+                                    aria-label={`${RETENTION_LABEL[k]}保留天数`}
+                                    value={retDays[k]}
+                                    onChange={(e) => setRetDays({ ...retDays, [k]: Number(e.target.value) })}
+                                />
+                                天
+                            </label>
+                        ))}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <input className={`${input} flex-1`} aria-label="保留期确认理由" placeholder="确认理由或依据（写入审计）" value={retReason} onChange={(e) => setRetReason(e.target.value)} />
+                        <button className={btn} onClick={() => void confirmRetention()}>
+                            确认保留期
+                        </button>
+                    </div>
+                    <p className="mt-2 text-sm">当前影响：{retentionImpact(retDry || ret.preview)}</p>
+                    {ret.policy.lastRunAt ? <p className="text-sm text-stone-500">最近清理 {new Date(ret.policy.lastRunAt).toLocaleString()}</p> : null}
+                    {ret.confirmed ? (
+                        <div className="mt-2 flex gap-2">
+                            <button className={ghost} onClick={() => void runRetention(false)}>
+                                预览清理
+                            </button>
+                            <button className={ghost} disabled={!retDry} onClick={() => void runRetention(true)}>
+                                执行清理
+                            </button>
+                        </div>
+                    ) : null}
+                </section>
+            ) : null}
 
             <section className={box} aria-labelledby="org-individual">
                 <h2 id="org-individual" className="mb-2 font-medium">

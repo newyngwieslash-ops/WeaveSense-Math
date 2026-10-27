@@ -509,7 +509,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).
@@ -918,3 +918,23 @@ type EduManualInput struct {
 }
 
 func (EduManualInput) TableName() string { return "edu_manual_inputs" }
+
+// EduRetentionPolicy holds a tenant's retention periods (DEV-106). Until an org admin confirms them
+// (State confirmed) they are suggested defaults and nothing is cleaned up. Ledger and audit records
+// are outside this policy and kept on their own legal and accounting basis.
+type EduRetentionPolicy struct {
+	TenantID       string     `json:"tenantId" gorm:"primaryKey;size:40"`
+	TempDays       int        `json:"tempDays" gorm:"not null"`
+	ImageDays      int        `json:"imageDays" gorm:"not null"`
+	LearningDays   int        `json:"learningDays" gorm:"not null"`
+	BackupDays     int        `json:"backupDays" gorm:"not null"`
+	State          string     `json:"state" gorm:"size:16;not null"` // confirmed
+	Reason         string     `json:"reason" gorm:"size:200"`
+	ConfirmedBy    string     `json:"confirmedBy" gorm:"size:40"`
+	ConfirmedAt    *time.Time `json:"confirmedAt,omitempty"`
+	LastRunAt      *time.Time `json:"lastRunAt,omitempty"`
+	LastRunSummary string     `json:"lastRunSummary,omitempty" gorm:"size:500"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+}
+
+func (EduRetentionPolicy) TableName() string { return "edu_retention_policies" }

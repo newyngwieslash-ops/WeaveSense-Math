@@ -28,6 +28,7 @@ const BY_CODE: Record<string, [string, string]> = {
     ASSIGNMENT_CLOSED: ["任务已截止", "需要时为学生设置延期"],
     ANSWER_NOT_RELEASED: ["答案尚未开放", "按任务的答案策略开放后再查看"],
     PERSONAL_INFO: ["公开回复中疑似包含学生个人信息", "删去个人信息后再发"],
+    RETENTION_NOT_CONFIRMED: ["数据保留期还是建议值，机构确认前不会清理任何数据", "在机构管理的数据保留一节核对各项天数，写明理由后确认"],
     ACCESS_PURPOSE_REQUIRED: ["查看非任课班级的个体学生记录需要说明业务目的", "填写 4 到 200 字的目的后再查看；每次查看都会记入访问记录"],
     FORBIDDEN: ["你没有这个操作的权限，或不在该工作区", "确认工作区与角色；需要时联系机构管理员"],
     NOT_FOUND: ["内容不存在、已撤回，或不在你的工作区", "返回列表刷新后重新选择"],

@@ -12,7 +12,7 @@ export type OrgOverview = {
     students: { enrolled: number; guardianConsent: number; consentMissing: number };
     policy: { reviewMode: string; consentMode: string; editReviewInherit: string; updatedAt?: string };
     region: { state: string; blockedBy: string };
-    retention: { state: string; reference: string };
+    retention: { state: string; reference: string; learningDays?: number; tempDays?: number; lastRunAt?: string };
 };
 export type RoleRow = { binding: { id: string; userId: string; role: string; workspaceId?: string; status: string; expiresAt?: string }; effective: string };
 export type AccessRow = { id: string; action: string; actorId: string; subject: string; createdAt: string; detail?: string };
@@ -38,6 +38,8 @@ export const ACTION_LABEL: Record<string, string> = {
     "role.revoke": "撤销角色",
     "export.content": "导出讲解",
     "export.report": "导出学习报告",
+    "retention.set": "确认数据保留期",
+    "retention.run": "执行数据保留清理",
 };
 
 export const PURPOSE_MIN = 4;
@@ -67,11 +69,76 @@ export function regionLine(r: OrgOverview["region"]): string {
 }
 
 export function retentionLine(r: OrgOverview["retention"]): string {
-    return r.state === "suggested_not_enforced" ? "数据保留期为建议值，尚未执行自动清理（待机构确认，见 09 第 3.3 节）。" : `数据保留：${r.state}`;
+    if (r.state === "suggested_not_enforced") return "数据保留期为建议值，尚未执行自动清理（待机构确认，见 09 第 3.3 节）。";
+    if (r.state === "confirmed") return `数据保留期已由机构确认：学习记录在学生离开班级 ${r.learningDays} 天后清理，临时文件保留 ${r.tempDays} 天；${r.lastRunAt ? `最近清理 ${new Date(r.lastRunAt).toLocaleString()}` : "尚未执行清理"}。`;
+    return `数据保留：${r.state}`;
 }
 
 export function accessRowText(r: AccessRow): string {
     const label = ACTION_LABEL[r.action] || r.action;
-    const purpose = r.action === "org.individual_access" && r.detail ? `；目的：${r.detail.split(" | ").slice(1).join(" | ")}` : "";
+    const purpose = r.action === "org.individual_access" && r.detail ? `；目的：${r.detail.split(" | ").slice(1).join(" | ")}` : r.action.startsWith("retention.") && r.detail ? `；${retentionDetail(r.detail)}` : "";
     return `${label}（${r.actorId}，对象 ${r.subject}）${purpose}`;
+}
+
+/** DEV-106 retention: suggested periods, bounds and the impact of a cleanup run. */
+export type RetentionDays = { tempDays: number; imageDays: number; learningDays: number; backupDays: number };
+export type RetentionSummary = { enrollments: number; learningRows: Record<string, number>; rosterEntries: number; artifacts: number };
+export type RetentionView = {
+    policy: RetentionDays & { state: string; reason?: string; confirmedBy?: string; confirmedAt?: string; lastRunAt?: string; lastRunSummary?: string };
+    confirmed: boolean;
+    defaults: RetentionDays;
+    bounds: Record<keyof RetentionDays, [number, number]>;
+    preview: RetentionSummary;
+    keptSeparately: string[];
+};
+
+export const RETENTION_LABEL: Record<keyof RetentionDays, string> = {
+    tempDays: "临时文件（失败或取消任务的产物）",
+    imageDays: "学生图片作答",
+    learningDays: "学生离开班级后的学习记录",
+    backupDays: "备份",
+};
+
+const RETENTION_TABLE: Record<string, string> = {
+    edu_attempts: "作答",
+    edu_hint_unlocks: "提示解锁",
+    edu_self_tests: "自测",
+    edu_review_items: "复习项",
+    edu_help_requests: "求助",
+    edu_predictions: "预测",
+    edu_figure_interactions: "图形操作",
+    edu_regrades: "重判",
+    edu_assignment_extensions: "延期",
+};
+
+/** Mirrors the server bounds; returns "" when every period is inside them. */
+export function retentionProblem(d: RetentionDays, bounds: RetentionView["bounds"], reason: string): string {
+    for (const k of Object.keys(RETENTION_LABEL) as (keyof RetentionDays)[]) {
+        const [lo, hi] = bounds[k];
+        if (!Number.isInteger(d[k]) || d[k] < lo || d[k] > hi) return `${RETENTION_LABEL[k]}的保留期须为 ${lo} 到 ${hi} 天`;
+    }
+    const r = reason.trim();
+    if ([...r].length < 4 || [...r].length > 200) return "确认保留期须写明 4 到 200 字的理由或依据";
+    if (/[<>\n\r]/.test(r)) return "理由中不能包含尖括号或换行";
+    return "";
+}
+
+export function retentionImpact(s: RetentionSummary): string {
+    const rows = Object.entries(s.learningRows || {})
+        .filter(([, n]) => n > 0)
+        .map(([t, n]) => `${RETENTION_TABLE[t] || t} ${n} 条`);
+    if (s.enrollments === 0 && s.artifacts === 0 && rows.length === 0) return "按当前保留期，现在没有需要清理的数据。";
+    const parts = [`涉及已离开班级 ${s.enrollments} 人次`];
+    if (rows.length) parts.push(`学习记录：${rows.join("，")}`);
+    if (s.rosterEntries) parts.push(`名单认领 ${s.rosterEntries} 条`);
+    if (s.artifacts) parts.push(`临时文件 ${s.artifacts} 个`);
+    return `${parts.join("；")}。账本、用量与审计记录不在清理范围内。`;
+}
+
+function retentionDetail(d: string): string {
+    const m = /^enrollments=(\d+) learning_rows=(\d+) roster_entries=(\d+) artifacts=(\d+)$/.exec(d);
+    if (m) return `离开班级 ${m[1]} 人次，学习记录 ${m[2]} 条，名单认领 ${m[3]} 条，临时文件 ${m[4]} 个`;
+    const p = /^temp=(\d+) image=(\d+) learning=(\d+) backup=(\d+) \| (.*)$/.exec(d);
+    if (p) return `临时 ${p[1]} 天，图片 ${p[2]} 天，学习记录 ${p[3]} 天，备份 ${p[4]} 天；理由：${p[5]}`;
+    return d;
 }

@@ -28,8 +28,8 @@ var ErrPurposeRequired = &AppError{Status: http.StatusForbidden, Code: "ACCESS_P
 // governance actions shown in the access log; detail is shown only where it holds no student data.
 var orgLogActions = []string{"org.individual_access", "policy.set", "budget.set", "class.teacher.add", "class.create",
 	"class.roster.import", "class.roster.reissue", "class.roster.revoke", "class.enrollment.withdraw", "ledger.export",
-	"role.bind", "role.renew", "role.revoke", "export.content", "export.report"}
-var orgLogDetail = map[string]bool{"org.individual_access": true, "policy.set": true}
+	"role.bind", "role.renew", "role.revoke", "export.content", "export.report", "retention.set", "retention.run"}
+var orgLogDetail = map[string]bool{"org.individual_access": true, "policy.set": true, "retention.set": true, "retention.run": true}
 
 func (h *API) registerOrg(g *gin.RouterGroup) {
 	g.GET("/org/overview", h.orgOverview)
@@ -116,7 +116,7 @@ func (h *API) orgOverview(c *gin.Context) {
 		"students":   gin.H{"enrolled": enrolled, "guardianConsent": consented, "consentMissing": enrolled - consented},
 		"policy":     gin.H{"reviewMode": p.ReviewMode, "consentMode": p.ConsentMode, "editReviewInherit": p.EditReviewInherit, "updatedAt": p.UpdatedAt},
 		"region":     gin.H{"state": "not_configured", "blockedBy": "DEV-105"},
-		"retention":  gin.H{"state": "suggested_not_enforced", "reference": "09 3.3"},
+		"retention":  retentionOverview(tx, a.TenantID),
 		"individual": gin.H{"requiresPurpose": true, "header": accessPurposeHeader},
 	}, "ok")
 }
@@ -137,4 +137,13 @@ func (h *API) orgAccessLog(c *gin.Context) {
 		out = append(out, row)
 	}
 	reply(c, 200, out, "ok")
+}
+
+// retentionOverview reports whether the retention periods are confirmed and applied (DEV-106).
+func retentionOverview(tx *gorm.DB, tenant string) gin.H {
+	p, ok := retentionPolicy(tx, tenant)
+	if !ok {
+		return gin.H{"state": "suggested_not_enforced", "reference": "09 3.3"}
+	}
+	return gin.H{"state": "confirmed", "reference": "09 3.3", "learningDays": p.LearningDays, "tempDays": p.TempDays, "lastRunAt": p.LastRunAt}
 }

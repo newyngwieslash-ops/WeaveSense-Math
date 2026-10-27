@@ -116,7 +116,12 @@ test("fallback snapshots obey the configured minimum refresh interval", async ()
     await sleep(120);
     sync.dispose();
     expect(times).toHaveLength(2);
-    expect(times[1] - times[0]).toBeGreaterThanOrEqual(100);
+    // The scheduler stamps lastRefresh just before it calls refresh, and the
+    // stamp here is read inside refresh, so the first stamp can land on the
+    // next millisecond. The scheduler guarantees >= 100 ms between its own
+    // stamps; measured from inside refresh that is >= 99 ms (CI saw 99).
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(99);
+    expect(times[1] - times[0]).toBeLessThan(200);
 });
 
 test("a full invalidation and undo still refresh after delta support was detected", async () => {
