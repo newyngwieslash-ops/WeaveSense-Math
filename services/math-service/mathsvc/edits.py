@@ -82,7 +82,7 @@ def impact(edits):
         raise MathError("INPUT_AMBIGUOUS", "edits must be a list of 1..%d items" % MAX_EDITS)
     classes = sorted({classify(e) for e in edits})
     inval = sorted({x for c in classes for x in IMPACT[c]})
-    regen = ["apply_edits", "project_student", "render_preview"]  # the student projection and previews always follow the new hash
+    regen = ["apply_edits", "project_student", "render_preview", "check_render"]  # the student projection and previews always follow the new hash
     return {"classes": classes, "invalidates": inval, "keeps": ["problem", "solution", "verification", "figure", "check_question"],
             "regenerates": regen, "manual_check": "reasoning" in classes}
 

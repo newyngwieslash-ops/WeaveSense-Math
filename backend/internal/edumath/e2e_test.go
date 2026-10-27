@@ -268,6 +268,14 @@ func runG1(t *testing.T, h *harness) {
 	if lesson["state"] != "ready_for_review" {
 		t.Fatalf("lesson state: %v", lesson)
 	}
+	// DEV-082: the previews were rebuilt in a clean isolated stage and checked; presentation only.
+	rc, _ := data(out)["renderCheck"].(map[string]any)
+	if rc == nil || rc["state"] != "passed" || rc["mathVerification"] != false || rc["scope"] != "presentation" || lesson["renderCheckState"] != "passed" || lesson["renderCheckArtifactId"] == "" {
+		t.Fatalf("render check: %v %v", rc, lesson["renderCheckState"])
+	}
+	if b, _ := json.Marshal(rc); strings.Contains(string(b), "√22") {
+		t.Fatal("render check summary must not carry lesson text")
+	}
 
 	// Review/publish binding (constraint 3).
 	if code, _, _, _ := h.call("u_alice", "POST", "/api/edu/lesson-revisions/"+lessonID+"/publish", map[string]any{"lessonHash": hash}); code != 409 {
@@ -427,8 +435,8 @@ func runG1(t *testing.T, h *harness) {
 		}
 		sum += r.CostMicro
 	}
-	if len(runs) != 6 {
-		t.Fatalf("expected 6 stage runs (3 analyze + 3 lesson), got %d", len(runs))
+	if len(runs) != 7 {
+		t.Fatalf("expected 7 stage runs (3 analyze + 4 lesson), got %d", len(runs))
 	}
 	var acct model.CreditAccount
 	h.db.First(&acct, "user_id = ?", "u_alice")
@@ -437,7 +445,7 @@ func runG1(t *testing.T, h *harness) {
 	}
 	var usage int64
 	h.db.Model(&model.FlowUsageRecord{}).Where("usage_type = ?", flow.UsageMathComputeMS).Count(&usage)
-	if usage != 6 {
+	if usage != 7 {
 		t.Fatalf("usage lines = %d", usage)
 	}
 	// Re-syncing terminal jobs never charges again.

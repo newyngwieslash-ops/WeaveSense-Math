@@ -77,16 +77,16 @@ func (s *Service) CostReport(tx *gorm.DB, tenantID, period string) (CostReport, 
 		r.TotalMicro += cost
 	}
 	// Compute that produced delivered results, excluding the render stage.
-	c, q, err := stageSum("j.status = 'succeeded' AND r.stage <> 'render_preview'")
+	c, q, err := stageSum("j.status = 'succeeded' AND r.stage NOT IN ('render_preview', 'check_render')")
 	if err != nil {
 		return r, err
 	}
 	add("compute_succeeded", "edu_stage_runs", "compute_ms", c, q, true)
-	c, q, err = stageSum("j.status = 'succeeded' AND r.stage = 'render_preview'")
+	c, q, err = stageSum("j.status = 'succeeded' AND r.stage IN ('render_preview', 'check_render')")
 	if err != nil {
 		return r, err
 	}
-	add("render", "edu_stage_runs(render_preview)", "compute_ms", c, q, true)
+	add("render", "edu_stage_runs(render_preview,check_render)", "compute_ms", c, q, true)
 	// Failed, cancelled and retried work is a delivery cost too.
 	c, q, err = stageSum("j.status IN ('failed', 'cancelled')")
 	if err != nil {

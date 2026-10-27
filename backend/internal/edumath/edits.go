@@ -39,7 +39,7 @@ import (
 
 const (
 	maxLessonEdits   = 50
-	editStageMaxMS   = 10000 + 5000 + 30000 // apply_edits + project_student + render_preview timeouts
+	editStageMaxMS   = 10000 + 5000 + 30000 + 30000 // apply_edits + project_student + render_preview + check_render timeouts
 	inheritNone      = "none"
 	inheritPronounce = "pronunciation_only"
 	inheritPresent   = "presentation_only" // pronunciation and/or layout edits
@@ -115,7 +115,7 @@ func ImpactOf(edits []lessonEditInput) (EditImpact, error) {
 		}
 	}
 	out := EditImpact{Keeps: []string{"problem", "solution", "verification", "figure", "check_question"},
-		Regenerates: []string{"apply_edits", "project_student", "render_preview"}, ManualCheck: cls["reasoning"]}
+		Regenerates: []string{"apply_edits", "project_student", "render_preview", "check_render"}, ManualCheck: cls["reasoning"]}
 	for c := range cls {
 		out.Classes = append(out.Classes, c)
 	}
@@ -329,7 +329,7 @@ func (s *Service) editPayload(tx *gorm.DB, job model.EduMathJob, payload map[str
 }
 
 // materializeEdit creates the child revision; approval is inherited only under the explicit institution rule.
-func (s *Service) materializeEdit(tx *gorm.DB, job model.EduMathJob, arts map[string]model.EduArtifact) error {
+func (s *Service) materializeEdit(ctx context.Context, tx *gorm.DB, job model.EduMathJob, arts map[string]model.EduArtifact) error {
 	var n int64
 	tx.Model(&model.EduLessonRevision{}).Where("job_id = ?", job.ID).Count(&n)
 	if n > 0 {
@@ -338,6 +338,10 @@ func (s *Service) materializeEdit(tx *gorm.DB, job model.EduMathJob, arts map[st
 	la := arts["lesson"]
 	if la.ID == "" || arts["lesson_student"].ID == "" || arts["preview_html"].ID == "" || arts["preview_html_student"].ID == "" {
 		return fmt.Errorf("%w: missing edited lesson artifacts", ErrContract)
+	}
+	rc, rcState, rcBlocking, err := s.renderCheckOf(ctx, job, arts)
+	if err != nil {
+		return err
 	}
 	var base model.EduLessonRevision
 	ed, err := s.editOf(tx, job)
@@ -351,9 +355,14 @@ func (s *Service) materializeEdit(tx *gorm.DB, job model.EduMathJob, arts map[st
 	child := model.EduLessonRevision{ID: flow.NewID("elr_"), TenantID: job.TenantID, ProblemRevisionID: base.ProblemRevisionID,
 		SolutionRevisionID: base.SolutionRevisionID, JobID: job.ID, LessonArtifact: la.ID, LessonHash: la.SHA256, StudentArtifact: arts["lesson_student"].ID,
 		PreviewArtifact: arts["preview_html"].ID, StudentPreview: arts["preview_html_student"].ID, State: "ready_for_review", CreatedBy: job.CreatedBy,
-		CreatedAt: s.now(), ParentLessonRevisionID: base.ID, EditClasses: ed.Classes}
+		CreatedAt: s.now(), ParentLessonRevisionID: base.ID, EditClasses: ed.Classes,
+		RenderCheckArtifact: arts["render_check"].ID, RenderCheckState: rcState, RenderCheck: rc}
+	if len(rcBlocking) > 0 {
+		// a known presentation fault is never published, not even by an inherited approval
+		child.State, child.BlockingErrors = "rejected", mergeBlocking("", rcBlocking)
+	}
 	var parentRec model.EduReviewRecord
-	inherit := inheritsApproval(s.EditReviewRule(tx, job.TenantID), classes, base.State) &&
+	inherit := len(rcBlocking) == 0 && inheritsApproval(s.EditReviewRule(tx, job.TenantID), classes, base.State) &&
 		tx.Where("lesson_revision_id = ? AND lesson_hash = ? AND decision = ?", base.ID, base.LessonHash, "approved").Order("created_at desc").First(&parentRec).Error == nil
 	if inherit {
 		child.State, child.ApprovalInheritedFrom = "approved", base.ID

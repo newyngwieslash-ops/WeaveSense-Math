@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import { edu, type EduScope } from "@/services/api/edu";
 
+import { RenderCheckPanel } from "./render-check-panel";
+import type { RenderCheck } from "./render-check-logic";
 import { canApprove, canReject, ITEM_LABEL, parseFindings, REVIEW_ITEMS, targetLabel, VERDICT_LABEL, WHOLE_TARGETS, type Checklist, type Finding, type ReviewItem, type Verdict } from "./review-checklist-logic";
 
 /**
@@ -19,6 +21,7 @@ export function ReviewChecklist({ scope, lesson, onDone }: { scope: EduScope; le
     const [beats, setBeats] = useState<{ id: string; title: string }[]>([]);
     const [hints, setHints] = useState<number[]>([]);
     const [reviews, setReviews] = useState<ReviewRecord[]>([]);
+    const [renderCheck, setRenderCheck] = useState<RenderCheck | null | undefined>(undefined);
     const [checklist, setChecklist] = useState<Checklist>({});
     const [findings, setFindings] = useState<Finding[]>([]);
     const [draft, setDraft] = useState<Finding>({ target: "lesson", item: "method", note: "" });
@@ -31,7 +34,11 @@ export function ReviewChecklist({ scope, lesson, onDone }: { scope: EduScope; le
             setBeats(r.data.beats || []);
             setHints((r.data.hints || []).map((h) => h.level));
         });
-        void edu<{ reviews: ReviewRecord[] }>("get", `/lesson-revisions/${lesson.id}`, scope).then((r) => r.ok && setReviews(r.data.reviews || []));
+        void edu<{ reviews: ReviewRecord[]; renderCheck?: RenderCheck | null }>("get", `/lesson-revisions/${lesson.id}`, scope).then((r) => {
+            if (!r.ok) return;
+            setReviews(r.data.reviews || []);
+            setRenderCheck(r.data.renderCheck ?? null);
+        });
     }, [lesson.id, scope]);
 
     const submit = async (decision: "approved" | "rejected") => {
@@ -45,6 +52,7 @@ export function ReviewChecklist({ scope, lesson, onDone }: { scope: EduScope; le
 
     return (
         <div className="mt-2 space-y-2 text-sm">
+            {renderCheck !== undefined ? <RenderCheckPanel check={renderCheck} /> : null}
             {past.map((r) => (
                 <div key={r.id} className="rounded-md border border-amber-300 p-2 dark:border-amber-700">
                     <p className="font-medium">
