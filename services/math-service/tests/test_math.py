@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import html as _html
 import unittest
 
 import sympy as sp
@@ -99,6 +100,30 @@ class FamilyTests(unittest.TestCase):
             with self.assertRaises(MathError) as cm:
                 L.compose(F.FAMILY_ID, n, s, r, cq, {}, bad)
             self.assertEqual(cm.exception.code, "INPUT_AMBIGUOUS", bad)
+
+    def test_provenance_in_every_format(self):
+        """DEV-101: the student JSON and both preview pages carry the same
+        provenance, explicitly (visible text) and implicitly (a meta tag); a
+        teacher edit adds to it and nothing in the lesson removes it."""
+        import json as _json
+        import re as _re
+        from mathsvc import render as R
+        n = F.normalize(P("2", "1"))
+        s = F.solve(n)
+        les = L.compose(F.FAMILY_ID, n, s, F.verify(n, s), F.check_question(n), {})
+        stu = L.student_projection(les, "none")
+        want = {"ai_generated": False, "generator": "deterministic-template", "teacher_edited": False,
+                "label": "由程序按题族模板自动生成，未使用生成式人工智能"}
+        self.assertEqual(stu["meta"]["provenance"], want)
+        for page in (R.page(les, "teacher"), R.page(stu, "student")):
+            self.assertIn('<p class="prov" data-provenance>' + want["label"] + "</p>", page)
+            m = _re.search(r'<meta name="content-provenance" content="([^"]*)">', page)
+            self.assertEqual(_json.loads(_html.unescape(m.group(1))), want)
+        edited = dict(les, meta=dict(les["meta"], edit_log=[{"class": "wording"}]))
+        self.assertEqual(L.provenance(edited["meta"])["label"], want["label"] + "；含老师修改")
+        self.assertEqual(L.provenance({"generator": "teacher-manual"})["label"], "老师人工编写，未使用生成式人工智能")
+        self.assertEqual(L.provenance({"ai_generated": True, "generator": "x"})["label"], "含人工智能生成内容")
+        self.assertEqual(L.provenance({})["label"], "生成方式未记录")
 
     def test_guard_catches_leak(self):
         with self.assertRaises(MathError):

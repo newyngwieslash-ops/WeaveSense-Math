@@ -7,9 +7,12 @@ Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 
 """
 
 import html
+import json
 import math
 
-RENDERER_VERSION = "preview-svg/1.1.0"
+from .lesson import provenance
+
+RENDERER_VERSION = "preview-svg/1.2.0"
 VIEWS = [(35, 20), (75, 20), (130, 25)]
 
 
@@ -81,7 +84,7 @@ main{max-width:980px;margin:0 auto;padding:24px}header{display:flex;justify-cont
 @media(max-width:720px){.grid{grid-template-columns:1fr}}section{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:16px}
 .views input{display:none}.views svg{display:none;width:100%;height:auto}.views label{display:inline-block;margin:0 6px 8px 0;padding:4px 10px;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer}
 #v0:checked~.f0,#v1:checked~.f1,#v2:checked~.f2{display:block}.beat h3{margin:0 0 6px;font-size:16px}.beat p{margin:4px 0;line-height:1.7}
-.locked{color:#6b7280}.answer{font-weight:600;background:#ecfdf5;padding:8px;border-radius:6px}"""
+.prov{margin:4px 0 0;font-size:12px;color:#475569}.locked{color:#6b7280}.answer{font-weight:600;background:#ecfdf5;padding:8px;border-radius:6px}"""
 
 
 def page(lesson, audience):
@@ -119,6 +122,7 @@ def _page(lesson, audience, views):
     badge = "教师预览（静音）" if audience == "teacher" else "学生视图（静音）"
     if lesson["meta"].get("verification") == "manual_unverified":
         badge += " · 教师人工编写，未经自动数学验证"
+    prov = lesson["meta"].get("provenance") or provenance(lesson["meta"])
     lay = lesson["meta"].get("layout") or {}
     css = CSS
     if lay.get("font_scale") == "large":
@@ -127,9 +131,11 @@ def _page(lesson, audience, views):
         css += ".grid{grid-template-columns:minmax(0,1fr)}"
     return ("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
             "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\">"
-            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>%s</title><style>%s</style></head><body><main>"
-            "<header><h1>%s</h1><span class=\"badge\">%s</span></header>"
+            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            "<meta name=\"content-provenance\" content=\"%s\"><title>%s</title><style>%s</style></head><body><main>"
+            "<header><h1>%s</h1><span class=\"badge\">%s</span><p class=\"prov\" data-provenance>%s</p></header>"
             "<section><p>%s</p></section><div class=\"grid\"><section>%s</section><section>%s%s</section></div>"
             "<section><h2>分级提示</h2><ol>%s</ol></section><footer><small>renderer %s · 无配音 · 无外部资源</small></footer></main></body></html>") % (
-        esc(lesson["meta"]["title"]), css, esc(lesson["meta"]["title"]), badge, esc(lesson["problem"]["text"]),
+        esc(json.dumps(prov, ensure_ascii=False, sort_keys=True)), esc(lesson["meta"]["title"]), css, esc(lesson["meta"]["title"]), badge,
+        esc(prov["label"]), esc(lesson["problem"]["text"]),
         "".join(views), "".join(beats), ans, hints, RENDERER_VERSION)

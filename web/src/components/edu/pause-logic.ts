@@ -26,7 +26,7 @@ export const TARGET_HINT: Record<PauseScope, string> = {
     generation: "无需填写",
     family: "题族编号，例如 SOLID-ANGLE-02",
     publication: "发布版编号",
-    renderer: "渲染服务版本，例如 preview-svg/1.1.0",
+    renderer: "渲染服务版本，例如 preview-svg/1.2.0",
 };
 
 /** 返回校验错误；空字符串表示可以预览。 */

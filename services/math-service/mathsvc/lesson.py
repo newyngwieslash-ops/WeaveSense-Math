@@ -137,6 +137,25 @@ def visible_text(page_html):
     return _html.unescape(s)
 
 
+PROVENANCE_LABEL = {
+    "deterministic-template": "由程序按题族模板自动生成，未使用生成式人工智能",
+    "teacher-manual": "老师人工编写，未使用生成式人工智能",
+}
+
+
+def provenance(meta):
+    """DEV-101: how the content was produced. It is derived from the lesson's own
+    metadata (never from an edit), so review and teacher edits cannot remove it;
+    every format (student JSON, preview HTML, export) carries the same object."""
+    ai = bool(meta.get("ai_generated"))
+    gen = str(meta.get("generator") or "unknown")
+    edited = bool(meta.get("edit_log"))
+    label = "含人工智能生成内容" if ai else PROVENANCE_LABEL.get(gen, "生成方式未记录")
+    if edited:
+        label += "；含老师修改"
+    return {"ai_generated": ai, "generator": gen, "teacher_edited": edited, "label": label}
+
+
 def student_projection(lesson, reveal="none"):
     """Server-side projection for students (PRD constraint 2). reveal=none keeps
     only the problem, the unlabeled figure, and ungated hints; nothing that
@@ -147,7 +166,8 @@ def student_projection(lesson, reveal="none"):
         "schema_version": SCHEMA, "projection": "student", "reveal": reveal,
         "meta": dict({k: lesson["meta"][k] for k in ("family_id", "title", "language", "style")},
                      **({"layout": lesson["meta"]["layout"]} if lesson["meta"].get("layout") else {}),
-                     **({"verification": lesson["meta"]["verification"]} if lesson["meta"].get("verification") else {})),
+                     **({"verification": lesson["meta"]["verification"]} if lesson["meta"].get("verification") else {}),
+                     provenance=provenance(lesson["meta"])),
         "problem": lesson["problem"], "figure": lesson["figure"],
         "hints": [{"level": h["level"], "kind": h["kind"], "text": h["text"]} for h in lesson["hints"] if not h.get("gated")],
         "gated_hint_levels": [h["level"] for h in lesson["hints"] if h.get("gated")],

@@ -140,6 +140,7 @@ func (h *API) exportPublication(c *gin.Context) {
 		"problemRevisionId": pr.ID, "problemRevision": pr.Revision, "problemInputHash": pr.InputHash,
 		"solutionRevisionId": sol.ID, "solutionHash": sol.SolutionHash, "mathState": sol.MathState, "evidenceLevels": sol.EvidenceLevels,
 		"verification": verification, "audience": audience, "exportedAt": h.Svc.now().UTC(),
+		"provenance": provenanceOf(teacherRaw),
 	}
 	title := p.Title
 	if title == "" {
@@ -186,9 +187,12 @@ func esc(v any) string {
 	}
 }
 
-func htmlHead(title string) *strings.Builder {
+func htmlHead(title string, extra ...string) *strings.Builder {
 	b := &strings.Builder{}
 	b.WriteString(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">`)
+	for _, x := range extra {
+		b.WriteString(x)
+	}
 	b.WriteString(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`)
 	b.WriteString("<title>" + esc(title) + "</title><style>" + exportCSS + "</style></head><body>")
 	return b
@@ -223,12 +227,14 @@ func strList(v any) []string {
 var verificationLabel = map[string]string{ManualUnverified: "老师人工编写，未经自动数学验证"}
 
 func renderContentHTML(title, audience string, man gin.H, rights gin.H, content map[string]any, omitted []exportField) string {
-	b := htmlHead(title)
+	prov, _ := man["provenance"].(Provenance)
+	b := htmlHead(title, provenanceMeta(prov))
 	label := "学生版"
 	if audience == "teacher" {
 		label = "教师版（含答案与完整讲解，不要直接发给学生）"
 	}
 	b.WriteString("<h1>" + esc(title) + "</h1><p class=\"note\">" + esc(label) + "</p>")
+	b.WriteString("<p class=\"note\" data-provenance>" + esc(prov.Label) + "</p>")
 	if v, _ := man["verification"].(string); v != "" {
 		if t := verificationLabel[v]; t != "" {
 			b.WriteString("<p><strong>" + esc(t) + "</strong></p>")

@@ -468,7 +468,7 @@ func (h *API) getEditable(c *gin.Context) {
 	}
 	teaching := gin.H{"goal": doc.Meta.Goal, "style": doc.Meta.Style, "targetMinutes": doc.Meta.TargetMinutes}
 	reply(c, 200, gin.H{"lessonRevisionId": l.ID, "lessonHash": l.LessonHash, "state": l.State, "parentLessonRevisionId": l.ParentLessonRevisionID,
-		"teaching": teaching, "duration": lessonDuration(says, lines, doc.Meta.Style, doc.Meta.TargetMinutes), "figure": doc.Figure.Explore,
+		"teaching": teaching, "duration": lessonDuration(says, lines, doc.Meta.Style, doc.Meta.TargetMinutes), "figure": doc.Figure.Explore, "provenance": provenanceOf(raw),
 		"beats": doc.Beats, "hints": doc.Hints, "pronunciations": doc.Pronunciations, "quality": doc.Quality, "editLog": doc.Meta.EditLog, "layout": doc.Meta.Layout,
 		"editReviewInherit": h.Svc.EditReviewRule(tx, a.TenantID), "latestRevisionId": h.Svc.latestHead(tx, l.ID),
 		"limits": gin.H{"maxEdits": maxLessonEdits, "maxText": 600, "maxBoardLines": 12, "maxLine": 200}}, "ok")

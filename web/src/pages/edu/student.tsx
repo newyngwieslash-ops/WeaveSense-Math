@@ -7,6 +7,7 @@ import { SetSelfTest } from "@/components/edu/set-self-test";
 import { isManualLesson, MANUAL_NOTICE_STUDENT } from "@/components/edu/manual-lesson-logic";
 import { StepViewer } from "@/components/edu/step-viewer";
 import { revisionBadge, revisionNotice, type StudentRevision } from "@/components/edu/student-revision-logic";
+import { provenanceText, type Provenance } from "@/components/edu/provenance-logic";
 import { clearOtherUsers, enqueue, flushQueue, readQueue, type PendingAttempt } from "@/lib/edu-offline-queue";
 import { edu, newClientKey, RESULT_LABEL, type EduAttempt, type EduMe, type HintBody, type LearningState, type StudentLesson } from "@/services/api/edu";
 import { useUserStore } from "@/stores/use-user-store";
@@ -152,6 +153,7 @@ export function StudentAssignment() {
     const [lesson, setLesson] = useState<StudentLesson | null>(null);
     const [previewUrl, setPreviewUrl] = useState("");
     const [revision, setRevision] = useState<StudentRevision | null>(null);
+    const [provenance, setProvenance] = useState<Provenance | null>(null);
     const [state, setState] = useState<LearningState | null>(null);
     const [hints, setHints] = useState<HintBody[]>([]);
     const [answer, setAnswer] = useState("");
@@ -171,9 +173,10 @@ export function StudentAssignment() {
     const useFig = useFigureUsage((u) => void edu("post", `/student/assignments/${id}/figure-events`, scope, u));
 
     useEffect(() => {
-        void edu<{ assignment?: { revision?: StudentRevision }; lesson: StudentLesson; preview: { url: string } }>("get", `/student/assignments/${id}`, scope).then((r) => {
+        void edu<{ assignment?: { revision?: StudentRevision }; lesson: StudentLesson; provenance?: Provenance; preview: { url: string } }>("get", `/student/assignments/${id}`, scope).then((r) => {
             if (!r.ok) return setMsg(errorText(r.code, r.message));
             setLesson(r.data.lesson);
+            setProvenance(r.data.provenance || null);
             setRevision(r.data.assignment?.revision || null);
             setPreviewUrl(r.data.preview?.url || "");
         });
@@ -248,6 +251,9 @@ export function StudentAssignment() {
             {lesson ? (
                 <section className={box}>
                     <p className="whitespace-pre-wrap leading-7">{lesson.problem.text}</p>
+                    <p data-testid="content-provenance" className="mt-1 text-xs text-stone-500">
+                        {provenanceText(provenance)}
+                    </p>
                     {isManualLesson(lesson.meta) ? (
                         <p role="note" className="mt-2 rounded-md bg-stone-100 p-2 text-sm dark:bg-stone-800">
                             {MANUAL_NOTICE_STUDENT}

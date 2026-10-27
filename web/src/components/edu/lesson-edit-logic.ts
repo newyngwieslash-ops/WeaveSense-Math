@@ -1,4 +1,5 @@
 import type { LessonDuration } from "./lesson-plan-logic";
+import type { Provenance } from "./provenance-logic";
 
 /**
  * 讲解结构化编辑的纯逻辑（FR-T05/T06，AC-17/18），便于单元测试。
@@ -23,6 +24,7 @@ export type Editable = {
     teaching?: { goal: string; style: string; targetMinutes: number };
     duration?: LessonDuration;
     figure?: EditableFigure;
+    provenance?: Provenance;
 };
 export type Draft = {
     beats: Record<string, { title: string; say: string; board: string }>;
