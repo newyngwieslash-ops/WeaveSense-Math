@@ -650,7 +650,7 @@ func (s *Service) materialize(ctx context.Context, tx *gorm.DB, job model.EduMat
 	case "variant_set":
 		return s.materializeVariantSet(ctx, tx, job, arts)
 	case "lesson_edit":
-		return s.materializeEdit(tx, job, arts)
+		return s.materializeEdit(ctx, tx, job, arts)
 	case "lesson_build":
 		var n int64
 		tx.Model(&model.EduLessonRevision{}).Where("job_id = ?", job.ID).Count(&n)
@@ -665,14 +665,22 @@ func (s *Service) materialize(ctx context.Context, tx *gorm.DB, job model.EduMat
 		if err := tx.First(&sol, "job_id = ?", job.SourceJobID).Error; err != nil {
 			return err
 		}
+		rc, rcState, rcBlocking, err := s.renderCheckOf(ctx, job, arts)
+		if err != nil {
+			return err
+		}
 		state, blocking := "ready_for_review", ""
 		if sol.MathState != "verified" {
 			state, blocking = "rejected", `["math_not_verified"]`
 		}
+		if len(rcBlocking) > 0 {
+			state, blocking = "rejected", mergeBlocking(blocking, rcBlocking)
+		}
 		return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model.EduLessonRevision{ID: flow.NewID("elr_"), TenantID: job.TenantID,
 			ProblemRevisionID: job.ProblemRevisionID, SolutionRevisionID: sol.ID, JobID: job.ID, LessonArtifact: la.ID, LessonHash: la.SHA256,
 			StudentArtifact: arts["lesson_student"].ID, PreviewArtifact: arts["preview_html"].ID, StudentPreview: arts["preview_html_student"].ID,
-			State: state, BlockingErrors: blocking, CreatedBy: job.CreatedBy, CreatedAt: s.now()}).Error
+			State: state, BlockingErrors: blocking, CreatedBy: job.CreatedBy, CreatedAt: s.now(),
+			RenderCheckArtifact: arts["render_check"].ID, RenderCheckState: rcState, RenderCheck: rc}).Error
 	}
 	return nil
 }

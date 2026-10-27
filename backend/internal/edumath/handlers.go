@@ -369,7 +369,7 @@ func (h *API) getLesson(c *gin.Context) {
 	var reviews []model.EduReviewRecord
 	tx.Where("lesson_revision_id = ?", l.ID).Order("created_at").Find(&reviews)
 	var pub model.EduPublication
-	out := gin.H{"lesson": l, "reviews": reviews, "reviewMode": h.Svc.policy(tx, a.TenantID)}
+	out := gin.H{"lesson": l, "reviews": reviews, "reviewMode": h.Svc.policy(tx, a.TenantID), "renderCheck": renderCheckView(l)}
 	if tx.First(&pub, "lesson_revision_id = ?", l.ID).Error == nil {
 		out["publication"] = pub
 	}

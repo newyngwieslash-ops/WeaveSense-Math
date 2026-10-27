@@ -252,6 +252,11 @@ type EduLessonRevision struct {
 	ParentLessonRevisionID string `json:"parentLessonRevisionId,omitempty" gorm:"size:40;index"`
 	EditClasses            string `json:"editClasses,omitempty" gorm:"size:80"`
 	ApprovalInheritedFrom  string `json:"approvalInheritedFrom,omitempty" gorm:"size:40"`
+	// Presentation check of the previews, rebuilt in a clean isolated process (DEV-082). Empty on
+	// revisions built before v86. Presentation only: it never stands in for math verification.
+	RenderCheckArtifact string `json:"renderCheckArtifactId,omitempty" gorm:"size:40"`
+	RenderCheckState    string `json:"renderCheckState,omitempty" gorm:"size:16"` // passed | warnings | failed
+	RenderCheck         string `json:"-" gorm:"type:text"`
 }
 
 func (EduLessonRevision) TableName() string { return "edu_lesson_revisions" }

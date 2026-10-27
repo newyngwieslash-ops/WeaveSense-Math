@@ -48,9 +48,9 @@ const (
 // A receipt must list exactly these stages, in order.
 var jobStages = map[string][]string{
 	"analyze":      {"validate_input", "solve", "verify"},
-	"lesson_build": {"compose_lesson", "project_student", "render_preview"},
+	"lesson_build": {"compose_lesson", "project_student", "render_preview", "check_render"},
 	"variant_set":  {"generate_variants", "verify_variants"},
-	"lesson_edit":  {"apply_edits", "project_student", "render_preview"},
+	"lesson_edit":  {"apply_edits", "project_student", "render_preview", "check_render"},
 }
 
 var stageStatuses = map[string]bool{"pending": true, "running": true, "succeeded": true, "failed": true, "skipped": true, "cancelled": true}

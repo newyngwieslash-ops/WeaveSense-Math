@@ -7,9 +7,9 @@ from .errors import MathError
 from .families import REGISTRY as FAMILIES
 
 ANALYZE_STAGES = ["validate_input", "solve", "verify"]
-LESSON_STAGES = ["compose_lesson", "project_student", "render_preview"]
+LESSON_STAGES = ["compose_lesson", "project_student", "render_preview", "check_render"]
 VARIANT_STAGES = ["generate_variants", "verify_variants"]
-EDIT_STAGES = ["apply_edits", "project_student", "render_preview"]
+EDIT_STAGES = ["apply_edits", "project_student", "render_preview", "check_render"]
 
 
 def _fam(problem):
@@ -75,4 +75,10 @@ def run_stage(stage, payload, prior):
         s_html = render.page(student, "student")
         L.guard({"html": L.visible_text(s_html)}, L.answer_markers(lesson))
         return {"teacher_html": t_html, "student_html": s_html, "renderer": render.RENDERER_VERSION}
+    if stage == "check_render":
+        # A separate stage, so it runs in its own fresh empty-environment subprocess
+        # and rebuilds the previews there (DEV-082); presentation only, not math.
+        from . import render_check
+        rp = prior["render_preview"]
+        return {"render_check": render_check.check(lesson, prior["project_student"]["student"], rp["teacher_html"], rp["student_html"])}
     raise MathError("INTERNAL", "unknown stage")

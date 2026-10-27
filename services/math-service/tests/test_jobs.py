@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import json as _json
 import os
 import subprocess
 import tempfile
@@ -105,6 +106,17 @@ class JobTests(unittest.TestCase):
         self.assertIn("2√22/11".encode(), th)
         with self.assertRaises(MathError):
             self.s.get_artifact("t2", kinds["preview_html"]["artifact_id"])
+        # DEV-082: previews rebuilt in a separate clean stage and checked; presentation only
+        self.assertEqual([st["name"] for st in v["stages"]][-1], "check_render")
+        self.assertEqual(kinds["render_check"]["audience"], "teacher")
+        _, rc = self.s.get_artifact("t1", kinds["render_check"]["artifact_id"])
+        rep = _json.loads(rc)
+        self.assertEqual(rep["state"], "passed", rep)
+        self.assertIs(rep["math_verification"], False)
+        self.assertEqual(rep["scope"], "presentation")
+        self.assertEqual(rep["teacher_html_sha256"], kinds["preview_html"]["sha256"])
+        self.assertEqual(rep["student_html_sha256"], kinds["preview_html_student"]["sha256"])
+        self.assertNotIn("2√22/11", rc.decode("utf-8"))  # codes and counts only, never lesson text
 
 
 if __name__ == "__main__":
@@ -236,7 +248,7 @@ class LessonEditJobTests(unittest.TestCase):
         self.assertEqual(imp["classes"], ["pronunciation", "reasoning", "wording"])
         self.assertTrue(imp["manual_check"])
         kinds = {r["kind"]: r for r in v["result_refs"]}
-        self.assertEqual(set(kinds), {"lesson", "lesson_student", "preview_html", "preview_html_student"})
+        self.assertEqual(set(kinds), {"lesson", "lesson_student", "preview_html", "preview_html_student", "render_check"})
         _, html = self.s.get_artifact("t1", kinds["preview_html"]["artifact_id"])
         self.assertIn("连接 AC".encode(), html)  # the preview shows board lines; narration feeds captions and media
         self.assertNotEqual(kinds["lesson"]["sha256"], self.lesson_ref["sha256"])

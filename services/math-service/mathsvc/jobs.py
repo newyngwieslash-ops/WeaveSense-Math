@@ -31,7 +31,8 @@ TERMINAL = ("succeeded", "failed", "cancelled")
 STAGES = {"analyze": ANALYZE_STAGES, "lesson_build": LESSON_STAGES, "variant_set": VARIANT_STAGES, "lesson_edit": EDIT_STAGES}
 TIMEOUTS = {"validate_input": 5, "solve": catalog.LIMITS["solve_timeout_s"], "verify": catalog.LIMITS["verify_timeout_s"],
             "compose_lesson": 10, "project_student": 5, "render_preview": catalog.LIMITS["render_timeout_s"],
-            "generate_variants": 5, "verify_variants": 30, "apply_edits": 10}
+            "generate_variants": 5, "verify_variants": 30, "apply_edits": 10,
+            "check_render": catalog.LIMITS["render_timeout_s"]}
 
 
 def now():
@@ -340,6 +341,8 @@ class Worker:
         if stage == "render_preview":
             return [put(t, j, "preview_html", "teacher", "text/html; charset=utf-8", res["teacher_html"].encode("utf-8")),
                     put(t, j, "preview_html_student", "student", "text/html; charset=utf-8", res["student_html"].encode("utf-8"))]
+        if stage == "check_render":
+            return [put(t, j, "render_check", "teacher", "application/json", js(res["render_check"]))]
         if stage == "verify_variants":
             from .variants import student_items
             vs = res["variant_set"]

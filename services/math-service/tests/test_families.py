@@ -2,6 +2,8 @@
 """The five additional P0 families: gold answers, layered evidence, exclusions,
 self-test independence and the full stage pipeline with student leak guards."""
 
+import hashlib
+import json
 import unittest
 
 import sympy as sp
@@ -198,6 +200,72 @@ class GuardHelpers(unittest.TestCase):
         les = {"answer": {"plain": "3", "latex": "3", "exact": "[3, 4]"}, "check_answer_key": {"plain": "60", "exact": "60", "latex": "60"},
                "problem": {"text": "x²/4 + y²/3 = 1", "params": {"a": "2"}}, "check_question": {"prompt": "长 60", "params": {}}}
         self.assertEqual(L.answer_markers(les), ["[3, 4]"])
+
+
+class RenderCheck(unittest.TestCase):
+    """DEV-082: presentation checks on the rebuilt previews; presentation only."""
+
+    def _run(self, p):
+        _, lp = run_all(p)
+        return lp
+
+    def _check(self, lp, teacher=None, student=None):
+        from mathsvc import render_check as R
+        rp = lp["render_preview"]
+        return R.check(lp["compose_lesson"]["lesson"], lp["project_student"]["student"],
+                       teacher if teacher is not None else rp["teacher_html"], student if student is not None else rp["student_html"])
+
+    def status(self, rep, cid):
+        return {c["id"]: c["status"] for c in rep["checks"]}[cid]
+
+    def test_every_family_passes_and_never_claims_math(self):
+        cases = [c for v in GOLD.values() for c in v] + [(prob("SOLID-ANGLE-02", {"a": "2", "h": "3"}), None)]
+        for p, _ in cases:
+            lp = self._run(p)
+            rep = lp["check_render"]["render_check"]
+            self.assertNotEqual(rep["state"], "failed", (p, rep["blocking"]))
+            self.assertEqual(rep["blocking"], [])
+            self.assertIs(rep["math_verification"], False)
+            self.assertEqual(rep["scope"], "presentation")
+            self.assertEqual(self.status(rep, "clean_reproduction"), "pass")
+            self.assertEqual(self.status(rep, "audio_sync"), "not_applicable")
+            self.assertEqual(rep["teacher_html_sha256"], "sha256:" + hashlib.sha256(lp["render_preview"]["teacher_html"].encode()).hexdigest())
+
+    def test_crowded_labels_are_a_warning_not_a_block(self):
+        rep = self._run(prob("SOLID-VOL-01", {"l": "1/2", "w": "sqrt(2)", "h": "sqrt(2)"}))["check_render"]["render_check"]
+        self.assertEqual(rep["state"], "warnings")
+        self.assertIn("label_occlusion", rep["warnings"])
+        self.assertEqual(rep["blocking"], [])
+
+    def test_parabola_curve_cut_at_edge_is_not_an_error(self):
+        rep = self._run(prob("CONIC-PARABOLA-01", {"p": "2"}))["check_render"]["render_check"]
+        fig = [c for c in rep["checks"] if c["id"] == "figure_in_view"][0]
+        self.assertEqual(fig["status"], "pass")
+        self.assertGreater(fig["curves_cut_at_edge"], 0)
+
+    def test_tampered_previews_fail(self):
+        lp = self._run(prob("SOLID-ANGLE-01", {"e": "2"}))
+        t = lp["render_preview"]["teacher_html"]
+        cases = {
+            "no_external_resources": t.replace("</main>", '<img src="https://cdn.example/x.png"></main>'),
+            "no_host_paths": t.replace("</main>", "<p>file:///home/teacher/fig.png</p></main>"),
+            "glyph_coverage": t.replace("</main>", "<p>\ue000</p></main>"),
+            "figure_in_view": t.replace('<line x1="', '<line x1="-80" y1="0" x2="0" y2="0"/><line x1="', 1),
+            "figure_text_consistency": t.replace('font-size="14">A</text>', 'font-size="14">Z9</text>', 1),
+        }
+        for cid, html in cases.items():
+            rep = self._check(lp, teacher=html)
+            self.assertEqual(rep["state"], "failed", cid)
+            self.assertIn(cid, rep["blocking"], cid)
+            self.assertIn("clean_reproduction", rep["blocking"], cid)  # the stored page is not what the lesson renders to
+
+    def test_student_page_showing_answer_fails(self):
+        lp = self._run(prob("SOLID-ANGLE-01", {"e": "2"}))
+        ans = lp["compose_lesson"]["lesson"]["answer"]["plain"]
+        s = lp["render_preview"]["student_html"].replace("</main>", "<p>%s</p></main>" % ans)
+        rep = self._check(lp, student=s)
+        self.assertIn("student_page_hides_answer", rep["blocking"])
+        self.assertNotIn(ans, json.dumps(rep, ensure_ascii=False))
 
 
 if __name__ == "__main__":
