@@ -10,6 +10,7 @@ ANALYZE_STAGES = ["validate_input", "solve", "verify"]
 LESSON_STAGES = ["compose_lesson", "project_student", "render_preview", "check_render"]
 VARIANT_STAGES = ["generate_variants", "verify_variants"]
 EDIT_STAGES = ["apply_edits", "project_student", "render_preview", "check_render"]
+MANUAL_STAGES = ["compose_manual", "project_student", "render_preview", "check_render"]
 
 
 def _fam(problem):
@@ -39,6 +40,13 @@ def run_stage(stage, payload, prior):
         from . import variants
         return variants.verify(payload, prior)
     problem = payload["problem"]
+    if "manual" in payload:
+        # Teacher written lesson (DEV-039): no family module, no solve, no exact answer.
+        if stage == "compose_manual":
+            from . import manual
+            refs = {"problem_hash": payload.get("problem_hash", ""), "solution_hash": "", "report_hash": ""}
+            return manual.compose(problem, payload["manual"], refs)
+        return _present(stage, payload, prior)
     mod = _fam(problem)
     if stage == "validate_input":
         n = mod.normalize(problem)
@@ -66,7 +74,11 @@ def run_stage(stage, payload, prior):
         base = payload["base_lesson"]
         lesson = edits.apply(base, payload["edits"], sol)
         return {"lesson": lesson, "lesson_hash": L.canonical_hash(lesson), "impact": edits.impact(payload["edits"])}
-    lesson = (prior.get("compose_lesson") or prior.get("apply_edits"))["lesson"]
+    return _present(stage, payload, prior)
+
+
+def _present(stage, payload, prior):
+    lesson = (prior.get("compose_lesson") or prior.get("apply_edits") or prior.get("compose_manual"))["lesson"]
     if stage == "project_student":
         return {"student": L.student_projection(lesson, "none")}
     if stage == "render_preview":

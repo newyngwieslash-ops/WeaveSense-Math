@@ -78,6 +78,9 @@ func qualityView(tx *gorm.DB, l model.EduLessonRevision, reviews []model.EduRevi
 			}
 		}
 		q.Math.SampledOnly = sampled && !q.Math.DomainProof
+		if sol.MathState == ManualUnverified {
+			q.Math.Source = "teacher_manual" // DEV-039: written by the teacher; no automatic math evidence
+		}
 	}
 
 	t := qualityTeaching{State: "not_reviewed", HumanOnly: true, Checklist: map[string]int{"pass": 0, "issue": 0, "na": 0},

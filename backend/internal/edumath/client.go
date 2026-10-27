@@ -51,6 +51,8 @@ var jobStages = map[string][]string{
 	"lesson_build": {"compose_lesson", "project_student", "render_preview", "check_render"},
 	"variant_set":  {"generate_variants", "verify_variants"},
 	"lesson_edit":  {"apply_edits", "project_student", "render_preview", "check_render"},
+	// Teacher written lesson (DEV-039): no solve or verify stage, so no math claim.
+	"manual_lesson": {"compose_manual", "project_student", "render_preview", "check_render"},
 }
 
 var stageStatuses = map[string]bool{"pending": true, "running": true, "succeeded": true, "failed": true, "skipped": true, "cancelled": true}

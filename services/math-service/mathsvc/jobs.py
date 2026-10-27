@@ -28,13 +28,13 @@ import uuid
 
 from . import catalog
 from .errors import MathError
-from .pipeline import ANALYZE_STAGES, EDIT_STAGES, LESSON_STAGES, VARIANT_STAGES
+from .pipeline import ANALYZE_STAGES, EDIT_STAGES, LESSON_STAGES, MANUAL_STAGES, VARIANT_STAGES
 
 SCHEMA_VERSION = "edu.math.job/1"
 TERMINAL = ("succeeded", "failed", "cancelled")
-STAGES = {"analyze": ANALYZE_STAGES, "lesson_build": LESSON_STAGES, "variant_set": VARIANT_STAGES, "lesson_edit": EDIT_STAGES}
+STAGES = {"analyze": ANALYZE_STAGES, "lesson_build": LESSON_STAGES, "variant_set": VARIANT_STAGES, "lesson_edit": EDIT_STAGES, "manual_lesson": MANUAL_STAGES}
 TIMEOUTS = {"validate_input": 5, "solve": catalog.LIMITS["solve_timeout_s"], "verify": catalog.LIMITS["verify_timeout_s"],
-            "compose_lesson": 10, "project_student": 5, "render_preview": catalog.LIMITS["render_timeout_s"],
+            "compose_lesson": 10, "compose_manual": 5, "project_student": 5, "render_preview": catalog.LIMITS["render_timeout_s"],
             "generate_variants": 5, "verify_variants": 30, "apply_edits": 10,
             "check_render": catalog.LIMITS["render_timeout_s"]}
 
@@ -355,7 +355,7 @@ class Worker:
             return [put(t, j, "solution", "teacher", "application/json", js(res["solution"]))]
         if stage == "verify":
             return [put(t, j, "validation_report", "teacher", "application/json", js(res["report"]))]
-        if stage in ("compose_lesson", "apply_edits"):
+        if stage in ("compose_lesson", "apply_edits", "compose_manual"):
             return [put(t, j, "lesson", "teacher", "application/json", js(res["lesson"]))]
         if stage == "project_student":
             return [put(t, j, "lesson_student", "student", "application/json", js(res["student"]))]

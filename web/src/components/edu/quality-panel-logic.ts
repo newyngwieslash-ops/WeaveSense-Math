@@ -30,7 +30,7 @@ export const EVIDENCE_LABEL: Record<string, string> = {
     numeric_sampling: "数值抽样（不等于全域证明）",
 };
 
-const MATH_STATE: Record<string, string> = { verified: "已自动验证", partially_verified: "部分验证", failed: "验证未通过", unknown: "没有验证结果" };
+const MATH_STATE: Record<string, string> = { verified: "已自动验证", partially_verified: "部分验证", failed: "验证未通过", unknown: "没有验证结果", manual_unverified: "老师人工编写，未经自动数学验证" };
 const TEACHING_STATE: Record<string, string> = {
     not_reviewed: "尚未人工审核",
     approved: "人工审核通过",
@@ -44,9 +44,12 @@ export type Dimension = { key: "math" | "teaching" | "presentation" | "audio"; t
 export function qualityDimensions(q: Quality): Dimension[] {
     const m = q.math;
     const mathLines = [`${MATH_STATE[m.state] || "状态未知"}；证据：${m.evidenceLevels.length ? m.evidenceLevels.map((l) => EVIDENCE_LABEL[l] || l).join("、") : "无"}`];
-    if (m.sampledOnly) mathLines.push("只有数值抽样，没有全域证明，讲解中不得写成已证明");
-    else if (!m.domainProof && m.state !== "unknown") mathLines.push("只核对了本题数值，没有全域证明");
-    mathLines.push("来源：数学服务独立验证，不含人工审校");
+    if (m.state === "manual_unverified") mathLines.push("来源：老师人工编写；人工审核通过也不代表自动验证");
+    else {
+        if (m.sampledOnly) mathLines.push("只有数值抽样，没有全域证明，讲解中不得写成已证明");
+        else if (!m.domainProof && m.state !== "unknown") mathLines.push("只核对了本题数值，没有全域证明");
+        mathLines.push("来源：数学服务独立验证，不含人工审校");
+    }
 
     const t = q.teaching;
     const tLines = [TEACHING_STATE[t.state] || "状态未知"];
