@@ -195,11 +195,13 @@ func (s *Service) materializeManual(ctx context.Context, tx *gorm.DB, job model.
 	if len(rcBlocking) > 0 {
 		state, blocking = "rejected", mergeBlocking("", rcBlocking)
 	}
+	gen, comp, mref := s.lessonOrigin(ctx, job.TenantID, la)
 	return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model.EduLessonRevision{ID: flow.NewID("elr_"), TenantID: job.TenantID,
 		ProblemRevisionID: job.ProblemRevisionID, SolutionRevisionID: sol.ID, JobID: job.ID, LessonArtifact: la.ID, LessonHash: la.SHA256,
 		StudentArtifact: arts["lesson_student"].ID, PreviewArtifact: arts["preview_html"].ID, StudentPreview: arts["preview_html_student"].ID,
 		State: state, BlockingErrors: blocking, CreatedBy: job.CreatedBy, CreatedAt: s.now(),
-		RenderCheckArtifact: arts["render_check"].ID, RenderCheckState: rcState, RenderCheck: rc}).Error
+		RenderCheckArtifact: arts["render_check"].ID, RenderCheckState: rcState, RenderCheck: rc,
+		Generator: gen, ComposerVersion: comp, ModelRef: mref}).Error
 }
 
 // isManualSolution reports whether a lesson rests on teacher written content only.

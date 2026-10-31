@@ -49,7 +49,7 @@ var metricObjRe = regexp.MustCompile(`^[a-z]{1,6}_[0-9A-Za-z]{4,40}$`)
 var metricTypes = []string{"problem_uploaded", "problem_confirmed", "analysis_completed", "lesson_edited", "review_completed",
 	"publication_created", "publication_withdrawn", "assignment_created", "attempt_submitted", "hint_revealed",
 	"checkpoint_completed", "independent_unit_submitted", "review_attempted", "feedback_resolved", "artifact_reused",
-	"job_completed", "usage_settled"}
+	"job_completed", "usage_settled", "assignment_viewed"}
 
 // metricAppVersion labels events with the build that collected them (EDU_APP_VERSION, default "dev").
 func metricAppVersion() string {
@@ -329,6 +329,21 @@ func (m *metricCollector) collect(from, to time.Time) error {
 			return err
 		}
 	}
+	// First reads per (assignment, student, terminal) since v97 (DEV-121); the terminal is the stratum.
+	var vs []model.EduAssignmentView
+	if err := m.tx.Where("tenant_id = ? AND first_viewed_at > ? AND first_viewed_at <= ?", m.tenant, lo, hi).Find(&vs).Error; err != nil {
+		return err
+	}
+	for _, v := range vs {
+		if !in(v.FirstViewedAt) {
+			continue
+		}
+		ev := student("assignment_viewed", "view:"+v.ID, v.StudentUserID, v.AssignmentID, v.AssignmentID, v.FirstViewedAt)
+		ev.Terminal = v.Terminal
+		if err := m.emit(ev, nil); err != nil {
+			return err
+		}
+	}
 	var hs []model.EduHintUnlock
 	if err := m.tx.Where("tenant_id = ? AND created_at > ? AND created_at <= ?", m.tenant, lo, hi).Find(&hs).Error; err != nil {
 		return err
@@ -539,6 +554,7 @@ func (h *API) metricsSummary(c *gin.Context) {
 		SmallSample bool           `json:"smallSample"`
 		Modes       map[string]int `json:"modes,omitempty"`
 		Independent int            `json:"independent"`
+		Terminals   map[string]int `json:"terminals,omitempty"`
 		Missing     map[string]int `json:"missing"`
 		subjects    map[string]bool
 	}
@@ -578,6 +594,11 @@ func (h *API) metricsSummary(c *gin.Context) {
 		case "assignment_created":
 			r, _ := at["reused"].(bool)
 			reused[r]++
+		case "assignment_viewed":
+			if g.Terminals == nil {
+				g.Terminals = map[string]int{}
+			}
+			g.Terminals[e.Terminal]++
 		}
 	}
 	for _, g := range byType {
@@ -590,5 +611,5 @@ func (h *API) metricsSummary(c *gin.Context) {
 	sort.Strings(types)
 	reply(c, 200, gin.H{"types": byType, "order": types, "assignments": gin.H{"new": reused[false], "reused": reused[true]},
 		"collectedUntil": st.CollectedUntil, "schemaVersion": metricSchemaVersion,
-		"notCollected": []string{"terminal", "method", "model_version", "template_version"}, "demoExcluded": true}, "ok")
+		"notCollected": []string{"terminal_except_assignment_viewed", "method", "model_version", "template_version"}, "demoExcluded": true}, "ok")
 }

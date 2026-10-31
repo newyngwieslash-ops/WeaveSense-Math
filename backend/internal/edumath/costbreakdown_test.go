@@ -17,9 +17,9 @@ func TestPGCostBreakdown(t *testing.T) {
 
 // runCostBreakdown (DEV-118): after the real G1 chain, failed and retried jobs and
 // attributed support stay with their batch and are carried by its accepted lessons;
-// every view (tenant, family, class, reuse) adds up to the same total, which equals
-// the period cost report; zero denominators are not computable; strata without a
-// source are listed as not collected; only admins read it.
+// every view (tenant, family, class, reuse, method, template, model, terminal) adds up to the same total, which equals
+// the period cost report; zero denominators are not computable; strata with partial
+// sources are listed; only admins read it.
 func runCostBreakdown(t *testing.T, h *harness) {
 	runG1(t, h)
 	tenant := model.PersonalTenantID("u_alice")
@@ -44,7 +44,7 @@ func runCostBreakdown(t *testing.T, h *harness) {
 		t.Helper()
 		_, rep, _, _ := h.call("u_alice", "GET", "/api/edu/cost-report?period="+period, nil)
 		want := data(rep)["totalMicro"].(float64)
-		for _, by := range []string{"tenant", "family", "class", "reuse"} {
+		for _, by := range []string{"tenant", "family", "class", "reuse", "method", "template", "model", "terminal"} {
 			r := get(by)
 			var sum float64
 			for _, x := range rows(r) {
@@ -56,8 +56,8 @@ func runCostBreakdown(t *testing.T, h *harness) {
 			if r["totalMicro"].(float64) != want || sum != want || r["definition"] != "cost_breakdown/1" {
 				t.Fatalf("%s: rows %v total %v, cost report %v", by, sum, r["totalMicro"], want)
 			}
-			if len(r["notCollected"].([]any)) != 4 {
-				t.Fatalf("method, model, template and terminal must be listed as not collected: %v", r["notCollected"])
+			if len(r["notCollected"].([]any)) != 3 {
+				t.Fatalf("template, model and terminal must list their partial sources: %v", r["notCollected"])
 			}
 		}
 		return want
@@ -165,13 +165,13 @@ func runCostBreakdown(t *testing.T, h *harness) {
 	}
 	reconcile()
 
-	for _, q := range []string{"by=method", "by=terminal", "by=x", "period=2026-13"} {
+	for _, q := range []string{"by=x", "by=device", "period=2026-13"} {
 		code, out, _, _ := h.call("u_alice", "GET", "/api/edu/cost-report/breakdown?"+q, nil)
 		if code != 400 {
 			t.Fatalf("%s must be 400, got %d", q, code)
 		}
-		if q == "by=method" && len(data(out)["notCollected"].([]any)) != 4 {
-			t.Fatalf("400 lists what is not collected: %v", out)
+		if q == "by=x" && len(data(out)["notCollected"].([]any)) != 3 {
+			t.Fatalf("400 lists the strata with partial sources: %v", out)
 		}
 	}
 	for _, u := range []string{"u_bob", "u_dave"} {

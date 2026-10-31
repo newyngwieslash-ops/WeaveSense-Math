@@ -1,6 +1,7 @@
 package edumath
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 
@@ -17,15 +18,26 @@ import (
 
 const costBreakdownDefinition = "cost_breakdown/1"
 
-var costBreakdownBy = map[string]bool{"tenant": true, "family": true, "class": true, "reuse": true}
+var costBreakdownBy = map[string]bool{"tenant": true, "family": true, "class": true, "reuse": true,
+	"method": true, "template": true, "model": true, "terminal": true}
 
-// costNotCollected lists the strata the brief asks for that have no source yet.
+// costNotCollected lists strata whose source is partial. Since v97 every stratum
+// has a source; rows created before v97 report "not_recorded" for template and
+// model, and lessons nobody opened report "not_viewed" for terminal.
 var costNotCollected = []map[string]string{
-	{"dimension": "method", "reason": "stage runs do not record the solving method"},
-	{"dimension": "model", "reason": "stage runs do not record the model or its version"},
-	{"dimension": "template", "reason": "lesson revisions do not record a template version"},
-	{"dimension": "terminal", "reason": "no client terminal is collected (see DEV-116)"},
+	{"dimension": "template", "reason": "lesson revisions materialized before v97 carry no generator or composer version (key not_recorded)"},
+	{"dimension": "model", "reason": "lesson revisions materialized before v97 carry no model record (key not_recorded)"},
+	{"dimension": "terminal", "reason": "terminal comes from student reads since v97; a lesson without reads is not_viewed"},
 }
+
+// Stratum definitions (DEV-118):
+//   - method: the solving method in the confirmed problem revision (batch level, like family);
+//   - template: generator@composer_version of each accepted lesson revision;
+//   - model: the generative model recorded on the lesson ("none" when the lesson records
+//     ai_generated=false), per accepted lesson;
+//   - terminal: each accepted lesson's share is split evenly across the distinct
+//     (student, terminal) pairs that opened an assignment of that lesson.
+var costPerLessonBy = map[string]bool{"class": true, "reuse": true, "template": true, "model": true, "terminal": true}
 
 // CostRow is one stratum of the breakdown.
 type CostRow struct {
@@ -91,7 +103,7 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 	out := CostBreakdown{Period: period, Timezone: budgetZone().String(), Definition: costBreakdownDefinition, By: by, NotCollected: costNotCollected}
 
 	type batch struct {
-		family                   string
+		family, method           string
 		machine, failed, support int64
 		jobs, retried            int64
 		pubs                     []string
@@ -100,7 +112,7 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 	get := func(rev string) *batch {
 		b := batches[rev]
 		if b == nil {
-			b = &batch{family: "unknown"}
+			b = &batch{family: "unknown", method: "not_recorded"}
 			batches[rev] = b
 		}
 		return b
@@ -135,29 +147,45 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 		}
 		seen[k] = true
 	}
-	var fams []struct{ ID, FamilyID string }
-	if err := tx.Raw(`SELECT pr.id, p.family_id FROM edu_problem_revisions pr JOIN edu_problems p ON p.id = pr.problem_id WHERE pr.tenant_id = ?`, tenantID).Scan(&fams).Error; err != nil {
+	var fams []struct{ ID, FamilyID, Structured string }
+	if err := tx.Raw(`SELECT pr.id, p.family_id, pr.structured FROM edu_problem_revisions pr JOIN edu_problems p ON p.id = pr.problem_id WHERE pr.tenant_id = ?`, tenantID).Scan(&fams).Error; err != nil {
 		return out, err
 	}
-	family := map[string]string{}
+	family, method := map[string]string{}, map[string]string{}
 	for _, f := range fams {
 		family[f.ID] = f.FamilyID
+		var st struct {
+			Method string `json:"method"`
+		}
+		if json.Unmarshal([]byte(f.Structured), &st) == nil && st.Method != "" {
+			method[f.ID] = st.Method
+		}
 	}
-	var pubs []struct{ ID, ProblemRevisionID string }
-	if err := tx.Raw(`SELECT pub.id, lr.problem_revision_id FROM edu_publications pub JOIN edu_lesson_revisions lr ON lr.id = pub.lesson_revision_id
+	var pubs []struct{ ID, ProblemRevisionID, Generator, ComposerVersion, ModelRef string }
+	if err := tx.Raw(`SELECT pub.id, lr.problem_revision_id, lr.generator, lr.composer_version, lr.model_ref FROM edu_publications pub JOIN edu_lesson_revisions lr ON lr.id = pub.lesson_revision_id
 		WHERE pub.tenant_id = ? AND pub.created_at >= ? AND pub.created_at < ? ORDER BY pub.id`, tenantID, from, to).Scan(&pubs).Error; err != nil {
 		return out, err
 	}
-	pubRev := map[string]string{}
+	pubRev, pubTemplate, pubModel := map[string]string{}, map[string]string{}, map[string]string{}
 	pubIDs := []string{}
 	for _, p := range pubs {
 		get(p.ProblemRevisionID).pubs = append(get(p.ProblemRevisionID).pubs, p.ID)
 		pubRev[p.ID] = p.ProblemRevisionID
 		pubIDs = append(pubIDs, p.ID)
+		pubTemplate[p.ID], pubModel[p.ID] = "not_recorded", "not_recorded"
+		if p.Generator != "" {
+			pubTemplate[p.ID] = p.Generator + "@" + p.ComposerVersion
+		}
+		if p.ModelRef != "" {
+			pubModel[p.ID] = p.ModelRef
+		}
 	}
 	for rev, b := range batches {
 		if f, ok := family[rev]; ok && f != "" {
 			b.family = f
+		}
+		if m, ok := method[rev]; ok {
+			b.method = m
 		}
 	}
 	classes := map[string][]string{}
@@ -169,6 +197,17 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 		}
 		for _, a := range as {
 			classes[a.PublicationID] = append(classes[a.PublicationID], a.ClassID)
+		}
+	}
+	terminals := map[string][]string{} // publication -> one entry per distinct (student, terminal) read
+	if by == "terminal" && len(pubIDs) > 0 {
+		var vs []struct{ PublicationID, StudentUserID, Terminal string }
+		if err := tx.Raw(`SELECT DISTINCT a.publication_id, v.student_user_id, v.terminal FROM edu_assignment_views v JOIN edu_assignments a ON a.id = v.assignment_id
+			WHERE v.tenant_id = ? AND a.publication_id IN ? ORDER BY a.publication_id, v.student_user_id, v.terminal`, tenantID, pubIDs).Scan(&vs).Error; err != nil {
+			return out, err
+		}
+		for _, v := range vs {
+			terminals[v.PublicationID] = append(terminals[v.PublicationID], "terminal:"+v.Terminal)
 		}
 	}
 	// Support: "publication:<id>" joins the batch, "family:<id>" the family, "class:<id>" the class.
@@ -220,13 +259,16 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 	}
 	sort.Strings(revs)
 
-	switch by {
-	case "tenant", "family":
+	switch {
+	case !costPerLessonBy[by]:
 		for _, rev := range revs {
 			b := batches[rev]
 			key := "tenant"
-			if by == "family" {
+			switch by {
+			case "family":
 				key = b.family
+			case "method":
+				key = b.method
 			}
 			r := row(key)
 			r.MachineMicro += b.machine
@@ -241,8 +283,11 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 		}
 		for f, v := range famSupport {
 			key := f
-			if by == "tenant" {
+			switch by {
+			case "tenant":
 				key = "tenant"
+			case "method":
+				key = "support_family_not_split"
 			}
 			row(key).SupportMicro += v
 		}
@@ -260,7 +305,7 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 			}
 			row(key).SupportMicro += out.UnattributedMicro
 		}
-	case "class", "reuse":
+	default: // per accepted lesson: class, reuse, template, model, terminal
 		for _, rev := range revs {
 			b := batches[rev]
 			if len(b.pubs) == 0 {
@@ -275,6 +320,30 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 			machine, support := splitEven(b.machine, len(b.pubs)), splitEven(b.support, len(b.pubs))
 			for i, p := range b.pubs {
 				cs := classes[p]
+				if by == "template" || by == "model" || by == "terminal" {
+					keys := []string{pubTemplate[p]}
+					switch {
+					case by == "model":
+						keys = []string{pubModel[p]}
+					case by == "terminal" && len(cs) == 0:
+						keys = []string{"not_assigned"}
+					case by == "terminal" && len(terminals[p]) == 0:
+						keys = []string{"not_viewed"}
+					case by == "terminal":
+						keys = terminals[p]
+					}
+					m, su := splitEven(machine[i], len(keys)), splitEven(support[i], len(keys))
+					for j, k := range keys {
+						r := row(k)
+						r.MachineMicro += m[j]
+						r.SupportMicro += su[j]
+						r.Accepted++ // the lesson is accepted in every stratum it is split into, as with classes
+						if j == 0 {
+							r.ClassDeliveries += int64(len(cs))
+						}
+					}
+					continue
+				}
 				key := "reused"
 				switch len(cs) {
 				case 0:
@@ -336,7 +405,7 @@ func (h *API) costBreakdown(c *gin.Context) {
 	}
 	by := c.DefaultQuery("by", "tenant")
 	if !periodRe.MatchString(p) || !costBreakdownBy[by] {
-		reply(c, 400, gin.H{"notCollected": costNotCollected}, "period YYYY-MM; by tenant, family, class or reuse (method, model, template and terminal are not collected)")
+		reply(c, 400, gin.H{"notCollected": costNotCollected}, "period YYYY-MM; by tenant, family, class, reuse, method, template, model or terminal")
 		return
 	}
 	r, err := h.Svc.CostBreakdown(tx, a.TenantID, p, by)
