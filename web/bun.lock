@@ -14,6 +14,7 @@
         "@ffmpeg/util": "^0.12.2",
         "@fontsource-variable/inter": "^5.3.0",
         "@fontsource-variable/jetbrains-mono": "^5.3.0",
+        "@fontsource-variable/noto-sans-sc": "5.3.1",
         "@lobehub/icons": "5.16.0",
         "@mediapipe/tasks-vision": "^1.0.1",
         "@react-three/drei": "^10.7.7",
@@ -345,6 +346,8 @@
     "@fontsource-variable/inter": ["@fontsource-variable/inter@5.3.0", "https://registry.npmmirror.com/@fontsource-variable/inter/-/inter-5.3.0.tgz", {}, "sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA=="],
 
     "@fontsource-variable/jetbrains-mono": ["@fontsource-variable/jetbrains-mono@5.3.0", "https://registry.npmmirror.com/@fontsource-variable/jetbrains-mono/-/jetbrains-mono-5.3.0.tgz", {}, "sha512-F32xpS2NsGYoQi2ADSkKTgpJj7ozajsGgDJ8woTnqjmIB+dxDIqImjl4pXZVEExu8UFZ2ndhmX18EBS/hdz3Lw=="],
+
+    "@fontsource-variable/noto-sans-sc": ["@fontsource-variable/noto-sans-sc@5.3.1", "", {}, "sha512-UB96JJ17HyD5ehEU7Em0hDdh7fvTMB4B4Hzmq5c4QaNwwSLqTrdM2S+coySeBqCkXwh0DxqXT0b0wMrmzorFpQ=="],
 
     "@giscus/react": ["@giscus/react@3.1.0", "https://registry.npmmirror.com/@giscus/react/-/react-3.1.0.tgz", { "dependencies": { "giscus": "^1.6.0" }, "peerDependencies": { "react": "^16 || ^17 || ^18 || ^19", "react-dom": "^16 || ^17 || ^18 || ^19" } }, "sha512-0TCO2TvL43+oOdyVVGHDItwxD1UMKP2ZYpT6gXmhFOqfAJtZxTzJ9hkn34iAF/b6YzyJ4Um89QIt9z/ajmAEeg=="],
 
