@@ -165,13 +165,13 @@ func runCostBreakdown(t *testing.T, h *harness) {
 	}
 	reconcile()
 
-	for _, q := range []string{"by=method", "by=terminal", "by=x", "period=2026-13"} {
+	for _, q := range []string{"by=x", "by=device", "period=2026-13"} {
 		code, out, _, _ := h.call("u_alice", "GET", "/api/edu/cost-report/breakdown?"+q, nil)
 		if code != 400 {
 			t.Fatalf("%s must be 400, got %d", q, code)
 		}
-		if q == "by=method" && len(data(out)["notCollected"].([]any)) != 4 {
-			t.Fatalf("400 lists what is not collected: %v", out)
+		if q == "by=x" && len(data(out)["notCollected"].([]any)) != 3 {
+			t.Fatalf("400 lists the strata with partial sources: %v", out)
 		}
 	}
 	for _, u := range []string{"u_bob", "u_dave"} {
