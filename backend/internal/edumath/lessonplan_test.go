@@ -113,10 +113,26 @@ func runLessonPlan(t *testing.T, h *harness) {
 	if m["goal"] != "fix_mistake" || m["style"] != "detailed" || m["target_minutes"].(float64) != 6 {
 		t.Fatalf("teaching meta: %v", m)
 	}
-	pb, _ := json.Marshal(plain["beats"])
-	db, _ := json.Marshal(doc["beats"])
-	if string(pb) != string(db) {
-		t.Fatal("teaching params must not change the beats")
+	// DEV-070: style and goal change only the spoken wording; the steps, board
+	// lines and what each step reveals stay the same.
+	pbs, dbs := plain["beats"].([]any), doc["beats"].([]any)
+	if len(pbs) != len(dbs) {
+		t.Fatalf("teaching params must not change the step count: %d vs %d", len(pbs), len(dbs))
+	}
+	reworded := false
+	for i := range pbs {
+		pbm, dbm := pbs[i].(map[string]any), dbs[i].(map[string]any)
+		for _, k := range []string{"id", "title", "board", "board_latex", "figure_focus", "reveals_answer", "solution_step_ref"} {
+			x, _ := json.Marshal(pbm[k])
+			y, _ := json.Marshal(dbm[k])
+			if string(x) != string(y) {
+				t.Fatalf("teaching params must not change beat %d %s: %s vs %s", i, k, x, y)
+			}
+		}
+		reworded = reworded || pbm["say"] != dbm["say"]
+	}
+	if !reworded {
+		t.Fatal("detailed style with fix_mistake goal must change the wording")
 	}
 	if c, _, raw, _ := h.call("u_alice", "POST", buildURL, map[string]any{"idempotencyKey": "plan-l1", "goal": "practice", "style": "detailed", "targetMinutes": 6}); c != 409 {
 		t.Fatalf("key reused with other params: %d %s", c, raw)
