@@ -15,7 +15,7 @@ import re
 
 from . import catalog
 from .errors import MathError
-from .lesson import COMPOSER_VERSION, SCHEMA, canonical_hash
+from .lesson import COMPOSER_VERSION, SCHEMA, canonical_hash, cue_problems, with_cues
 
 GENERATOR = "teacher-manual"
 VERIFICATION = "manual_unverified"
@@ -73,4 +73,8 @@ def compose(problem, manual, refs):
         "check_answer_key": {},
         "quality": {"math": VERIFICATION, "pedagogy": "pending_teacher_review", "presentation": "auto_checked"},
     }
+    with_cues(lesson)
+    problems = cue_problems(lesson)
+    if problems:
+        raise MathError("VALIDATION_FAILED", "presentation consistency failed", {"problems": problems})
     return {"lesson": lesson, "lesson_hash": canonical_hash(lesson)}

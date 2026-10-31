@@ -5,13 +5,17 @@ import type { Provenance } from "./provenance-logic";
  * 讲解结构化编辑的纯逻辑（FR-T05/T06，AC-17/18），便于单元测试。
  * 只生成字段级编辑；是否可编辑、影响范围和冲突都以服务端判定为准。
  */
-export type EditableBeat = { id: string; title: string; say: string; board: string[] | null; reveals_answer?: boolean };
+/** 旁白锚点与绑定动作（DEV-071，edu.lesson/2）；只读，改旁白或板书后由数学服务重建。 */
+export type CueAction = { kind: string; line?: number; refs?: string[] };
+export type Cue = { anchor: string; text: string; est_ms?: number; actions: CueAction[] | null };
+export type EditableBeat = { id: string; title: string; say: string; board: string[] | null; reveals_answer?: boolean; cues?: Cue[] | null };
 export type EditableHint = { level: number; kind: string; text: string };
 /** 图形里老师可改的文字（DEV-073）；几何、帧和预测 id 只随题目修订变化。 */
 export type EditableFigure = { description: string; prediction?: { id: string; prompt: string; options: string[] } | null } | null;
 export type Editable = {
     lessonRevisionId: string;
     lessonHash: string;
+    schemaVersion?: string;
     state: string;
     parentLessonRevisionId?: string;
     beats: EditableBeat[];
@@ -185,4 +189,19 @@ export function changeValue(v: unknown): string {
     if (Array.isArray(v)) return v.map(String).join(" / ") || "空";
     if (typeof v === "object") return JSON.stringify(v);
     return String(v) || "空";
+}
+
+/**
+ * DEV-071：把一个步骤的旁白锚点说成老师看得懂的一行。没有语音合成，锚点按文字顺序，
+ * 时长只是按字数估计；旧版（edu.lesson/1）修订没有锚点，提示保存一次修改即可生成。
+ */
+export function cueSummary(b: EditableBeat): string {
+    const cues = b.cues ?? [];
+    if (!cues.length) return "旧版讲解没有旁白锚点，保存任意修改后自动生成";
+    const parts = cues.map((c, k) => {
+        const acts = (c.actions ?? []).map((a) => (a.kind === "show_board_line" ? `板书第${(a.line ?? 0) + 1}行` : a.kind === "focus_figure" ? `图中标出${(a.refs ?? []).join("、")}` : "未知动作"));
+        return `第${k + 1}句${acts.length ? "：" + acts.join("，") : ""}`;
+    });
+    const sec = Math.round(cues.reduce((t, c) => t + (c.est_ms ?? 0), 0) / 1000);
+    return `旁白分 ${cues.length} 句（按文字顺序，约 ${sec} 秒，字数估计）；${parts.join("；")}`;
 }

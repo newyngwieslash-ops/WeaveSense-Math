@@ -426,12 +426,22 @@ func (h *API) getEditable(c *gin.Context) {
 		return
 	}
 	var doc struct {
-		Beats []struct {
+		SchemaVersion string `json:"schema_version"`
+		Beats         []struct {
 			ID     string   `json:"id"`
 			Title  string   `json:"title"`
 			Say    string   `json:"say"`
 			Board  []string `json:"board"`
 			Reveal bool     `json:"reveals_answer"`
+			// DEV-071: narration anchors and the board/figure actions bound to
+			// them (edu.lesson/2); absent in edu.lesson/1 revisions. Read only:
+			// the math service rebuilds them whenever narration or board change.
+			Cues []struct {
+				Anchor  string          `json:"anchor"`
+				Text    string          `json:"text"`
+				EstMs   int             `json:"est_ms"`
+				Actions json.RawMessage `json:"actions"`
+			} `json:"cues,omitempty"`
 		} `json:"beats"`
 		Hints []struct {
 			Level int    `json:"level"`
@@ -470,7 +480,7 @@ func (h *API) getEditable(c *gin.Context) {
 	teaching := gin.H{"goal": doc.Meta.Goal, "style": doc.Meta.Style, "targetMinutes": doc.Meta.TargetMinutes}
 	reply(c, 200, gin.H{"lessonRevisionId": l.ID, "lessonHash": l.LessonHash, "state": l.State, "parentLessonRevisionId": l.ParentLessonRevisionID,
 		"teaching": teaching, "duration": lessonDuration(says, lines, doc.Meta.Style, doc.Meta.TargetMinutes), "figure": doc.Figure.Explore, "provenance": h.Svc.lessonProvenance(tx, a.TenantID, l, raw),
-		"beats": doc.Beats, "hints": doc.Hints, "pronunciations": doc.Pronunciations, "quality": doc.Quality, "editLog": doc.Meta.EditLog, "layout": doc.Meta.Layout,
+		"schemaVersion": doc.SchemaVersion, "beats": doc.Beats, "hints": doc.Hints, "pronunciations": doc.Pronunciations, "quality": doc.Quality, "editLog": doc.Meta.EditLog, "layout": doc.Meta.Layout,
 		"editReviewInherit": h.Svc.EditReviewRule(tx, a.TenantID), "latestRevisionId": h.Svc.latestHead(tx, l.ID),
 		"limits": gin.H{"maxEdits": maxLessonEdits, "maxText": 600, "maxBoardLines": 12, "maxLine": 200}}, "ok")
 }

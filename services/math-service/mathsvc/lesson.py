@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Lesson schema edu.lesson/1 and the student projection.
+"""Lesson schema edu.lesson/2 (edu.lesson/1 stays readable) and the student projection.
 
 Structure inspired by edulab skills/edu-math-video/lesson (meta/scenes/beats/board),
 rewritten as a versioned data contract; no executable expressions are allowed
@@ -11,8 +11,12 @@ import json
 
 from .errors import MathError
 
-SCHEMA = "edu.lesson/1"
-COMPOSER_VERSION = "lesson-composer/1.0.0"
+SCHEMA = "edu.lesson/2"
+READABLE_SCHEMAS = ("edu.lesson/1", "edu.lesson/2")
+COMPOSER_VERSION = "lesson-composer/1.1.0"
+CUE_SCHEMA = "edu.cues/1"
+CUE_ACTIONS = ("show_board_line", "focus_figure")
+_SENTENCE_END = "。；！？!?;"
 
 
 def canonical_hash(obj):
@@ -68,6 +72,88 @@ def _reword(beats, teaching):
         b["say"] = say
 
 
+def _segments(say):
+    """Split narration into sentences, keeping the terminator. The pieces
+    concatenate back to the narration exactly."""
+    out, cur = [], ""
+    for ch in say:
+        cur += ch
+        if ch in _SENTENCE_END:
+            out.append(cur)
+            cur = ""
+    if cur:
+        out.append(cur)
+    return out or [say]
+
+
+def beat_cues(beat):
+    """DEV-071: narration segments with stable anchors and the board or figure
+    actions bound to them. Anchors are text positions, not audio times: there
+    is no speech synthesis yet, so timing is text_order and est_ms is only a
+    reading-speed estimate. When audio exists its word timings map onto the
+    same anchors; actions never contain code, only a kind and plain refs."""
+    segs = _segments(beat["say"])
+    board, focus = beat["board"], list(beat.get("figure_focus") or [])
+    cues, pos = [], 0
+    for k, text in enumerate(segs):
+        acts = []
+        if k == 0 and focus:
+            acts.append({"kind": "focus_figure", "refs": focus})
+        last = k == len(segs) - 1
+        for j in range(len(board)):
+            if min(j, len(segs) - 1) == k or (last and j >= len(segs)):
+                if not any(a.get("line") == j for c in cues for a in c["actions"]):
+                    acts.append({"kind": "show_board_line", "line": j})
+        cues.append({"anchor": "%s.n%d" % (beat["id"], k), "text": text, "chars": [pos, pos + len(text)],
+                     "est_ms": max(800, 250 * len(text)), "actions": acts})
+        pos += len(text)
+    return cues
+
+
+def with_cues(lesson):
+    """Attach cues to every beat and mark the document edu.lesson/2."""
+    for b in lesson["beats"]:
+        b["cues"] = beat_cues(b)
+    lesson["schema_version"] = SCHEMA
+    lesson["cue_schema"] = CUE_SCHEMA
+    lesson["cue_timing"] = "text_order"
+    return lesson
+
+
+def cue_problems(lesson):
+    """Cue consistency (DEV-071). edu.lesson/1 documents have no cues and are
+    still valid; in /2 every beat's cues must rebuild its narration, anchors are
+    unique, each board line is shown exactly once and figure refs come from the
+    beat's own figure focus."""
+    if lesson.get("schema_version") not in READABLE_SCHEMAS:
+        return ["unknown lesson schema"]
+    if lesson.get("schema_version") == "edu.lesson/1":
+        return []
+    problems, seen = [], set()
+    for b in lesson["beats"]:
+        cues = b.get("cues")
+        if not isinstance(cues, list) or not cues:
+            problems.append("beat %s has no cues" % b["id"])
+            continue
+        if "".join(c.get("text", "") for c in cues) != b["say"]:
+            problems.append("beat %s cues do not rebuild the narration" % b["id"])
+        shown = []
+        for c in cues:
+            if c.get("anchor") in seen:
+                problems.append("duplicate anchor %s" % c.get("anchor"))
+            seen.add(c.get("anchor"))
+            for a in c.get("actions", []):
+                if a.get("kind") not in CUE_ACTIONS:
+                    problems.append("beat %s has an unknown action" % b["id"])
+                elif a["kind"] == "show_board_line":
+                    shown.append(a.get("line"))
+                elif not set(a.get("refs", [])) <= set(b.get("figure_focus") or []):
+                    problems.append("beat %s focuses outside its figure focus" % b["id"])
+        if sorted(x for x in shown if isinstance(x, int)) != list(range(len(b["board"]))) or len(shown) != len(b["board"]):
+            problems.append("beat %s cues do not show every board line once" % b["id"])
+    return problems
+
+
 def compose(fam, norm, sol, report, cq, refs, teaching=None):
     teaching = teaching_params(teaching)
     if report["math_state"] != "verified":
@@ -100,6 +186,7 @@ def compose(fam, norm, sol, report, cq, refs, teaching=None):
         lesson["meta"]["target_minutes"] = teaching["target_minutes"]
         if teaching["goal"]:
             lesson["meta"]["goal"] = teaching["goal"]
+    with_cues(lesson)
     problems = presentation_check(lesson, sol)
     if problems:
         raise MathError("VALIDATION_FAILED", "presentation consistency failed", {"problems": problems})
@@ -136,7 +223,7 @@ def presentation_check(lesson, sol):
         problems.append("answer differs from solution")
     if not any(b["reveals_answer"] for b in lesson["beats"]):
         problems.append("no beat is marked as revealing the answer")
-    return problems
+    return problems + cue_problems(lesson)
 
 
 def answer_markers(lesson):
