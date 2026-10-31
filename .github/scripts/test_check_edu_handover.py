@@ -73,6 +73,19 @@ class Handover(unittest.TestCase):
         p = self.run_check(statuses={**BASE, "DEV-002": "差不多"})
         self.assertTrue(any("差不多" in x for x in p), p)
 
+    def test_entity_table_must_list_every_model_table(self):
+        with tempfile.TemporaryDirectory() as root:
+            write(root, BASE)
+            m = pathlib.Path(root) / "backend" / "internal" / "model"
+            m.mkdir(parents=True)
+            (m / "models_edu.go").write_text('func (A) TableName() string { return "edu_a" }\nfunc (B) TableName() string { return "edu_b" }\n', encoding="utf-8")
+            d = pathlib.Path(root) / "docs" / "math-workbench"
+            (d / "09-x.md").write_text("### 3.1\n| a edu_a |\n### 3.2\nedu_b\n", encoding="utf-8")
+            p = ho.check(root)[0]
+            self.assertEqual(p, ["09: entity table edu_b from models_edu.go is not listed in section 3.1"])
+            (d / "09-x.md").write_text("### 3.1\n| a edu_a | edu_b |\n### 3.2\n", encoding="utf-8")
+            self.assertEqual(ho.check(root)[0], [])
+
 
 if __name__ == "__main__":
     unittest.main()

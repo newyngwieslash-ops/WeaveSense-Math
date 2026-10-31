@@ -5,7 +5,8 @@ Checks, using only the files in docs/math-workbench:
 * every DEV in the checklist has exactly one row in 04 with a known status;
 * the checklist box is [x] exactly when 04 says 完成;
 * the 04 summary table equals the counts computed from the per-item rows;
-* 11 lists every DEV that is not 完成, with the same status, and nothing else.
+* 11 lists every DEV that is not 完成, with the same status, and nothing else;
+* 09 section 3.1 (DEV-007 entity table) names every edu_ table in models_edu.go.
 Exit 1 with a list of problems otherwise.
 """
 import re
@@ -82,7 +83,21 @@ def check(root):
     for dev in listed:
         if status.get(dev, "完成") == "完成":
             problems.append(f"11: {dev} is listed as a gap but 04 says 完成")
+    problems += entity_problems(Path(root), d)
     return problems, total
+
+
+def entity_problems(root, d):
+    models = root / "backend" / "internal" / "model" / "models_edu.go"
+    if not models.exists():
+        return []
+    tables = sorted(set(re.findall(r'TableName\(\) string \{ return "(edu_[a-z_]+)"', models.read_text(encoding="utf-8"))))
+    found = list(d.glob("09-*.md"))
+    text = found[0].read_text(encoding="utf-8") if found else ""
+    start, end = text.find("### 3.1"), text.find("### 3.2")
+    section = text[start:end] if 0 <= start < end else ""
+    named = set(re.findall(r"edu_[a-z_]+", section))
+    return [f"09: entity table {t} from models_edu.go is not listed in section 3.1" for t in tables if t not in named]
 
 
 def main(argv):
