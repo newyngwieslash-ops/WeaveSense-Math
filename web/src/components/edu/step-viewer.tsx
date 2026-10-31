@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { BOARD_THEME_VERSION, boardFontStyle } from "./board-theme";
 import { readStep } from "./figure-math";
 
 /**
@@ -23,7 +24,7 @@ export function StepViewer({ beats, storageKey }: { beats: Beat[]; storageKey: s
     const b = beats[Math.min(i, beats.length - 1)];
     const board = Array.isArray(b.board) ? b.board : b.board ? [b.board] : [];
     return (
-        <div className="mt-2 rounded-md border border-stone-200 p-3 dark:border-stone-700" data-testid="step-viewer" data-step={i}>
+        <div className="mt-2 rounded-md border border-stone-200 p-3 dark:border-stone-700" data-testid="step-viewer" data-step={i} data-board-theme={BOARD_THEME_VERSION} style={boardFontStyle}>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
                 <span className="rounded bg-stone-100 px-2 py-1 dark:bg-stone-800" data-testid="silent-mode">
                     静音模式
