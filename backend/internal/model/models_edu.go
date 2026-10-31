@@ -179,6 +179,9 @@ type EduMathJob struct {
 	Options string `json:"options,omitempty" gorm:"size:200"`
 	// PriceBook is the price book frozen when the job was accepted (JSON); every stage settles with it (DEV-061).
 	PriceBook string `json:"-" gorm:"type:text"`
+	// RequestID is the X-Request-Id of the HTTP request that accepted the job (v97, DEV-121);
+	// empty for jobs started outside an HTTP request (agent tools, sweeps) or before v97.
+	RequestID string `json:"requestId,omitempty" gorm:"size:64"`
 }
 
 func (EduMathJob) TableName() string { return "edu_math_jobs" }
@@ -257,6 +260,11 @@ type EduLessonRevision struct {
 	RenderCheckArtifact string `json:"renderCheckArtifactId,omitempty" gorm:"size:40"`
 	RenderCheckState    string `json:"renderCheckState,omitempty" gorm:"size:16"` // passed | warnings | failed
 	RenderCheck         string `json:"-" gorm:"type:text"`
+	// What produced this revision, copied from the lesson document's own meta when the
+	// revision is materialized (v97, DEV-118 strata). Empty on older rows (not recorded).
+	Generator       string `json:"generator,omitempty" gorm:"size:40"`
+	ComposerVersion string `json:"composerVersion,omitempty" gorm:"size:40"`
+	ModelRef        string `json:"modelRef,omitempty" gorm:"size:60"` // "none" when the lesson records ai_generated=false
 }
 
 func (EduLessonRevision) TableName() string { return "edu_lesson_revisions" }
@@ -491,6 +499,22 @@ type EduFigureInteraction struct {
 
 func (EduFigureInteraction) TableName() string { return "edu_figure_interactions" }
 
+// EduAssignmentView counts a student's successful reads of an assignment per client
+// terminal class (v97, DEV-121 reads, DEV-118 terminal). Counts and times only; it is
+// learning data, deleted with the student's other learning records.
+type EduAssignmentView struct {
+	ID            string    `json:"id" gorm:"primaryKey;size:40"`
+	TenantID      string    `json:"tenantId" gorm:"size:40;not null;index;uniqueIndex:ux_edu_view,priority:1"`
+	AssignmentID  string    `json:"assignmentId" gorm:"size:40;not null;index;uniqueIndex:ux_edu_view,priority:2"`
+	StudentUserID string    `json:"studentUserId" gorm:"size:40;not null;index;uniqueIndex:ux_edu_view,priority:3"`
+	Terminal      string    `json:"terminal" gorm:"size:16;not null;uniqueIndex:ux_edu_view,priority:4"` // phone | tablet | desktop | unknown
+	Views         int       `json:"views"`
+	FirstViewedAt time.Time `json:"firstViewedAt"`
+	LastViewedAt  time.Time `json:"lastViewedAt"`
+}
+
+func (EduAssignmentView) TableName() string { return "edu_assignment_views" }
+
 type EduAuditEvent struct {
 	ID        string    `json:"id" gorm:"primaryKey;size:40"`
 	TenantID  string    `json:"tenantId" gorm:"size:40;not null;index"`
@@ -509,7 +533,7 @@ func EduModels() []any {
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
 		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
-		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}, &EduPause{}, &EduIncidentReview{}, &EduRevisionNotice{}, &EduProblemImage{}}
+		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}, &EduPause{}, &EduIncidentReview{}, &EduRevisionNotice{}, &EduProblemImage{}, &EduAssignmentView{}}
 }
 
 // EduVariantSet is a finite set of numbers only variants of a lesson's problem (FR-M07, FR-T11, AC-22).

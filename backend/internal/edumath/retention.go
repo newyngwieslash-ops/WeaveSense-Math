@@ -49,7 +49,7 @@ var ErrRetentionNotConfirmed = appErr(http.StatusConflict, "RETENTION_NOT_CONFIR
 
 // learningTables hold one student's learning data per assignment.
 var learningTables = []any{&model.EduAttempt{}, &model.EduHintUnlock{}, &model.EduSelfTest{}, &model.EduReviewItem{}, &model.EduHelpRequest{},
-	&model.EduPrediction{}, &model.EduFigureInteraction{}, &model.EduRegrade{}, &model.EduAssignmentExtension{}}
+	&model.EduPrediction{}, &model.EduFigureInteraction{}, &model.EduRegrade{}, &model.EduAssignmentExtension{}, &model.EduAssignmentView{}}
 
 func (h *API) registerRetention(g *gin.RouterGroup) {
 	g.GET("/retention", h.getRetention)

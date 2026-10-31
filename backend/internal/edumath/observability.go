@@ -40,8 +40,8 @@ const (
 
 var observabilityNotCollected = []map[string]string{
 	{"dimension": "availability", "reason": "the 99.5% pilot availability target needs an external probe; the module cannot measure its own downtime"},
-	{"dimension": "reading", "reason": "no view events are collected (DEV-116 records submissions, not reads)"},
-	{"dimension": "request_trace", "reason": "request level trace ids are not propagated; the job id is the trace key"},
+	{"dimension": "reading_events", "reason": "reads are counted per (assignment, student, terminal) with first and last time since v97; individual read events are not kept"},
+	{"dimension": "request_trace", "reason": "request ids are stored on jobs accepted by an HTTP request since v97; audit rows and agent tool calls carry none"},
 	{"dimension": "resources", "reason": "host CPU, memory and disk belong to the deployment monitoring (07)"},
 	{"dimension": "alert_delivery", "reason": "alerts are computed on read; paging and notification belong to the deployment (07)"},
 }
@@ -52,6 +52,7 @@ var terminalJobStatuses = []string{"succeeded", "failed", "cancelled"}
 func (h *API) registerObservability(g *gin.RouterGroup) {
 	g.GET("/observability", h.observability)
 	g.GET("/jobs/:id/trace", h.jobTrace)
+	g.GET("/observability/requests/:rid", h.requestJobs)
 	g.GET("/ops/observability", h.opsObservability)
 	g.GET("/ops/jobs/:id/trace", h.opsJobTrace)
 }
@@ -221,6 +222,11 @@ func buildObservability(tx *gorm.DB, tenant string, now time.Time, hours int) (g
 		return nil, err
 	}
 
+	reading, err := readingStats(tx, tenant, from)
+	if err != nil {
+		return nil, err
+	}
+
 	alerts := []obsAlert{
 		{ID: "stuck_jobs", Value: float64(stuckTotal), Threshold: 0, Rule: "open jobs silent for more than 30 minutes"},
 		{ID: "queue_age", Threshold: queueAgeAlert.Seconds(), Rule: "oldest queued job waiting more than 15 minutes"},
@@ -263,7 +269,7 @@ func buildObservability(tx *gorm.DB, tenant string, now time.Time, hours int) (g
 		"definition": observabilityDefinition, "generatedAt": now, "windowHours": hours, "from": from,
 		"generation":   gin.H{"byKind": kindRows, "errorCodes": codes, "finished": terminal, "failed": failed},
 		"submission":   gin.H{"attempts": attempts, "selfTests": selfTests, "helpRequests": helps},
-		"reading":      gin.H{"collected": false},
+		"reading":      reading,
 		"queue":        gin.H{"queued": queued, "running": running, "oldestQueuedSeconds": oldestQueued, "stuck": stuck, "stuckTotal": stuckTotal},
 		"cost":         gin.H{"reconciliationRequired": reconcile, "heldUnknown": heldUnknown, "unsettledReservations": unsettled, "openLedgerAnomalies": anomalies},
 		"availability": gin.H{"target": 0.995, "measured": nil, "reason": "external probe required"},
@@ -371,7 +377,7 @@ func buildTrace(tx *gorm.DB, tenant, jobID string) (gin.H, error) {
 		revs["lessonRevisionId"], revs["lessonState"] = lr.ID, lr.State
 	}
 	return gin.H{
-		"definition": observabilityDefinition, "traceId": j.ID,
+		"definition": observabilityDefinition, "traceId": j.ID, "requestId": j.RequestID,
 		"job": gin.H{"id": j.ID, "kind": j.Kind, "status": j.Status, "stage": j.Stage, "sourceJobId": j.SourceJobID, "serviceJobId": j.ServiceJobID,
 			"operationId": j.OperationID, "errorCode": j.ErrorCode, "settlement": j.Settlement, "priceVersion": j.PriceVersion, "budgetMicro": j.BudgetMicro,
 			"cancelRequested": j.CancelRequested, "createdAt": j.CreatedAt, "updatedAt": j.UpdatedAt},
@@ -412,4 +418,28 @@ func (h *API) opsJobTrace(c *gin.Context) {
 	h.Svc.audit(tx, a, "ops.read", gr.ID, "GET /api/edu/ops/jobs/:id/trace | "+gr.Purpose)
 	c.Header("Cache-Control", "private, no-store")
 	reply(c, http.StatusOK, out, "ok")
+}
+
+// requestJobs lists the jobs a request accepted (DEV-121): support quotes the
+// X-Request-Id from a response, the admin finds the job and opens its trace.
+func (h *API) requestJobs(c *gin.Context) {
+	a, tx, ok := h.orgAdmin(c)
+	if !ok {
+		return
+	}
+	rid := c.Param("rid")
+	if !requestIDRe.MatchString(rid) {
+		h.fail(c, appErr(400, "VALIDATION_FAILED", "request id must be 8 to 64 of A-Z a-z 0-9 . _ -", "fix_input"))
+		return
+	}
+	var js []model.EduMathJob
+	if err := tx.Select("id", "kind", "status", "created_at").Where("tenant_id = ? AND request_id = ?", a.TenantID, rid).Order("created_at, id").Limit(50).Find(&js).Error; err != nil {
+		h.fail(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(js))
+	for _, j := range js {
+		out = append(out, gin.H{"id": j.ID, "kind": j.Kind, "status": j.Status, "createdAt": j.CreatedAt, "trace": "/api/edu/jobs/" + j.ID + "/trace"})
+	}
+	reply(c, http.StatusOK, gin.H{"requestId": rid, "jobs": out}, "ok")
 }

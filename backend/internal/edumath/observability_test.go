@@ -22,8 +22,8 @@ func TestPGObservability(t *testing.T) {
 // separately, all alerts are quiet; stuck, queued, unknown cost, reconciliation,
 // unsettled reservation, ledger anomaly and failure rate each fire on their own
 // seeded fact; a job trace chains platform events, stage settlements and the
-// revisions it produced with metadata only; availability and reading are listed
-// as not collected; only an org admin or an operator with a jobs grant (audited)
+// revisions it produced with metadata only; availability is listed as not
+// collected and reads are counted (views_test.go); only an org admin or an operator with a jobs grant (audited)
 // may look.
 func runObservability(t *testing.T, h *harness) {
 	tenant := h.setupTeacher()
@@ -68,8 +68,8 @@ func runObservability(t *testing.T, h *harness) {
 	if av := v["availability"].(map[string]any); av["target"].(float64) != 0.995 || av["measured"] != nil {
 		t.Fatalf("availability must be a target without a measured value: %v", av)
 	}
-	if v["reading"].(map[string]any)["collected"] != false || v["submission"].(map[string]any)["attempts"].(float64) != 1 {
-		t.Fatalf("reading is not collected; submissions are counted: %v %v", v["reading"], v["submission"])
+	if v["reading"].(map[string]any)["collected"] != true || v["reading"].(map[string]any)["students"].(float64) != 0 || v["submission"].(map[string]any)["attempts"].(float64) != 1 {
+		t.Fatalf("reading is collected (no reads here); submissions are counted: %v %v", v["reading"], v["submission"])
 	}
 	kinds := map[string]map[string]any{}
 	for _, x := range v["generation"].(map[string]any)["byKind"].([]any) {

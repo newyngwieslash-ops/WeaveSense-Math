@@ -9,9 +9,21 @@ import { apiClient } from "./request";
 export type EduScope = { tenant?: string; workspace?: string; purpose?: string };
 export type EduResult<T> = { ok: true; status: number; data: T } | { ok: false; status: number; code: string; message: string; offline?: boolean; detail?: unknown };
 
+/** 学生端终端分类（DEV-118）：只按视口宽度，不读取设备指纹或用户代理。 */
+export function eduTerminal(width: number | undefined): "phone" | "tablet" | "desktop" | undefined {
+    if (typeof width !== "number" || !(width > 0)) return undefined;
+    if (width < 600) return "phone";
+    if (width < 1024) return "tablet";
+    return "desktop";
+}
+
 export async function edu<T>(method: "get" | "post" | "put" | "delete", path: string, scope: EduScope, body?: unknown): Promise<EduResult<T>> {
     const headers: Record<string, string> = {};
-    if (scope.tenant) headers["X-Edu-Tenant"] = scope.tenant;
+    if (scope.tenant) {
+        headers["X-Edu-Tenant"] = scope.tenant;
+        const terminal = eduTerminal(typeof window === "undefined" ? undefined : window.innerWidth);
+        if (terminal) headers["X-Edu-Terminal"] = terminal;
+    }
     if (scope.workspace) headers["X-Workspace-Id"] = scope.workspace;
     if (scope.purpose) headers["X-Edu-Access-Purpose"] = encodeURIComponent(scope.purpose);
     try {

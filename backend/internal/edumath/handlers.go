@@ -506,6 +506,7 @@ func (h *API) studentAssignment(c *gin.Context) {
 	if r := studentRevision(tx, a.TenantID, a.UserID, as.ID); r != nil {
 		asg["revision"] = r
 	}
+	h.Svc.recordView(tx, a.TenantID, as.ID, a.UserID, terminalOf(c))
 	reply(c, 200, gin.H{"assignment": asg, "lesson": proj, "provenance": h.Svc.lessonProvenance(tx, a.TenantID, l, teacher), "preview": gin.H{"url": u, "expiresAt": exp}}, "ok")
 }
 

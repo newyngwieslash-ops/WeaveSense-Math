@@ -371,6 +371,7 @@ func (s *Service) materializeEdit(ctx context.Context, tx *gorm.DB, job model.Ed
 		PreviewArtifact: arts["preview_html"].ID, StudentPreview: arts["preview_html_student"].ID, State: "ready_for_review", CreatedBy: job.CreatedBy,
 		CreatedAt: s.now(), ParentLessonRevisionID: base.ID, EditClasses: ed.Classes,
 		RenderCheckArtifact: arts["render_check"].ID, RenderCheckState: rcState, RenderCheck: rc}
+	child.Generator, child.ComposerVersion, child.ModelRef = s.lessonOrigin(ctx, job.TenantID, la)
 	if len(rcBlocking) > 0 {
 		// a known presentation fault is never published, not even by an inherited approval
 		child.State, child.BlockingErrors = "rejected", mergeBlocking("", rcBlocking)

@@ -77,6 +77,7 @@ func eduTenantIDs(db *gorm.DB, userID string) ([]string, error) {
 func Middleware(db *gorm.DB, user flow.UserFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		noStore(c)
+		withRequestID(c)
 		if strings.HasPrefix(c.Request.URL.Path, "/api/edu/files/") {
 			c.Next() // signed-URL fetch: authorized by signature + access recheck in system context
 			return
