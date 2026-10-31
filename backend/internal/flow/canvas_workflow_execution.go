@@ -42,11 +42,16 @@ type CanvasWorkflowAdmission struct {
 	AuthorityBinding json.RawMessage
 }
 type CanvasWorkflowCheckpoint struct {
-	Stage    string                                  `json:"stage"`
-	Nodes    map[string]CanvasWorkflowNodeCheckpoint `json:"nodes"`
-	Result   json.RawMessage                         `json:"result,omitempty"`
-	Error    string                                  `json:"error,omitempty"`
-	ReportID string                                  `json:"report_id,omitempty"`
+	Stage  string                                  `json:"stage"`
+	Nodes  map[string]CanvasWorkflowNodeCheckpoint `json:"nodes"`
+	Result json.RawMessage                         `json:"result,omitempty"`
+	Error  string                                  `json:"error,omitempty"`
+	// ErrorCode is the stable classification of Error (CanvasWorkflowErrorCode),
+	// so a failed or parked run says why without parsing sanitized text.
+	ErrorCode string `json:"error_code,omitempty"`
+	// Recovery counts recovery-sweeper requeues of a never-started run.
+	Recovery int    `json:"recovery,omitempty"`
+	ReportID string `json:"report_id,omitempty"`
 }
 type CanvasWorkflowNodeCheckpoint struct {
 	TaskID      string          `json:"task_id,omitempty"`
@@ -478,6 +483,12 @@ func (s CanvasWorkflowExecutions) save(tx *gorm.DB, r model.CanvasWorkflowExecut
 // CloseFailedRun is a fenced internal cleanup, not authorization to execute.
 // Current revocation cannot prevent releasing a run that was never dispatched.
 func (s CanvasWorkflowExecutions) CloseFailedRun(ctx context.Context, userID, runID, worker string, token int64) error {
+	return s.CloseFailedRunWithCode(ctx, userID, runID, worker, token, "stopped")
+}
+
+// CloseFailedRunWithCode is CloseFailedRun that also records why the run
+// stopped (see CanvasWorkflowErrorCode) in the checkpoint.
+func (s CanvasWorkflowExecutions) CloseFailedRunWithCode(ctx context.Context, userID, runID, worker string, token int64, code string) error {
 	if s.DB == nil || userID == "" || worker == "" {
 		return ErrInvalid
 	}
@@ -486,56 +497,62 @@ func (s CanvasWorkflowExecutions) CloseFailedRun(ctx context.Context, userID, ru
 		if err := tx.First(&run, "id = ? AND user_id = ?", runID, userID).Error; err != nil {
 			return err
 		}
-		if run.Status == "succeeded" || run.Status == "failed" || run.Status == "cancel_requested" || run.Status == "cancelled" || run.Status == "saving_result" || run.Status == "saving_report" {
-			return nil
-		}
-		if err := s.fence(tx, runID, worker, token); err != nil {
-			return err
-		}
-		cp, err := DecodeCanvasWorkflowCheckpoint(run)
-		if err != nil {
-			return err
-		}
-		var reservations []model.FlowBudgetReservation
-		if err := tx.Where("parent_id = ? AND tenant_id = ?", run.ReservationID, run.TenantID).Find(&reservations).Error; err != nil {
-			return err
-		}
-		uncertain := false
-		for _, reservation := range reservations {
-			if reservation.Status == "settled" || reservation.Status == "released" {
-				continue
-			}
-			var task model.FlowModelTask
-			if err := tx.First(&task, "reservation_id = ? AND tenant_id = ?", reservation.ID, run.TenantID).Error; err != nil {
-				uncertain = true
-				continue
-			}
-			switch task.Status {
-			case "queued", StatusRetryWait:
-				q := tx.Model(&model.FlowModelTask{}).Where("id = ? AND status IN ?", task.ID, []string{"queued", StatusRetryWait}).Updates(map[string]any{"status": "failed", "last_error": "workflow stopped before dispatch", "updated_at": s.now()})
-				if q.Error != nil {
-					return q.Error
-				}
-				if q.RowsAffected != 1 {
-					uncertain = true
-					continue
-				}
-				if _, err := (Billing{DB: tx, Now: s.Now}).Release(reservation.ID); err != nil {
-					return err
-				}
-			default:
-				uncertain = true
-			}
-		}
-		cp.Stage = "failed"
-		cp.Error = "workflow stopped before completion"
-		if uncertain {
-			cp.Stage = "waiting_external"
-			cp.Error = "workflow stopped with unresolved external work"
-		}
-		_, err = s.save(tx, run, cp)
-		return err
+		return s.closeFailedRun(tx, run, worker, token, code)
 	})
+}
+
+func (s CanvasWorkflowExecutions) closeFailedRun(tx *gorm.DB, run model.CanvasWorkflowExecution, worker string, token int64, code string) error {
+	runID := run.ID
+	if run.Status == "succeeded" || run.Status == "failed" || run.Status == "cancel_requested" || run.Status == "cancelled" || run.Status == "saving_result" || run.Status == "saving_report" {
+		return nil
+	}
+	if err := s.fence(tx, runID, worker, token); err != nil {
+		return err
+	}
+	cp, err := DecodeCanvasWorkflowCheckpoint(run)
+	if err != nil {
+		return err
+	}
+	var reservations []model.FlowBudgetReservation
+	if err := tx.Where("parent_id = ? AND tenant_id = ?", run.ReservationID, run.TenantID).Find(&reservations).Error; err != nil {
+		return err
+	}
+	uncertain := false
+	for _, reservation := range reservations {
+		if reservation.Status == "settled" || reservation.Status == "released" {
+			continue
+		}
+		var task model.FlowModelTask
+		if err := tx.First(&task, "reservation_id = ? AND tenant_id = ?", reservation.ID, run.TenantID).Error; err != nil {
+			uncertain = true
+			continue
+		}
+		switch task.Status {
+		case "queued", StatusRetryWait:
+			q := tx.Model(&model.FlowModelTask{}).Where("id = ? AND status IN ?", task.ID, []string{"queued", StatusRetryWait}).Updates(map[string]any{"status": "failed", "last_error": "workflow stopped before dispatch", "updated_at": s.now()})
+			if q.Error != nil {
+				return q.Error
+			}
+			if q.RowsAffected != 1 {
+				uncertain = true
+				continue
+			}
+			if _, err := (Billing{DB: tx, Now: s.Now}).Release(reservation.ID); err != nil {
+				return err
+			}
+		default:
+			uncertain = true
+		}
+	}
+	cp.Stage = "failed"
+	cp.Error = "workflow stopped before completion"
+	cp.ErrorCode = code
+	if uncertain {
+		cp.Stage = "waiting_external"
+		cp.Error = "workflow stopped with unresolved external work"
+	}
+	_, err = s.save(tx, run, cp)
+	return err
 }
 
 // CloseRejectedModelTask is an internal, identity-bound cleanup operation. It
