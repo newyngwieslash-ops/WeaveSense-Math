@@ -1,0 +1,153 @@
+{
+ "families": {
+  "CONIC-CHORD-01": {
+   "admission": "engineering_passed_pending_review",
+   "illegal_cases": 23,
+   "independent_reference": "numeric geometry in tests/test_admission.py (mpmath 40 digits, rotated coordinates)",
+   "legal_cases": 114,
+   "math_lead_review": "pending_math_lead",
+   "numeric_cross_check_agree": 114,
+   "refusal_classes": {
+    "boolean_value": 1,
+    "degenerate_or_negative": 5,
+    "extra_parameter": 1,
+    "malformed": 7,
+    "missing": 1,
+    "nonstandard_naming": 1,
+    "over_limit": 3,
+    "params_not_object": 1,
+    "unconfirmed_input": 1,
+    "unit": 1,
+    "wrong_target": 1
+   },
+   "refused_with_expected_code": 23,
+   "verified": 114
+  },
+  "CONIC-PARABOLA-01": {
+   "admission": "engineering_passed_pending_review",
+   "illegal_cases": 24,
+   "independent_reference": "numeric geometry in tests/test_admission.py (mpmath 40 digits, rotated coordinates)",
+   "legal_cases": 105,
+   "math_lead_review": "pending_math_lead",
+   "numeric_cross_check_agree": 105,
+   "refusal_classes": {
+    "boolean_value": 1,
+    "degenerate_or_negative": 4,
+    "extra_parameter": 1,
+    "malformed": 7,
+    "method": 1,
+    "missing": 1,
+    "nonstandard_naming": 1,
+    "over_limit": 4,
+    "params_not_object": 1,
+    "unconfirmed_input": 1,
+    "unit": 1,
+    "wrong_target": 1
+   },
+   "refused_with_expected_code": 24,
+   "verified": 105
+  },
+  "CONIC-SLOPE-01": {
+   "admission": "engineering_passed_pending_review",
+   "illegal_cases": 23,
+   "independent_reference": "numeric geometry in tests/test_admission.py (mpmath 40 digits, rotated coordinates)",
+   "legal_cases": 114,
+   "math_lead_review": "pending_math_lead",
+   "numeric_cross_check_agree": 114,
+   "refusal_classes": {
+    "boolean_value": 1,
+    "degenerate_or_negative": 5,
+    "extra_parameter": 1,
+    "malformed": 7,
+    "missing": 1,
+    "nonstandard_naming": 1,
+    "over_limit": 3,
+    "params_not_object": 1,
+    "unconfirmed_input": 1,
+    "unit": 1,
+    "wrong_target": 1
+   },
+   "refused_with_expected_code": 23,
+   "verified": 114
+  },
+  "SOLID-ANGLE-01": {
+   "admission": "engineering_passed_pending_review",
+   "illegal_cases": 24,
+   "independent_reference": "numeric geometry in tests/test_admission.py (mpmath 40 digits, rotated coordinates)",
+   "legal_cases": 105,
+   "math_lead_review": "pending_math_lead",
+   "numeric_cross_check_agree": 105,
+   "refusal_classes": {
+    "boolean_value": 1,
+    "degenerate_or_negative": 4,
+    "extra_parameter": 1,
+    "malformed": 7,
+    "method": 1,
+    "missing": 1,
+    "nonstandard_naming": 1,
+    "over_limit": 4,
+    "params_not_object": 1,
+    "unconfirmed_input": 1,
+    "unit": 1,
+    "wrong_target": 1
+   },
+   "refused_with_expected_code": 24,
+   "verified": 105
+  },
+  "SOLID-ANGLE-02": {
+   "admission": "engineering_passed_pending_review",
+   "illegal_cases": 22,
+   "independent_reference": "numeric geometry in tests/test_admission.py (mpmath 40 digits, rotated coordinates)",
+   "legal_cases": 145,
+   "math_lead_review": "pending_math_lead",
+   "numeric_cross_check_agree": 145,
+   "refusal_classes": {
+    "boolean_value": 1,
+    "degenerate_or_negative": 4,
+    "extra_parameter": 1,
+    "malformed": 7,
+    "missing": 1,
+    "nonstandard_naming": 1,
+    "over_limit": 3,
+    "params_not_object": 1,
+    "unconfirmed_input": 1,
+    "unit": 1,
+    "wrong_target": 1
+   },
+   "refused_with_expected_code": 22,
+   "verified": 145
+  },
+  "SOLID-VOL-01": {
+   "admission": "engineering_passed_pending_review",
+   "illegal_cases": 23,
+   "independent_reference": "numeric geometry in tests/test_admission.py (mpmath 40 digits, rotated coordinates)",
+   "legal_cases": 120,
+   "math_lead_review": "pending_math_lead",
+   "numeric_cross_check_agree": 120,
+   "refusal_classes": {
+    "boolean_value": 1,
+    "degenerate_or_negative": 3,
+    "extra_parameter": 1,
+    "malformed": 7,
+    "missing": 1,
+    "mixed_units_without_target": 1,
+    "nonstandard_naming": 1,
+    "over_limit": 3,
+    "params_not_object": 1,
+    "unconfirmed_input": 1,
+    "unit": 1,
+    "unsupported_shape": 1,
+    "wrong_target": 1
+   },
+   "refused_with_expected_code": 23,
+   "verified": 120
+  }
+ },
+ "kind": "engineering_admission_set_not_frozen",
+ "not_covered_here": [
+  "math lead review of reference answers (DEV-043, (b))",
+  "frozen FR-Q01 admission set written by independent teachers",
+  "timeouts: covered by tests.test_hostile and the Go job tests, not by these sets"
+ ],
+ "tolerance": "1e-25 relative"
+}
