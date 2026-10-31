@@ -174,6 +174,44 @@ class ProcessAndExtraction(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(.05)
             self.assertFalse(Path('/proc',str(pid)).exists(), 'solver descendant must be reaped by container init')
 
+    async def test_no_preexec_fn_and_child_limits_itself_after_exec(self):
+        # preexec_fn runs Python between fork and exec, which can deadlock the
+        # child when the parent has threads; limits are now set after exec.
+        seen = {}
+        real = s.asyncio.create_subprocess_exec
+        async def spy(*args, **kw):
+            seen['args'], seen['kw'] = args, kw
+            return await real(*args, **kw)
+        source = "import resource,sys; sys.stdout.write(repr((resource.getrlimit(resource.RLIMIT_FSIZE), resource.getrlimit(resource.RLIMIT_CORE))))"
+        with patch.object(s.asyncio, 'create_subprocess_exec', spy):
+            out = await s.run_process([sys.executable, '-c', source], asyncio.get_running_loop().time()+10)
+        self.assertNotIn('preexec_fn', seen['kw'])
+        code = s.Path(s.__file__).read_text(encoding='utf-8')
+        self.assertNotIn("'preexec_fn'", code)
+        self.assertNotIn('preexec_fn=', code)
+        if s.os.name == 'posix':
+            self.assertTrue(seen['kw'].get('start_new_session'))
+            self.assertEqual(list(seen['args'][-3:]), [sys.executable, '-c', source])
+            self.assertEqual(out.decode(), repr(((s.MAX_BYTES, s.MAX_BYTES), (0, 0))))
+
+    @unittest.skipUnless(s.os.name == 'posix', 'Linux RLIMIT check runs in production image')
+    async def test_limits_survive_concurrent_spawns_from_threaded_parent(self):
+        # Spawn while other threads are busy (the case preexec_fn is unsafe for);
+        # every child must start, carry the limits and finish within its deadline.
+        import threading
+        stop = threading.Event()
+        workers = [threading.Thread(target=lambda: [stop.wait(0.001) for _ in iter(stop.is_set, True)]) for _ in range(4)]
+        for w in workers:
+            w.start()
+        try:
+            source = "import resource,sys; sys.stdout.write(str(resource.getrlimit(resource.RLIMIT_FSIZE)[0]))"
+            outs = await asyncio.gather(*[s.run_process([sys.executable, '-c', source], asyncio.get_running_loop().time()+20) for _ in range(16)])
+        finally:
+            stop.set()
+            for w in workers:
+                w.join()
+        self.assertEqual({o.decode() for o in outs}, {str(s.MAX_BYTES)})
+
     async def test_connect_pins_numeric_dial_and_refuses_mixed_dns(self):
         calls=[]
         async def fake_open(host, port):
