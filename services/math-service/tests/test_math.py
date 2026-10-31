@@ -89,7 +89,8 @@ class FamilyTests(unittest.TestCase):
         self.assertEqual(L.canonical_hash(base), L.canonical_hash(L.compose(F.FAMILY_ID, n, s, r, cq, {}, None)))
         les = L.compose(F.FAMILY_ID, n, s, r, cq, {}, {"goal": "fix_mistake", "style": "detailed", "target_minutes": 6})
         self.assertEqual((les["meta"]["goal"], les["meta"]["style"], les["meta"]["target_minutes"]), ("fix_mistake", "detailed", 6))
-        self.assertEqual(les["beats"], base["beats"])
+        self.assertEqual([(b["id"], b["board"], b["reveals_answer"]) for b in les["beats"]],
+                         [(b["id"], b["board"], b["reveals_answer"]) for b in base["beats"]])
         self.assertEqual(les["answer"], base["answer"])
         self.assertNotEqual(L.canonical_hash(les), L.canonical_hash(base))
         stu = L.student_projection(les, "none")
@@ -100,6 +101,36 @@ class FamilyTests(unittest.TestCase):
             with self.assertRaises(MathError) as cm:
                 L.compose(F.FAMILY_ID, n, s, r, cq, {}, bad)
             self.assertEqual(cm.exception.code, "INPUT_AMBIGUOUS", bad)
+
+    def test_style_and_goal_change_wording_only(self):
+        """DEV-070: concise narrates each step's result line, detailed adds the
+        step number and figure focus, goals add fixed framing; boards, answer
+        and the student projection's locked beats stay the same, and standard
+        style without a goal keeps the narration unchanged."""
+        n = F.normalize(P("2", "1"))
+        s = F.solve(n)
+        r = F.verify(n, s)
+        cq = F.check_question(n)
+        mk = lambda **t: L.compose(F.FAMILY_ID, n, s, r, cq, {}, dict({"target_minutes": 5}, **t))
+        base = L.compose(F.FAMILY_ID, n, s, r, cq, {})
+        std = mk(style="standard")
+        self.assertEqual([b["say"] for b in std["beats"]], [b["say"] for b in base["beats"]])
+        con, det = mk(style="concise"), mk(style="detailed")
+        for b0, bc, bd in zip(base["beats"], con["beats"], det["beats"]):
+            self.assertEqual(bc["say"], b0["board"][-1])
+            self.assertTrue(bd["say"].startswith("第") and b0["title"] in bd["say"] and "".join(b0["board"]) in bd["say"])
+            self.assertEqual((bc["board"], bd["board"]), (b0["board"], b0["board"]))
+        self.assertLess(sum(len(b["say"]) for b in con["beats"]), sum(len(b["say"]) for b in base["beats"]))
+        self.assertGreater(sum(len(b["say"]) for b in det["beats"]), sum(len(b["say"]) for b in base["beats"]))
+        um = mk(goal="understand_method")
+        self.assertTrue(um["beats"][0]["say"].startswith("整体思路：" + base["beats"][0]["title"]))
+        pr = mk(goal="practice")
+        for b0, b in zip(base["beats"], pr["beats"]):
+            self.assertEqual(b["say"].endswith(L.GOAL_SUFFIX["practice"]), not b0["reveals_answer"])
+        for les in (con, det, um, pr, mk(goal="fix_mistake", style="concise")):
+            self.assertEqual(les["answer"], base["answer"])
+            stu = L.student_projection(les, "none")
+            self.assertTrue(all(b.get("locked") and "say" not in b for b in stu["beats"]))
 
     def test_provenance_in_every_format(self):
         """DEV-101: the student JSON and both preview pages carry the same

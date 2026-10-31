@@ -30,8 +30,8 @@ var orgLogActions = []string{"org.individual_access", "policy.set", "budget.set"
 	"class.roster.import", "class.roster.reissue", "class.roster.revoke", "class.enrollment.withdraw", "ledger.export",
 	"role.bind", "role.renew", "role.revoke", "export.content", "export.report", "retention.set", "retention.run",
 	"datareq.create", "datareq.verify", "datareq.reject", "datareq.complete", "datareq.replay",
-	"ops.grant", "ops.revoke", "ops.read"}
-var orgLogDetail = map[string]bool{"org.individual_access": true, "policy.set": true, "retention.set": true, "retention.run": true,
+	"ops.grant", "ops.revoke", "ops.read", "price_book.changed"}
+var orgLogDetail = map[string]bool{"price_book.changed": true, "org.individual_access": true, "policy.set": true, "retention.set": true, "retention.run": true,
 	"datareq.create": true, "datareq.reject": true, "datareq.complete": true, "datareq.replay": true,
 	"ops.grant": true, "ops.revoke": true, "ops.read": true}
 

@@ -38,6 +38,36 @@ def teaching_params(t):
     return {"goal": goal, "style": style, "target_minutes": minutes}
 
 
+GOAL_SUFFIX = {
+    "practice": "先自己写出这一步，再对照板书核对。",
+    "fix_mistake": "写完这一步，请对照板书逐项核对再往下。",
+}
+
+
+def _reword(beats, teaching):
+    """DEV-070: style and goal change the narration (say) only. Every sentence
+    is either a verified board line of the same step or fixed framing text, so
+    no new mathematics is introduced; board, figure focus and the answer gate
+    are untouched. standard style without a goal keeps the narration as is."""
+    style, goal = teaching["style"], teaching["goal"]
+    titles = [b["title"] for b in beats]
+    for i, b in enumerate(beats):
+        lines = list(b["board"])
+        if style == "concise" and lines:
+            say = lines[-1]
+        elif style == "detailed":
+            say = "第%d步，%s。%s" % (i + 1, b["title"], "".join(lines))
+            if b["figure_focus"]:
+                say += "可在图中对照 %s。" % "、".join(b["figure_focus"])
+        else:
+            say = b["say"]
+        if goal == "understand_method" and i == 0:
+            say = "整体思路：%s。%s" % ("，再".join(titles), say)
+        elif goal in GOAL_SUFFIX and not b["reveals_answer"]:
+            say += GOAL_SUFFIX[goal]
+        b["say"] = say
+
+
 def compose(fam, norm, sol, report, cq, refs, teaching=None):
     teaching = teaching_params(teaching)
     if report["math_state"] != "verified":
@@ -47,6 +77,8 @@ def compose(fam, norm, sol, report, cq, refs, teaching=None):
         beats.append({"id": st["id"], "title": st["title"], "board": st.get("plain", []), "board_latex": st.get("latex", []),
                       "say": "".join(st.get("plain", [])), "figure_focus": st.get("uses", []),
                       "reveals_answer": bool(st.get("reveals_answer")), "solution_step_ref": st["id"]})
+    if teaching:
+        _reword(beats, teaching)
     mod = _module(fam)
     hints = mod.hints(sol)
     lesson = {
