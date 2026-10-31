@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"sort"
 
+	"gorm.io/gorm"
 	"yingce/backend/internal/flow"
 	"yingce/backend/internal/model"
-	"gorm.io/gorm"
 )
 
 // PriceChangeActor is the actor id on price_book.changed audit rows. Prices are
