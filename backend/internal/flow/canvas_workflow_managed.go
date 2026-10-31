@@ -237,7 +237,7 @@ func (r CanvasWorkflowManagedRunner) Run(ctx context.Context, executions CanvasW
 		wg.Wait()
 		if retErr != nil && !errors.Is(retErr, ErrModelUnknownOutcome) {
 			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			cleanupErr := executions.CloseFailedRun(cleanupCtx, run.UserID, run.ID, worker, token)
+			cleanupErr := executions.CloseFailedRunWithCode(cleanupCtx, run.UserID, run.ID, worker, token, CanvasWorkflowErrorCode(retErr))
 			cleanupCancel()
 			retErr = errors.Join(retErr, cleanupErr)
 		}
@@ -579,6 +579,7 @@ func (r CanvasWorkflowManagedRunner) managedFailure(executions CanvasWorkflowExe
 	result.Status = "failed"
 	result.Error = SanitizeCanvasWorkflowError(cause.Error())
 	cp.Error = SanitizeCanvasWorkflowError(cause.Error())
+	cp.ErrorCode = CanvasWorkflowErrorCode(cause)
 	cp.Stage = "failed"
 	cp.Result, _ = json.Marshal(result)
 	_, err = executions.Checkpoint(ctx, run.UserID, run.ID, worker, token, current.Revision, cp)

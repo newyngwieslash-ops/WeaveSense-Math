@@ -220,3 +220,42 @@ func TestT17RejectAndStaleApprovalHaveNoSideEffects(t *testing.T) {
 		}
 	})
 }
+
+// The background runner's error used to be discarded, leaving the admitted row
+// stuck. A runner that fails before taking the lease must now leave the run
+// failed with an error code, and the recovery sweep must then find nothing.
+func TestCanvasWorkflowRunnerErrorIsPersisted(t *testing.T) {
+	s, db, _ := t17WorkflowSetup(t)
+	calls := make(chan struct{}, 2)
+	s.ConfigureCanvasWorkflowRunner(func(context.Context, flow.CanvasWorkflowExecutions, model.CanvasWorkflowExecution) error {
+		calls <- struct{}{}
+		return errors.Join(errors.New("runner crashed before lease"), flow.ErrInvalid)
+	})
+	agent, approval := t17RequestApproval(t, s, `{"expected_revision":1,"ops":[],"run":{"budget_micro":5000}}`)
+	if err := s.DecideCloudAgentApproval("user", agent, approval, "approve", ""); err != nil {
+		t.Fatal(err)
+	}
+	<-calls
+	var record model.CanvasWorkflowExecution
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		db.Where("user_id = ? AND canvas_id = ?", "user", "cv17").First(&record)
+		if record.Status == "failed" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cp, err := flow.DecodeCanvasWorkflowCheckpoint(record)
+	if err != nil || record.Status != "failed" || cp.ErrorCode != "invalid" {
+		t.Fatalf("runner error not persisted: %s %+v %v", record.Status, cp, err)
+	}
+	rep, err := s.SweepCanvasWorkflows(context.Background())
+	if err != nil || len(rep.Requeued)+len(rep.Failed)+len(rep.Reconcile) != 0 {
+		t.Fatalf("sweep acted on a settled run: %+v %v", rep, err)
+	}
+	select {
+	case <-calls:
+		t.Fatal("failed run re-run")
+	default:
+	}
+}

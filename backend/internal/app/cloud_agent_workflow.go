@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -329,8 +330,35 @@ func (s *Service) wakeCanvasWorkflow(record model.CanvasWorkflowExecution) error
 	}
 	// The durable admitted row is the recovery queue; managed execution owns leases
 	// and checkpoints. No model/engine calls happen under the approval transaction.
-	go func() { _ = s.canvasWorkflowRunner(context.Background(), s.CanvasWorkflowExecutions(), record) }()
+	// A runner error is logged and persisted on the run (error_code), never dropped;
+	// the recovery sweeper (SweepCanvasWorkflows) drains rows a crash left behind.
+	go func() {
+		if err := s.canvasWorkflowRunner(context.Background(), s.CanvasWorkflowExecutions(), record); err != nil {
+			s.CanvasWorkflowRecovery().Settle(context.Background(), record, err)
+		}
+	}()
 	return nil
+}
+
+// CanvasWorkflowRecovery is the managed canvas recovery sweeper bound to this
+// service's runner. Without a runner, stale runs are closed, never requeued.
+func (s *Service) CanvasWorkflowRecovery() flow.CanvasWorkflowRecovery {
+	return flow.CanvasWorkflowRecovery{Executions: s.CanvasWorkflowExecutions(), Run: s.canvasWorkflowRunner, Worker: "app-canvas-recovery"}
+}
+
+// canvasRecoveryEvery spaces recovery sweeps inside the flow auto-continue loop.
+const canvasRecoveryEvery = time.Minute
+
+// SweepCanvasWorkflows runs one recovery pass over stale managed canvas runs.
+func (s *Service) SweepCanvasWorkflows(ctx context.Context) (flow.CanvasWorkflowRecoveryReport, error) {
+	if s.repo == nil || s.repo.DB() == nil {
+		return flow.CanvasWorkflowRecoveryReport{}, nil
+	}
+	rep, err := s.CanvasWorkflowRecovery().Sweep(ctx)
+	if n := len(rep.Requeued) + len(rep.Failed) + len(rep.Reconcile); n > 0 {
+		slog.Info("flow: canvas recovery sweep", "requeued", len(rep.Requeued), "failed", len(rep.Failed), "reconcile", len(rep.Reconcile))
+	}
+	return rep, err
 }
 
 // VerifyCloudAgentPlanApproval is an in-process server verifier, never a client

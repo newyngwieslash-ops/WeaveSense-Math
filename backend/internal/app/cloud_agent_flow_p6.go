@@ -127,10 +127,17 @@ func (s *Service) resumeFlowWait(w model.FlowExternalWait) (string, error) {
 func (s *Service) RunFlowAutoContinue(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
+	var lastCanvasSweep time.Time // zero: the first pass sweeps at startup
 	for {
 		if s.repo != nil && s.repo.DB() != nil {
 			if _, err := (flow.Waits{DB: s.repo.DB()}).ResumeReady(s.resumeFlowWait); err != nil {
 				slog.Warn("flow: auto-continue", "error", err)
+			}
+			if time.Since(lastCanvasSweep) >= canvasRecoveryEvery {
+				lastCanvasSweep = time.Now()
+				if _, err := s.SweepCanvasWorkflows(ctx); err != nil {
+					slog.Warn("flow: canvas recovery", "error", err)
+				}
 			}
 		}
 		select {
