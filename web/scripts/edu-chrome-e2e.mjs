@@ -7,7 +7,9 @@
  * 3. 断言：开放答案前所有 /api/edu 响应与页面文字都不含答案；先预测后探索；
  *    拖动、键盘、表单与重置都可用；文字说明先于图形；开放后逐步讲解默认静音、带字幕、可续看；
  *    图形使用只以汇总计数上报。
- * 4. 教师课堂页 /dev/edu-teach（DEV-112）：批量重评分、迁移任务、撤回发布都先预览影响、填写原因再确认；
+ * 4. 弱网与窄屏（DEV-088、DEV-096）：320px 移动视口、触控、限速高延迟网络，并把交互图形数据改坏使其渲染失败；
+ *    断言文字先出现、图形降级为文字说明、页面不横向溢出、核心操作可用、作答与完整讲解照常完成，降级次数到达服务端。
+ * 5. 教师课堂页 /dev/edu-teach（DEV-112）：批量重评分、迁移任务、撤回发布都先预览影响、填写原因再确认；
  *    预览不改变服务端状态，确认后的状态从测试后端数据库读取核对。
  * 所有等待都有硬超时；任何断言失败 exit 1。只终止本脚本启动的进程，只删除本脚本创建的临时目录。
  */
@@ -127,6 +129,7 @@ async function connect(cdpPort) {
     const statuses = [];
     const urls = new Map();
     const bodies = [];
+    const listeners = [];
     const send = (method, params = {}) =>
         new Promise((res, rej) => {
             const n = ++id;
@@ -142,6 +145,7 @@ async function connect(cdpPort) {
             return m.error ? p.rej(new Error(JSON.stringify(m.error))) : p.res(m.result);
         }
         const p = m.params;
+        for (const [method, fn] of listeners) if (m.method === method) fn(p);
         if (m.method === "Runtime.exceptionThrown") exceptions.push(p?.exceptionDetails?.exception?.description || p?.exceptionDetails?.text);
         if (m.method === "Network.responseReceived" && p.response.url.includes("/api/edu")) {
             urls.set(p.requestId, p.response.url);
@@ -192,7 +196,24 @@ async function connect(cdpPort) {
         await send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: k, code, windowsVirtualKeyCode: vk });
         await send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk });
     };
-    return { send, evaluate, poll, click, center, mouse, byTestId, byText, key, exceptions, statuses, bodies, close: () => ws.close() };
+    const on = (method, fn) => {
+        listeners.push([method, fn]);
+        return () =>
+            listeners.splice(
+                listeners.findIndex((l) => l[1] === fn),
+                1,
+            );
+    };
+    const tap = async (sel, label) => {
+        const ok = await poll(`(() => { const el = ${sel}; return !!el && !el.disabled; })()`, label, 30000);
+        if (!ok) return false;
+        await sleep(150);
+        const c = await center(sel);
+        await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: c.x, y: c.y }] });
+        await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        return true;
+    };
+    return { send, evaluate, poll, click, tap, center, mouse, on, byTestId, byText, key, exceptions, statuses, bodies, close: () => ws.close() };
 }
 
 async function run(cdp, base, api, seed) {
@@ -236,7 +257,7 @@ async function run(cdp, base, api, seed) {
     await cdp.evaluate(`document.querySelector('input[maxlength="200"]').focus()`);
     await cdp.send("Input.insertText", { text: "1" });
     assert(await cdp.click(cdp.byText("提交"), "submit"), "E10 提交一次作答");
-    assert(await cdp.poll(`document.body.innerText.includes("已记录")`, "attempt recorded"), "E11 作答已记录");
+    assert(await cdp.poll(`document.body.innerText.includes("已记录：")`, "attempt recorded"), "E11 作答已记录");
     for (let lv = 1; lv <= 4; lv++) {
         await cdp.click(cdp.byText(`获取第 ${lv} 层提示`), `hint ${lv}`);
         await cdp.poll(`document.body.innerText.includes("第 ${lv} 层")`, `hint ${lv} shown`);
@@ -316,11 +337,95 @@ async function run(cdp, base, api, seed) {
         .join("\n");
     assert(setMarkers.length > 0 && leaksSet(after).length > 0, "E25b 对照：提交后响应确实含题组答案，说明检查有效", `markers=${setMarkers.length}`);
 
+    await runWeak(cdp, base, api, seed);
     await runTeacher(cdp, base, api, seed.teacher);
 
     const bad = cdp.statuses.filter((s) => s.status >= 400 && !(s.status === 409 && s.url.includes("/hints")));
     assert(bad.length === 0, "E20 /api/edu 无意外错误响应", JSON.stringify(bad));
     assert(cdp.exceptions.length === 0, "E21 页面无未捕获异常", JSON.stringify(cdp.exceptions));
+}
+
+/** DEV-088 and DEV-096: a 320px touch phone on a slow, high latency network whose figure fails to render. */
+async function runWeak(cdp, base, api, seed) {
+    const { weakAssignmentId: wid, tenant } = seed;
+    const weakState = async () => (await fetch(`${api}/__e2e/weak-state`)).json();
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 320, height: 720, deviceScaleFactor: 2, mobile: true });
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+    await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 400, downloadThroughput: 50 * 1024, uploadThroughput: 20 * 1024 });
+    // Break the figure data in the lesson response so the interactive figure throws while rendering,
+    // as a failed or unsupported 3D view would; everything else is passed through untouched.
+    let broken = 0;
+    const off = cdp.on("Fetch.requestPaused", async (p) => {
+        try {
+            if (new URL(p.request.url).pathname.endsWith(`/student/assignments/${wid}`) && p.responseStatusCode === 200) {
+                const raw = await cdp.send("Fetch.getResponseBody", { requestId: p.requestId });
+                const body = JSON.parse(raw.base64Encoded ? Buffer.from(raw.body, "base64").toString("utf8") : raw.body);
+                const fig = body?.data?.lesson?.figure;
+                if (fig?.explore?.mode === "rotate") {
+                    delete fig.explore.reset;
+                    broken += 1;
+                }
+                return await cdp.send("Fetch.fulfillRequest", { requestId: p.requestId, responseCode: 200, responseHeaders: p.responseHeaders, body: Buffer.from(JSON.stringify(body)).toString("base64") });
+            }
+            await cdp.send("Fetch.continueRequest", { requestId: p.requestId });
+        } catch (e) {
+            console.log("      (fetch intercept: " + e + ")");
+            await cdp.send("Fetch.continueRequest", { requestId: p.requestId }).catch(() => {});
+        }
+    });
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: `*/api/edu/student/assignments/${wid}*`, requestStage: "Response" }] });
+    try {
+        const t0 = Date.now();
+        await cdp.send("Page.navigate", { url: `${base}/dev/edu-learn/${wid}?tenant=${encodeURIComponent(tenant)}` });
+        assert(await cdp.poll(`!!${cdp.byTestId("content-provenance")}`, "weak page text", 60000), "W1 限速高延迟下题目文字出现", `${Date.now() - t0} ms`);
+        assert(
+            (await cdp.poll(`!!${cdp.byTestId("figure-fallback")} && !${cdp.byTestId("figure-svg")} && (${cdp.byTestId("figure-fallback")}.textContent || "").trim().length > 0`, "figure fallback", 30000)) && broken === 1,
+            "W2 交互图形渲染失败时降级为文字说明，页面其余部分照常",
+            `broken=${broken}`,
+        );
+        const layout = await cdp.evaluate(`(() => {
+            const w = window.innerWidth;
+            const pick = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right) }; };
+            const btn = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "提交");
+            const items = { input: pick(document.querySelector('input[maxlength="200"]')), submit: pick(btn), prediction: pick(${cdp.byTestId("prediction-panel")}), fallback: pick(${cdp.byTestId("figure-fallback")}) };
+            return { w, scroll: document.documentElement.scrollWidth, items, inside: Object.values(items).every((x) => x && x.l >= 0 && x.r <= w + 1) };
+        })()`);
+        assert(layout.w === 320 && layout.scroll <= 321 && layout.inside, "W3 320px 宽无横向溢出，作答框、提交、预测与图形说明都在可视宽度内", JSON.stringify(layout));
+        assert(await cdp.tap(cdp.byTestId("prediction-option-3"), "weak prediction"), "W4a 触控选择预测");
+        assert(await cdp.poll(`!!${cdp.byTestId("prediction-recorded")}`, "weak prediction recorded", 30000), "W4 图形降级后预测仍可记录");
+        await cdp.evaluate(`document.querySelector('input[maxlength="200"]').focus()`);
+        await cdp.send("Input.insertText", { text: "1" });
+        assert(await cdp.tap(cdp.byText("提交"), "weak submit"), "W5a 触控提交作答");
+        assert(await cdp.poll(`document.body.innerText.includes("已记录：")`, "weak attempt", 30000), "W5b 页面显示已记录");
+        assert((await weakState()).attempts === 1, "W5 服务端收到 1 次作答");
+        for (let lv = 1; lv <= 4; lv++) {
+            await cdp.tap(cdp.byText(`获取第 ${lv} 层提示`), `weak hint ${lv}`);
+            await cdp.poll(`document.body.innerText.includes("第 ${lv} 层")`, `weak hint ${lv} shown`, 30000);
+        }
+        const rel = await fetch(`${api}/__e2e/weak-release`, { method: "POST" });
+        assert(rel.status === 200, "W6a 教师开放答案", `status=${rel.status}`);
+        assert(await cdp.tap(cdp.byText("查看完整讲解"), "weak level5"), "W6b 触控请求完整讲解");
+        assert(await cdp.poll(`!!${cdp.byTestId("step-viewer")}`, "weak step viewer", 30000), "W6 弱网下逐步讲解出现");
+        const sv = await cdp.evaluate(`(() => { const v = ${cdp.byTestId("step-viewer")}; const r = v.getBoundingClientRect();
+            return { silent: !!${cdp.byTestId("silent-mode")}, caption: (${cdp.byTestId("step-caption")}?.textContent || "").length, l: Math.round(r.left), r: Math.round(r.right), w: window.innerWidth, scroll: document.documentElement.scrollWidth }; })()`);
+        assert(sv.silent && sv.caption > 0 && sv.l >= 0 && sv.r <= sv.w + 1 && sv.scroll <= sv.w + 1, "W7 无语音时静音字幕模式完成讲解，播放器在 320px 内", JSON.stringify(sv));
+        await cdp.tap(cdp.byTestId("step-next"), "weak next");
+        assert(await cdp.poll(`${cdp.byTestId("step-viewer")}.dataset.step === "1"`, "weak next step", 30000), "W8 触控翻到下一步");
+        await cdp.evaluate(`Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }); document.dispatchEvent(new Event("visibilitychange")); true`);
+        let fig = null;
+        for (let i = 0; i < 60 && !fig; i++) {
+            const st = await weakState();
+            if (st?.figure?.fallbacks >= 1) fig = st.figure;
+            else await sleep(250);
+        }
+        assert(fig?.fallbacks === 1, "W9 图形降级次数以汇总形式到达教师端", JSON.stringify(fig));
+    } finally {
+        off();
+        await cdp.send("Fetch.disable");
+        await cdp.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+        await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+        await cdp.send("Emulation.clearDeviceMetricsOverride");
+    }
 }
 
 async function runTeacher(cdp, base, api, t) {

@@ -68,6 +68,14 @@ func TestServeBrowserE2E(t *testing.T) {
 		t.Fatalf("set assignment: %s", raw)
 	}
 
+	// DEV-088 and DEV-096: a third assignment for the weak network, figure failure and 320px phase,
+	// so its attempts and hints do not change what the other phases count.
+	_, out, raw, _ = h.call("u_alice", "POST", "/api/edu/classes/"+classID+"/assignments", map[string]any{"publicationId": pubID, "title": "弱网窄屏验收", "answerPolicy": "teacher_release"})
+	weakAsID, _ := data(out)["id"].(string)
+	if weakAsID == "" {
+		t.Fatalf("weak assignment: %s", raw)
+	}
+
 	// DEV-112 teacher flow: its own class and assignment on the same publication, a second published
 	// revision to migrate to, and one stale attempt result for the batch regrade to correct.
 	_, out, _, _ = h.call("u_alice", "POST", "/api/edu/classes", map[string]any{"name": "影响确认班"})
@@ -153,6 +161,19 @@ func TestServeBrowserE2E(t *testing.T) {
 		w.WriteHeader(c)
 		_, _ = w.Write(raw)
 	})
+	mux.HandleFunc("/__e2e/weak-release", func(w http.ResponseWriter, r *http.Request) {
+		c, _, raw, _ := h.call("u_alice", "POST", "/api/edu/assignments/"+weakAsID+"/release-answer", map[string]any{})
+		w.WriteHeader(c)
+		_, _ = w.Write(raw)
+	})
+	// What the server received from the weak network phase; read from the database and the teacher summary.
+	mux.HandleFunc("/__e2e/weak-state", func(w http.ResponseWriter, r *http.Request) {
+		var attempts int64
+		h.db.Model(&model.EduAttempt{}).Where("assignment_id = ?", weakAsID).Count(&attempts)
+		_, out, _, _ := h.call("u_alice", "GET", "/api/edu/assignments/"+weakAsID+"/figure-summary", nil)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"attempts": attempts, "figure": data(out)["figure"]})
+	})
 	mux.HandleFunc("/__e2e/done", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(204)
 		select {
@@ -193,7 +214,7 @@ func TestServeBrowserE2E(t *testing.T) {
 		}
 	}
 	ready, _ := json.Marshal(map[string]any{"ready": true, "assignmentId": asID, "tenant": tenant, "answerMarkers": markers,
-		"setAssignmentId": setAsID, "setItems": len(vs["items"].([]any)), "setMarkers": setMarkers,
+		"setAssignmentId": setAsID, "weakAssignmentId": weakAsID, "setItems": len(vs["items"].([]any)), "setMarkers": setMarkers,
 		"teacher": map[string]any{"classId": tClassID, "assignmentId": tAsID, "publicationId": pubID, "fixPublicationId": fixPubID}})
 	fmt.Println("EDU_E2E_READY " + string(ready))
 	select {
