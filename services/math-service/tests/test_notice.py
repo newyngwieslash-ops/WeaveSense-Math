@@ -24,7 +24,8 @@ def _sources():
         for name in files:
             if name.endswith(".py"):
                 path = os.path.join(base, name)
-                yield os.path.relpath(path, ROOT).replace(os.sep, "/"), open(path, encoding="utf-8").read()
+                with open(path, encoding="utf-8") as fh:
+                    yield os.path.relpath(path, ROOT).replace(os.sep, "/"), fh.read()
 
 
 class NoticeTests(unittest.TestCase):
@@ -50,7 +51,14 @@ class NoticeTests(unittest.TestCase):
             self.assertIsNone(re.search(r"https?://(cdn|unpkg|fonts\.googleapis|cdnjs)", text), path)
             self.assertIsNone(re.search(r"@font-face|\.woff2?\b|\.ttf\b", text), path)
         reqs = [l.strip() for l in _read("requirements.txt").splitlines() if l.strip() and not l.startswith("#")]
-        self.assertEqual(reqs, ["sympy==1.13.3"], "new Python dependencies must be added to the 06 license inventory")
+        self.assertEqual(reqs, ["sympy==1.13.3", "mpmath==1.3.0"], "new Python dependencies must be added to the 06 license inventory")
+        inventory = os.path.join(ROOT, "..", "..", "docs", "math-workbench", "06-数学目录-限制-许可.md")
+        if os.path.exists(inventory):  # the service image ships without docs
+            with open(inventory, encoding="utf-8") as fh:
+                rows = fh.read()
+            for req in reqs:
+                name, version = req.split("==")
+                self.assertRegex(rows, rf"\| {re.escape(name)} \| {re.escape(version)} \|", f"{req} missing from the 06 inventory")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ distinct real intersections for every line), numeric sampling.
 
 import random
 
+import mpmath
 import sympy as sp
 
 from .. import fmt
@@ -22,7 +23,7 @@ from . import common as C
 FAMILY_ID = "CONIC-CHORD-01"
 TITLE = "椭圆焦点弦长的取值范围"
 SOLVER_VERSION = "conic-chord-01/1.0.0"
-VERIFIER_VERSION = "conic-chord-01-verify/1.0.0"
+VERIFIER_VERSION = "conic-chord-01-verify/1.0.1"
 TARGET = "focal_chord_length_range"
 MAX_VALUE = 100
 METHODS = ("vieta",)
@@ -119,16 +120,25 @@ def verify(norm, sol, seed=20261026):
     pos = sp.simplify(d_inst - 4 * a ** 2 * b ** 4 * (1 + k_r ** 2)) == 0
     ck.add("two_distinct_intersections", "symbolic_domain", pos, "every non-vertical line through F", {"discriminant": "4a²b⁴(1+k²) > 0"}, undetermined=not pos)
     rnd = random.Random(seed)
-    af, bf, cf = float(a), float(b), float(c)
-    bad = 0
-    for _ in range(48):
-        kk = rnd.uniform(-50, 50)
-        qa, qb, qc = bf ** 2 + af ** 2 * kk ** 2, -2 * af ** 2 * kk ** 2 * cf, af ** 2 * kk ** 2 * cf ** 2 - af ** 2 * bf ** 2
-        r = (qb * qb - 4 * qa * qc) ** 0.5
-        x1, x2 = (-qb + r) / (2 * qa), (-qb - r) / (2 * qa)
-        L = ((x1 - x2) ** 2 + (kk * (x1 - x2)) ** 2) ** 0.5
-        if not (float(lo) - 1e-9 <= L <= float(hi) + 1e-9):
-            bad += 1
+    # 50 significant digits: in plain floats the discriminant of a very flat
+    # ellipse (e.g. a=100, b=1/100) cancels to a negative number (DEV-043).
+    with mpmath.workdps(50):
+        af, bf, cf = (mpmath.mpf(str(sp.N(v, 60))) for v in (a, b, c))
+        lof, hif = (mpmath.mpf(str(sp.N(v, 60))) for v in (lo, hi))
+        tol = mpmath.mpf("1e-30") * hif
+        bad = 0
+        for _ in range(48):
+            kk = mpmath.mpf(rnd.uniform(-50, 50))
+            qa, qb, qc = bf ** 2 + af ** 2 * kk ** 2, -2 * af ** 2 * kk ** 2 * cf, af ** 2 * kk ** 2 * cf ** 2 - af ** 2 * bf ** 2
+            dsc = qb * qb - 4 * qa * qc
+            if dsc <= 0:
+                bad += 1
+                continue
+            r = mpmath.sqrt(dsc)
+            x1, x2 = (-qb + r) / (2 * qa), (-qb - r) / (2 * qa)
+            L = mpmath.sqrt((x1 - x2) ** 2 + (kk * (x1 - x2)) ** 2)
+            if not (lof - tol <= L <= hif + tol):
+                bad += 1
     ck.add("numeric_sampling", "sampling", bad == 0, "48 random slopes in [-50,50]", {"out_of_range": bad, "note": "sampling consistency only, not a proof"})
     return ck.report(FAMILY_ID, ["exact_instance", "conditions_checked", "symbolic_domain_identity", "numeric_sampling"],
                      {"endpoint_reachability": {"max": "attained", "min": "attained"}})
