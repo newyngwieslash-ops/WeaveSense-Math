@@ -77,6 +77,9 @@ type RetentionSummary struct {
 	RosterEntries int            `json:"rosterEntries"`
 	Artifacts     int            `json:"artifacts"`
 	ProblemImages int            `json:"problemImages"` // unattached uploads past the temporary period (DEV-068)
+	// ArchivedClasses counts archived classes past the learning period whose
+	// students' learning records this run removes (DEV-106).
+	ArchivedClasses int `json:"archivedClasses"`
 }
 
 func (s RetentionSummary) total() int {
@@ -88,7 +91,7 @@ func (s RetentionSummary) total() int {
 }
 
 func (s RetentionSummary) String() string {
-	return fmt.Sprintf("enrollments=%d learning_rows=%d roster_entries=%d problem_images=%d artifacts=%d", s.Enrollments, s.total()-s.RosterEntries-s.Artifacts-s.ProblemImages, s.RosterEntries, s.ProblemImages, s.Artifacts)
+	return fmt.Sprintf("enrollments=%d archived_classes=%d learning_rows=%d roster_entries=%d problem_images=%d artifacts=%d", s.Enrollments, s.ArchivedClasses, s.total()-s.RosterEntries-s.Artifacts-s.ProblemImages, s.RosterEntries, s.ProblemImages, s.Artifacts)
 }
 
 // applyRetention computes (dry) or performs the cleanup for one tenant inside tx.
@@ -107,6 +110,29 @@ func applyRetention(tx *gorm.DB, tenant string, p model.EduRetentionPolicy, now 
 			sum.Enrollments++
 		}
 	}
+	// Archived classes: once the learning period has passed since archiving, the
+	// learning records of every student enrolled in the class are removed (DEV-106).
+	var archived []model.EduClass
+	if err := tx.Where("tenant_id = ? AND status = ? AND archived_at IS NOT NULL AND archived_at < ?", tenant, "archived", now.AddDate(0, 0, -p.LearningDays)).Find(&archived).Error; err != nil {
+		return sum, err
+	}
+	for _, cl := range archived {
+		var students []string
+		if err := tx.Model(&model.EduEnrollment{}).Where("tenant_id = ? AND class_id = ?", tenant, cl.ID).Distinct().Pluck("student_user_id", &students).Error; err != nil {
+			return sum, err
+		}
+		hit := false
+		for _, st := range students {
+			touched, err := deleteStudentLearning(tx, tenant, st, cl.ID, dry, &sum)
+			if err != nil {
+				return sum, err
+			}
+			hit = hit || touched
+		}
+		if hit {
+			sum.ArchivedClasses++
+		}
+	}
 	var jobIDs []string
 	tx.Model(&model.EduMathJob{}).Where("tenant_id = ? AND status IN ? AND updated_at < ?", tenant, []string{"failed", "cancelled"}, now.AddDate(0, 0, -p.TempDays)).Pluck("id", &jobIDs)
 	if len(jobIDs) > 0 {
@@ -115,7 +141,9 @@ func applyRetention(tx *gorm.DB, tenant string, p model.EduRetentionPolicy, now 
 		q.Count(&n)
 		sum.Artifacts = int(n)
 		if !dry && n > 0 {
-			if err := tx.Model(&model.EduArtifact{}).Where("tenant_id = ? AND job_id IN ? AND revoked_at IS NULL", tenant, jobIDs).Update("revoked_at", now).Error; err != nil {
+			// Revoked on the platform at once; the bytes in the math service store are
+			// deleted by the purge sweep after this transaction (DEV-106).
+			if err := tx.Model(&model.EduArtifact{}).Where("tenant_id = ? AND job_id IN ? AND revoked_at IS NULL", tenant, jobIDs).Updates(map[string]any{"revoked_at": now, "purge_state": "pending"}).Error; err != nil {
 				return sum, err
 			}
 		}
@@ -144,7 +172,8 @@ func retentionView(p model.EduRetentionPolicy, confirmed bool, preview Retention
 		"preview": preview,
 		"categories": gin.H{
 			"learning": "withdrawn_enrollments",
-			"temp":     "revoked_on_platform; math service store deletion not implemented; unattached problem images deleted",
+			"temp":     "revoked_on_platform; bytes deleted from the math service store by the scheduled run; unattached problem images deleted",
+			"archived": "learning records of archived classes deleted after the learning period",
 			"images":   "no_image_answers_yet",
 			"backup":   "deployment (07)",
 		},
@@ -295,9 +324,68 @@ func (s *Service) RetentionAll(ctx context.Context) (tenants int, err error) {
 			slog.Warn("edumath retention run failed", "tenant", tenant, "error", e)
 			continue
 		}
+		if n, missing, err := s.PurgeArtifacts(ctx, tenant, 200); err != nil {
+			slog.Warn("edumath artifact purge incomplete", "tenant", tenant, "purged", n, "missing", missing, "error", err)
+		} else if n+missing > 0 {
+			slog.Info("edumath artifact purge", "tenant", tenant, "purged", n, "missing", missing)
+		}
 		tenants++
 	}
 	return tenants, nil
+}
+
+// PurgeArtifacts deletes from the math service store the bytes of artifacts the
+// retention run revoked (purge_state pending), at most limit per call. Service
+// calls run outside any database transaction; each artifact is marked purged
+// (or missing, when the service held none) only after the service confirmed,
+// so a failure leaves it pending for the next run. Incident revocations are
+// never marked pending and keep their bytes for investigation.
+func (s *Service) PurgeArtifacts(ctx context.Context, tenant string, limit int) (purged, missing int, err error) {
+	if !s.Client.Configured() {
+		return 0, 0, nil
+	}
+	var arts []model.EduArtifact
+	if err = flow.TenantTx(s.DB, tenant, func(tx *gorm.DB) error {
+		return tx.Where("tenant_id = ? AND purge_state = ? AND revoked_at IS NOT NULL", tenant, "pending").Order("created_at").Limit(limit).Find(&arts).Error
+	}); err != nil {
+		return 0, 0, err
+	}
+	var firstErr error
+	for _, a := range arts {
+		if ctx.Err() != nil {
+			return purged, missing, ctx.Err()
+		}
+		found, e := s.Client.DeleteArtifact(ctx, tenant, a)
+		if e != nil {
+			if firstErr == nil {
+				firstErr = e
+			}
+			continue
+		}
+		state := "purged"
+		if !found {
+			state = "missing"
+		}
+		now := s.now()
+		if e := flow.TenantTx(s.DB, tenant, func(tx *gorm.DB) error {
+			if err := tx.Model(&model.EduArtifact{}).Where("tenant_id = ? AND id = ? AND purge_state = ?", tenant, a.ID, "pending").Updates(map[string]any{"purge_state": state, "purged_at": now}).Error; err != nil {
+				return err
+			}
+			s.audit(tx, Actor{UserID: "system:retention", TenantID: tenant}, "artifact.purge", a.ID, state)
+			return nil
+		}); e != nil {
+			if firstErr == nil {
+				firstErr = e
+			}
+			continue
+		}
+		if found {
+			purged++
+		} else {
+			missing++
+		}
+	}
+	return purged, missing, firstErr
 }
 
 // deleteStudentLearning counts (dry) or deletes one student's learning records and

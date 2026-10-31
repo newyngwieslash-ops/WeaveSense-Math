@@ -25,6 +25,7 @@ const BY_CODE: Record<string, [string, string]> = {
     METHOD_MISMATCH: ["要求的解法与题目不匹配", "调整允许的方法后重试"],
     TIMEOUT_UNDETERMINED: ["计算超时，结果未确定（不代表无解）", "稍后重试，或简化条件"],
     PROVIDER_UNAVAILABLE: ["数学服务暂时不可用", "稍后重试；持续出现请联系管理员"],
+    CLASS_ARCHIVED: ["班级已归档，不能再邀请学生、布置任务或修改", "在仍在使用的班级中操作；需要时新建班级"],
     ASSIGNMENT_CLOSED: ["任务已截止", "需要时为学生设置延期"],
     ASSIGNMENT_WITHDRAWN: ["任务已经撤回", "刷新任务列表；需要时重新布置"],
     ANSWER_NOT_RELEASED: ["答案尚未开放", "按任务的答案策略开放后再查看"],

@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 97
+const CurrentSchemaVersion int64 = 98
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -473,6 +473,14 @@ var schemaMigrations = []migration{
 		// and generator, composer version and model on lesson revisions (DEV-118). New table under FORCE RLS;
 		// new columns are additive and stay empty on existing rows (reported as not recorded).
 		if err := tx.AutoMigrate(&model.EduAssignmentView{}, &model.EduMathJob{}, &model.EduLessonRevision{}); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 98, name: "edu_artifact_purge_class_archive_v98", checksum: "sha256:edu-artifact-purge-class-archive-v98-20261031", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: byte deletion state on artifacts (retention deletes the math service copy) and
+		// the archive time on classes (DEV-106). Additive columns; existing rows stay kept and unarchived.
+		if err := tx.AutoMigrate(&model.EduArtifact{}, &model.EduClass{}); err != nil {
 			return err
 		}
 		return applyFlowRLS(tx)

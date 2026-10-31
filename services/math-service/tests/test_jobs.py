@@ -27,6 +27,33 @@ class JobTests(unittest.TestCase):
         self.s = Store(self.dir)
         self.w = Worker(self.s)
 
+    def test_retention_delete_removes_bytes_and_is_idempotent(self):
+        """DEV-106: the owning tenant deletes an artifact's bytes; reads then
+        answer deleted; a second delete reports the first; other tenants and
+        old stores without the column are handled."""
+        a = self.s.put_artifact("t1", "mj_x", "lesson", "teacher", "application/json", b'{"x":1}')
+        b = self.s.put_artifact("t1", "mj_x", "lesson", "teacher", "application/json", b'{"y":2}')
+        path = os.path.join(self.dir, "artifacts", "t1", a["artifact_id"])
+        self.assertTrue(os.path.exists(path))
+        self.assertFalse(self.s.delete_artifact("t2", a["artifact_id"])["found"])
+        self.assertFalse(self.s.delete_artifact("t1", "ma_" + "0" * 32)["found"])
+        self.assertTrue(os.path.exists(path))
+        r1 = self.s.delete_artifact("t1", a["artifact_id"])
+        self.assertTrue(r1["deleted"])
+        self.assertFalse(r1["already"])
+        self.assertFalse(os.path.exists(path))
+        with self.assertRaises(MathError) as cm:
+            self.s.get_artifact("t1", a["artifact_id"])
+        self.assertEqual(cm.exception.details, {"deleted": True})
+        r2 = self.s.delete_artifact("t1", a["artifact_id"])
+        self.assertTrue(r2["already"])
+        self.assertEqual(r2["deleted_at"], r1["deleted_at"])
+        _, data = self.s.get_artifact("t1", b["artifact_id"])
+        self.assertEqual(data, b'{"y":2}')
+        s2 = Store(self.dir)  # reopening keeps the tombstone
+        with self.assertRaises(MathError):
+            s2.get_artifact("t1", a["artifact_id"])
+
     def test_idempotency_same_and_conflict(self):
         j1, c1 = self.s.start("t1", "analyze", "k", PROB)
         j2, c2 = self.s.start("t1", "analyze", "k", PROB)

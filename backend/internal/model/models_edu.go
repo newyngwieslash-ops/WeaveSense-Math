@@ -47,14 +47,17 @@ type EduRoleBinding struct {
 func (EduRoleBinding) TableName() string { return "edu_role_bindings" }
 
 type EduClass struct {
-	ID          string    `json:"id" gorm:"primaryKey;size:40"`
-	TenantID    string    `json:"tenantId" gorm:"size:40;not null;index"`
-	WorkspaceID string    `json:"workspaceId" gorm:"size:40;not null;index"`
-	Name        string    `json:"name" gorm:"size:120;not null"`
-	Status      string    `json:"status" gorm:"size:16;not null;default:active"`
-	CourseID    string    `json:"courseId,omitempty" gorm:"size:40;index"`
-	CreatedBy   string    `json:"createdBy" gorm:"size:40"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          string `json:"id" gorm:"primaryKey;size:40"`
+	TenantID    string `json:"tenantId" gorm:"size:40;not null;index"`
+	WorkspaceID string `json:"workspaceId" gorm:"size:40;not null;index"`
+	Name        string `json:"name" gorm:"size:120;not null"`
+	Status      string `json:"status" gorm:"size:16;not null;default:active"`
+	CourseID    string `json:"courseId,omitempty" gorm:"size:40;index"`
+	CreatedBy   string `json:"createdBy" gorm:"size:40"`
+	// ArchivedAt is set when staff archive the class (DEV-106); the learning
+	// retention period then runs from this time for every enrolled student.
+	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
 }
 
 func (EduClass) TableName() string { return "edu_classes" }
@@ -214,7 +217,11 @@ type EduArtifact struct {
 	SHA256            string     `json:"sha256" gorm:"size:80"`
 	Size              int64      `json:"size"`
 	RevokedAt         *time.Time `json:"revokedAt,omitempty"`
-	CreatedAt         time.Time  `json:"createdAt"`
+	// PurgeState tracks deletion of the bytes in the math service store by the
+	// retention run (DEV-106): "" kept, pending, purged, missing (service held none).
+	PurgeState string     `json:"purgeState,omitempty" gorm:"size:16;index"`
+	PurgedAt   *time.Time `json:"purgedAt,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
 }
 
 func (EduArtifact) TableName() string { return "edu_artifacts" }

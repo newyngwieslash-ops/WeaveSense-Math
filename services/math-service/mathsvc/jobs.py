@@ -76,6 +76,9 @@ class Store:
           delivered_at REAL, attempts INTEGER NOT NULL DEFAULT 0, next_at REAL NOT NULL DEFAULT 0);
         CREATE INDEX IF NOT EXISTS ix_events_pending ON events(delivered_at, next_at);
         """)
+        cols = [r[1] for r in self.db.execute("PRAGMA table_info(artifacts)").fetchall()]
+        if "deleted_at" not in cols:  # retention deletion (DEV-106); older stores gain the column
+            self.db.execute("ALTER TABLE artifacts ADD COLUMN deleted_at REAL")
 
     # ---- jobs ----
     def start(self, tenant, kind, idem_key, payload, request_id="", trace_id=""):
@@ -198,19 +201,42 @@ class Store:
             f.write(data)
         digest = "sha256:" + hashlib.sha256(data).hexdigest()
         with self.lock:
-            self.db.execute("INSERT INTO artifacts VALUES(?,?,?,?,?,?,?,?,?,?)", (aid, tenant, jid, kind, audience, media_type, digest, len(data), path, now()))
+            self.db.execute("INSERT INTO artifacts(artifact_id, tenant_id, job_id, kind, audience, media_type, sha256, size, path, created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (aid, tenant, jid, kind, audience, media_type, digest, len(data), path, now()))
         return {"artifact_id": aid, "kind": kind, "audience": audience, "media_type": media_type, "sha256": digest, "size": len(data)}
 
     def get_artifact(self, tenant, aid):
         with self.lock:
-            r = self.db.execute("SELECT tenant_id, kind, audience, media_type, sha256, size, path, job_id FROM artifacts WHERE artifact_id=?", (aid,)).fetchone()
+            r = self.db.execute("SELECT tenant_id, kind, audience, media_type, sha256, size, path, job_id, deleted_at FROM artifacts WHERE artifact_id=?", (aid,)).fetchone()
         if not r or r[0] != tenant:
             raise MathError("POLICY_REVOKED", "artifact not found for this tenant")
+        if r[8] is not None:
+            raise MathError("POLICY_REVOKED", "artifact deleted by retention", {"deleted": True})
         with open(r[6], "rb") as f:
             data = f.read()
         if "sha256:" + hashlib.sha256(data).hexdigest() != r[4]:
             raise MathError("INTERNAL", "artifact integrity check failed")
         return {"artifact_id": aid, "kind": r[1], "audience": r[2], "media_type": r[3], "sha256": r[4], "size": r[5], "job_id": r[7]}, data
+
+    def delete_artifact(self, tenant, aid):
+        """Delete an artifact's bytes for the platform's retention run (DEV-106).
+
+        Idempotent: a second call reports the first deletion time. The row stays
+        as a tombstone (no content) so a later read answers "deleted", not
+        "unknown"; only the owning tenant may delete (an unknown id or another
+        tenant's id answers found=False and changes nothing)."""
+        with self.lock:
+            r = self.db.execute("SELECT tenant_id, path, deleted_at FROM artifacts WHERE artifact_id=?", (aid,)).fetchone()
+            if not r or r[0] != tenant:  # same answer for unknown and other tenant's ids
+                return {"artifact_id": aid, "deleted": False, "found": False}
+            if r[2] is not None:
+                return {"artifact_id": aid, "deleted": True, "found": True, "deleted_at": r[2], "already": True}
+            try:
+                os.remove(r[1])
+            except FileNotFoundError:
+                pass
+            t = now()
+            self.db.execute("UPDATE artifacts SET deleted_at=? WHERE artifact_id=?", (t, aid))
+        return {"artifact_id": aid, "deleted": True, "found": True, "deleted_at": t, "already": False}
 
 
 # Wall-clock ceiling relative to the CPU budget: only a stage that blocks or is

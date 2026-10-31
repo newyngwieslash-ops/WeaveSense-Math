@@ -367,6 +367,38 @@ func (c Client) Artifact(ctx context.Context, tenant string, a model.EduArtifact
 	return data, h.Get("Content-Type"), nil
 }
 
+// DeleteArtifact asks the service to delete a registered artifact's bytes for
+// the retention run (DEV-106). It is idempotent on the service side. found is
+// false when the service holds no such artifact for this tenant (nothing left
+// to delete); any other failure is returned so the purge is retried later.
+func (c Client) DeleteArtifact(ctx context.Context, tenant string, a model.EduArtifact) (found bool, err error) {
+	if !serviceIDRe.MatchString(a.ServiceArtifactID) || !strings.HasPrefix(a.ServiceArtifactID, "ma_") {
+		return false, ErrContract
+	}
+	st, data, _, err := c.do(ctx, http.MethodPost, "/v1/artifacts/"+a.ServiceArtifactID+"/delete", tenant, "system:retention", map[string]any{})
+	if err != nil {
+		return false, err
+	}
+	if st != http.StatusOK {
+		var e struct {
+			Error *ServiceError `json:"error"`
+		}
+		if json.Unmarshal(data, &e) == nil && e.Error != nil {
+			return false, e.Error
+		}
+		return false, fmt.Errorf("%w: delete artifact http %d", ErrContract, st)
+	}
+	var r struct {
+		ArtifactID string `json:"artifact_id"`
+		Deleted    bool   `json:"deleted"`
+		Found      bool   `json:"found"`
+	}
+	if json.Unmarshal(data, &r) != nil || r.ArtifactID != a.ServiceArtifactID || r.Deleted != r.Found {
+		return false, fmt.Errorf("%w: delete artifact receipt", ErrContract)
+	}
+	return r.Found, nil
+}
+
 // GradeResult is the objective judgement returned by the math service. It never
 // carries the expected answer.
 type GradeResult struct {
