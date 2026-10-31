@@ -83,9 +83,32 @@ def check(root):
     for dev in listed:
         if status.get(dev, "完成") == "完成":
             problems.append(f"11: {dev} is listed as a gap but 04 says 完成")
+    problems += heading_problems(handover, status)
     problems += entity_problems(Path(root), d)
     problems += image_problems(Path(root), d)
     return problems, total
+
+
+def heading_problems(handover, status):
+    """Each "### 状态（N）" section in 11 lists exactly the N items 04 gives that status."""
+    problems = []
+    heads = list(re.finditer(r"^### (\S+?)（(\d+)）\s*$", handover, re.M))
+    for i, m in enumerate(heads):
+        st, n = m.group(1), int(m.group(2))
+        if st not in STATUSES:
+            continue
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(handover)
+        nxt = handover.find("\n## ", m.end())
+        if 0 <= nxt < end:
+            end = nxt
+        rows = list(table_rows(handover[m.end():end], "DEV-"))
+        want = sum(1 for v in status.values() if v == st)
+        if n != want or len(rows) != want:
+            problems.append(f"11: section {st} says {n} and lists {len(rows)} rows but 04 has {want}")
+        for cells in rows:
+            if cells[1] != st:
+                problems.append(f"11: {cells[0]} is {cells[1]} but sits in the {st} section")
+    return problems
 
 
 def entity_problems(root, d):

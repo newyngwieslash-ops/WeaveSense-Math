@@ -102,5 +102,24 @@ class Handover(unittest.TestCase):
             self.assertEqual(ho.check(root)[0], [])
 
 
+    def test_section_headings_must_match(self):
+        with tempfile.TemporaryDirectory() as root:
+            write(root, BASE)
+            d = pathlib.Path(root) / "docs" / "math-workbench"
+            f = d / "11-运维交接与已知缺口.md"
+            good = "### 进行中（1）\n\n| DEV-013 | 进行中 | 名称 | 缺口 |\n\n### 待开始（1）\n\n| DEV-068 | 待开始 | 名称 | 缺口 |\n\n### 阻塞（1）\n\n| DEV-133 | 阻塞 | 名称 | 缺口 |\n"
+            f.write_text(good, encoding="utf-8")
+            self.assertEqual(ho.check(root)[0], [])
+            f.write_text(good.replace("进行中（1）", "进行中（2）"), encoding="utf-8")
+            self.assertEqual(ho.check(root)[0], ["11: section 进行中 says 2 and lists 1 rows but 04 has 1"])
+            moved = "### 进行中（1）\n\n### 待开始（1）\n\n| DEV-013 | 进行中 | 名称 | 缺口 |\n| DEV-068 | 待开始 | 名称 | 缺口 |\n\n### 阻塞（1）\n\n| DEV-133 | 阻塞 | 名称 | 缺口 |\n"
+            f.write_text(moved, encoding="utf-8")
+            self.assertEqual(ho.check(root)[0], [
+                "11: section 进行中 says 1 and lists 0 rows but 04 has 1",
+                "11: section 待开始 says 1 and lists 2 rows but 04 has 1",
+                "11: DEV-013 is 进行中 but sits in the 待开始 section",
+            ])
+
+
 if __name__ == "__main__":
     unittest.main()
