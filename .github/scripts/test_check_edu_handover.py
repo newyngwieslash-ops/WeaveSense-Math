@@ -10,7 +10,11 @@ spec.loader.exec_module(ho)
 PACKS = ["W0", "W1", "W2", "W3", "W4", "W5", "W6", "W7", "试点"]
 
 
-def write(root, statuses, boxes=None, gaps=None, summary=None):
+def needs(devs):
+    return "\n## 9 须提供\n\n| U1 | 事项 | 谁 | 需要 | " + " ".join(devs) + " | 动作 |\n"
+
+
+def write(root, statuses, boxes=None, gaps=None, summary=None, need=None):
     d = pathlib.Path(root) / "docs" / "math-workbench"
     d.mkdir(parents=True, exist_ok=True)
     boxes = boxes if boxes is not None else {k: v == "完成" for k, v in statuses.items()}
@@ -30,7 +34,8 @@ def write(root, statuses, boxes=None, gaps=None, summary=None):
     (d / "WeaveSense-Flow_Development_Checklist.md").write_text(
         "\n".join(f"- [{'x' if b else ' '}] **{k} 名称**" for k, b in boxes.items()) + "\n", encoding="utf-8")
     (d / "11-运维交接与已知缺口.md").write_text(
-        "\n".join(f"| {k} | {v} | 名称 | 缺口 |" for k, v in gaps.items()) + "\n", encoding="utf-8")
+        "\n".join(f"| {k} | {v} | 名称 | 缺口 |" for k, v in gaps.items()) + "\n"
+        + needs(need if need is not None else [k for k, v in statuses.items() if v != "完成"]), encoding="utf-8")
 
 
 BASE = {"DEV-001": "完成", "DEV-013": "进行中", "DEV-068": "待开始", "DEV-133": "阻塞"}
@@ -108,17 +113,32 @@ class Handover(unittest.TestCase):
             d = pathlib.Path(root) / "docs" / "math-workbench"
             f = d / "11-运维交接与已知缺口.md"
             good = "### 进行中（1）\n\n| DEV-013 | 进行中 | 名称 | 缺口 |\n\n### 待开始（1）\n\n| DEV-068 | 待开始 | 名称 | 缺口 |\n\n### 阻塞（1）\n\n| DEV-133 | 阻塞 | 名称 | 缺口 |\n"
+            good += needs(["DEV-013", "DEV-068", "DEV-133"])
             f.write_text(good, encoding="utf-8")
             self.assertEqual(ho.check(root)[0], [])
             f.write_text(good.replace("进行中（1）", "进行中（2）"), encoding="utf-8")
             self.assertEqual(ho.check(root)[0], ["11: section 进行中 says 2 and lists 1 rows but 04 has 1"])
             moved = "### 进行中（1）\n\n### 待开始（1）\n\n| DEV-013 | 进行中 | 名称 | 缺口 |\n| DEV-068 | 待开始 | 名称 | 缺口 |\n\n### 阻塞（1）\n\n| DEV-133 | 阻塞 | 名称 | 缺口 |\n"
+            moved += needs(["DEV-013", "DEV-068", "DEV-133"])
             f.write_text(moved, encoding="utf-8")
             self.assertEqual(ho.check(root)[0], [
                 "11: section 进行中 says 1 and lists 0 rows but 04 has 1",
                 "11: section 待开始 says 1 and lists 2 rows but 04 has 1",
                 "11: DEV-013 is 进行中 but sits in the 待开始 section",
             ])
+
+    def test_open_items_must_say_what_the_user_provides(self):
+        self.assertEqual(self.run_check(need=["DEV-013", "DEV-001", "DEV-133"]), [
+            "11: DEV-068 is 待开始 but section 9 does not say what the user must provide",
+            "11: section 9 still names DEV-001, which 04 says is 完成",
+        ])
+        self.assertEqual(self.run_check(need=["DEV-013", "DEV-068", "DEV-133", "DEV-999"]),
+                         ["11: section 9 names unknown DEV-999"])
+        with tempfile.TemporaryDirectory() as root:
+            write(root, BASE)
+            f = pathlib.Path(root) / "docs" / "math-workbench" / "11-运维交接与已知缺口.md"
+            f.write_text(f.read_text(encoding="utf-8").split("\n## 9")[0], encoding="utf-8")
+            self.assertEqual(ho.check(root)[0], ["11: section 9 (what the user must provide or decide) is missing"])
 
 
 if __name__ == "__main__":

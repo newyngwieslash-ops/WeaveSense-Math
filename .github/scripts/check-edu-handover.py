@@ -6,6 +6,7 @@ Checks, using only the files in docs/math-workbench:
 * the checklist box is [x] exactly when 04 says 完成;
 * the 04 summary table equals the counts computed from the per-item rows;
 * 11 lists every DEV that is not 完成, with the same status, and nothing else;
+* 11 section 9 names, in its "涉及 DEV" column, every DEV that is not 完成 and none that is;
 * 09 section 3.1 (DEV-007 entity table) names every edu_ table in models_edu.go.
 Exit 1 with a list of problems otherwise.
 """
@@ -84,6 +85,7 @@ def check(root):
         if status.get(dev, "完成") == "完成":
             problems.append(f"11: {dev} is listed as a gap but 04 says 完成")
     problems += heading_problems(handover, status)
+    problems += need_problems(handover, status)
     problems += entity_problems(Path(root), d)
     problems += image_problems(Path(root), d)
     return problems, total
@@ -108,6 +110,30 @@ def heading_problems(handover, status):
         for cells in rows:
             if cells[1] != st:
                 problems.append(f"11: {cells[0]} is {cells[1]} but sits in the {st} section")
+    return problems
+
+
+def need_problems(handover, status):
+    """Section 9 says what the user must provide; every open DEV must be covered there."""
+    m = re.search(r"^## 9 ", handover, re.M)
+    if not m:
+        return ["11: section 9 (what the user must provide or decide) is missing"]
+    end = handover.find("\n## ", m.end())
+    section = handover[m.end():end if end >= 0 else len(handover)]
+    named = set()
+    for cells in table_rows(section, "U"):
+        if len(cells) < 6:
+            return [f"11: section 9 row {cells[0]} does not have 6 columns"]
+        named |= set(re.findall(r"DEV-\d+", cells[4]))
+    problems = []
+    for dev, st in sorted(status.items()):
+        if st != "完成" and dev not in named:
+            problems.append(f"11: {dev} is {st} but section 9 does not say what the user must provide")
+    for dev in sorted(named):
+        if status.get(dev) == "完成":
+            problems.append(f"11: section 9 still names {dev}, which 04 says is 完成")
+        elif dev not in status:
+            problems.append(f"11: section 9 names unknown {dev}")
     return problems
 
 
