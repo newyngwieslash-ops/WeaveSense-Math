@@ -134,7 +134,7 @@ func runRetention(t *testing.T, h *harness) {
 	// Audit kept; the run is recorded with counts only.
 	var auditAfter, runs int64
 	h.db.Model(&model.EduAuditEvent{}).Where("tenant_id = ?", tenant).Count(&auditAfter)
-	h.db.Model(&model.EduAuditEvent{}).Where("tenant_id = ? AND action = ? AND detail LIKE ?", tenant, "retention.run", "enrollments=1 learning_rows=% artifacts=1").Count(&runs)
+	h.db.Model(&model.EduAuditEvent{}).Where("tenant_id = ? AND action = ? AND detail LIKE ?", tenant, "retention.run", "enrollments=1 archived_classes=0 learning_rows=% artifacts=1").Count(&runs)
 	if auditAfter != auditBefore+2 || runs != 1 {
 		t.Fatalf("audit: before %d after %d runs %d", auditBefore, auditAfter, runs)
 	}

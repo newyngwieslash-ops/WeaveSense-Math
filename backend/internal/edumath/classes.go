@@ -45,31 +45,85 @@ func consentOK(tx *gorm.DB, tenantID, studentID string) bool {
 	return n > 0
 }
 
+// ErrClassArchived rejects changes to an archived class (DEV-106).
+var ErrClassArchived = appErr(http.StatusConflict, "CLASS_ARCHIVED", "the class is archived; it takes no new invites, assignments or changes", "use_active_class")
+
 // classForStaff loads an active class in the actor's tenant+workspace that the
-// actor teaches (active teaching assignment) or administers (org_admin).
+// actor teaches (active teaching assignment) or administers (org_admin). An
+// archived class answers CLASS_ARCHIVED only to staff who may see it; to others
+// it stays invisible.
 func classForStaff(tx *gorm.DB, a Actor, classID string) (model.EduClass, error) {
 	var k model.EduClass
-	if err := tx.First(&k, "id = ? AND tenant_id = ? AND workspace_id = ? AND status = ?", classID, a.TenantID, a.WorkspaceID, "active").Error; err != nil {
+	if err := tx.First(&k, "id = ? AND tenant_id = ? AND workspace_id = ? AND status IN ?", classID, a.TenantID, a.WorkspaceID, []string{"active", "archived"}).Error; err != nil {
 		return k, ErrNotFound
 	}
-	if a.Has("org_admin") {
-		return k, nil
+	if !a.Has("org_admin") {
+		if !a.Has("teacher") {
+			return k, ErrForbidden
+		}
+		var n int64
+		tx.Model(&model.EduTeachingAssignment{}).Where("tenant_id = ? AND class_id = ? AND user_id = ? AND status = ?", a.TenantID, classID, a.UserID, "active").Count(&n)
+		if n == 0 {
+			return k, ErrNotFound // other teachers' classes are invisible
+		}
 	}
-	if !a.Has("teacher") {
-		return k, ErrForbidden
-	}
-	var n int64
-	tx.Model(&model.EduTeachingAssignment{}).Where("tenant_id = ? AND class_id = ? AND user_id = ? AND status = ?", a.TenantID, classID, a.UserID, "active").Count(&n)
-	if n == 0 {
-		return k, ErrNotFound // other teachers' classes are invisible
+	if k.Status != "active" {
+		return k, ErrClassArchived
 	}
 	return k, nil
+}
+
+// archiveClass ends a class (DEV-106): no new invites or assignments, active
+// invites revoked, its assignments closed to students. Their learning records
+// stay (data requests and export still work) until the learning retention
+// period, counted from the archive time, removes them.
+// Explicit confirmation and a reason are required; the action is audited.
+func (h *API) archiveClass(c *gin.Context) {
+	a, tx, ok := h.staff(c)
+	if !ok {
+		return
+	}
+	k, err := classForStaff(tx, a, c.Param("id"))
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	var in struct {
+		Confirm bool   `json:"confirm"`
+		Reason  string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&in)
+	in.Reason = strings.TrimSpace(in.Reason)
+	if n := len([]rune(in.Reason)); n < 4 || n > 200 || strings.ContainsAny(in.Reason, "<>\r\n") {
+		h.fail(c, appErr(400, "VALIDATION_FAILED", "reason (4 to 200 characters) required", "fix_input"))
+		return
+	}
+	var invites, enrolled int64
+	tx.Model(&model.EduClassInvite{}).Where("tenant_id = ? AND class_id = ? AND status = ?", a.TenantID, k.ID, "active").Count(&invites)
+	tx.Model(&model.EduEnrollment{}).Where("tenant_id = ? AND class_id = ? AND status = ?", a.TenantID, k.ID, "active").Count(&enrolled)
+	if !in.Confirm {
+		// Impact first: the caller sees what archiving changes and confirms.
+		reply(c, 200, gin.H{"dryRun": true, "classId": k.ID, "activeInvites": invites, "activeEnrollments": enrolled}, "ok")
+		return
+	}
+	now := h.Svc.now()
+	if err := tx.Model(&model.EduClass{}).Where("id = ? AND tenant_id = ? AND status = ?", k.ID, a.TenantID, "active").Updates(map[string]any{"status": "archived", "archived_at": now}).Error; err != nil {
+		h.fail(c, err)
+		return
+	}
+	if err := tx.Model(&model.EduClassInvite{}).Where("tenant_id = ? AND class_id = ? AND status = ?", a.TenantID, k.ID, "active").Update("status", "revoked").Error; err != nil {
+		h.fail(c, err)
+		return
+	}
+	h.Svc.audit(tx, a, "class.archive", k.ID, fmt.Sprintf("invites_revoked=%d enrollments=%d | %s", invites, enrolled, in.Reason))
+	reply(c, 200, gin.H{"dryRun": false, "classId": k.ID, "status": "archived", "archivedAt": now, "invitesRevoked": invites}, "ok")
 }
 
 func (h *API) registerClasses(g *gin.RouterGroup) {
 	g.GET("/classes", h.listClasses)
 	g.POST("/classes", h.createClass)
 	g.POST("/classes/:id/teachers", h.addTeacher)
+	g.POST("/classes/:id/archive", h.archiveClass)
 	g.POST("/classes/:id/invites", h.createInvite)
 	g.POST("/classes/:id/invites/:inviteId/revoke", h.revokeInvite)
 	g.GET("/classes/:id/roster", h.roster)

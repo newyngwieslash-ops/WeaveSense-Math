@@ -32,6 +32,8 @@ export const ACTION_LABEL: Record<string, string> = {
     "class.roster.reissue": "重发认领码",
     "class.roster.revoke": "作废名单条目",
     "class.enrollment.withdraw": "移出学生",
+    "class.archive": "归档班级",
+    "artifact.purge": "删除临时文件内容",
     "assignment.withdraw": "撤回任务",
     "ledger.export": "导出账本",
     "role.bind": "授予角色",
@@ -88,7 +90,7 @@ export function accessRowText(r: AccessRow): string {
     const purpose =
         r.action === "org.individual_access" && r.detail
             ? `；目的：${r.detail.split(" | ").slice(1).join(" | ")}`
-            : (r.action.startsWith("retention.") || r.action.startsWith("datareq.") || r.action.startsWith("ops.") || r.action === "assignment.withdraw") && r.detail
+            : (r.action.startsWith("retention.") || r.action.startsWith("datareq.") || r.action.startsWith("ops.") || r.action === "assignment.withdraw" || r.action === "class.archive") && r.detail
               ? `；${retentionDetail(r.detail)}`
               : "";
     return `${label}（${r.actorId}，对象 ${r.subject}）${purpose}`;
@@ -96,7 +98,7 @@ export function accessRowText(r: AccessRow): string {
 
 /** DEV-106 retention: suggested periods, bounds and the impact of a cleanup run. */
 export type RetentionDays = { tempDays: number; imageDays: number; learningDays: number; backupDays: number };
-export type RetentionSummary = { enrollments: number; learningRows: Record<string, number>; rosterEntries: number; artifacts: number; problemImages?: number };
+export type RetentionSummary = { enrollments: number; learningRows: Record<string, number>; rosterEntries: number; artifacts: number; problemImages?: number; archivedClasses?: number };
 export type RetentionView = {
     policy: RetentionDays & { state: string; reason?: string; confirmedBy?: string; confirmedAt?: string; lastRunAt?: string; lastRunSummary?: string };
     confirmed: boolean;
@@ -107,9 +109,9 @@ export type RetentionView = {
 };
 
 export const RETENTION_LABEL: Record<keyof RetentionDays, string> = {
-    tempDays: "临时文件（失败或取消任务的产物）",
+    tempDays: "临时文件（失败或取消任务的产物，内容从数学服务存储删除）",
     imageDays: "学生图片作答",
-    learningDays: "学生离开班级后的学习记录",
+    learningDays: "学生离开班级或班级归档后的学习记录",
     backupDays: "备份",
 };
 
@@ -141,18 +143,21 @@ export function retentionImpact(s: RetentionSummary): string {
     const rows = Object.entries(s.learningRows || {})
         .filter(([, n]) => n > 0)
         .map(([t, n]) => `${RETENTION_TABLE[t] || t} ${n} 条`);
-    if (s.enrollments === 0 && s.artifacts === 0 && !s.problemImages && rows.length === 0) return "按当前保留期，现在没有需要清理的数据。";
+    if (s.enrollments === 0 && s.artifacts === 0 && !s.problemImages && !s.archivedClasses && rows.length === 0) return "按当前保留期，现在没有需要清理的数据。";
     const parts = [`涉及已离开班级 ${s.enrollments} 人次`];
+    if (s.archivedClasses) parts.push(`归档期满的班级 ${s.archivedClasses} 个`);
     if (rows.length) parts.push(`学习记录：${rows.join("，")}`);
     if (s.rosterEntries) parts.push(`名单认领 ${s.rosterEntries} 条`);
-    if (s.artifacts) parts.push(`临时文件 ${s.artifacts} 个`);
+    if (s.artifacts) parts.push(`临时文件 ${s.artifacts} 个（平台撤销，内容随后从数学服务存储删除）`);
     if (s.problemImages) parts.push(`未关联题目的题图 ${s.problemImages} 张`);
     return `${parts.join("；")}。账本、用量与审计记录不在清理范围内。`;
 }
 
 function retentionDetail(d: string): string {
-    const m = /^enrollments=(\d+) learning_rows=(\d+) roster_entries=(\d+)(?: problem_images=(\d+))? artifacts=(\d+)$/.exec(d);
-    if (m) return `离开班级 ${m[1]} 人次，学习记录 ${m[2]} 条，名单认领 ${m[3]} 条，临时文件 ${m[5]} 个${m[4] && m[4] !== "0" ? `，题图 ${m[4]} 张` : ""}`;
+    const m = /^enrollments=(\d+)(?: archived_classes=(\d+))? learning_rows=(\d+) roster_entries=(\d+)(?: problem_images=(\d+))? artifacts=(\d+)$/.exec(d);
+    if (m) return `离开班级 ${m[1]} 人次${m[2] && m[2] !== "0" ? `，归档期满班级 ${m[2]} 个` : ""}，学习记录 ${m[3]} 条，名单认领 ${m[4]} 条，临时文件 ${m[6]} 个${m[5] && m[5] !== "0" ? `，题图 ${m[5]} 张` : ""}`;
+    const a = /^invites_revoked=(\d+) enrollments=(\d+) \| (.*)$/.exec(d);
+    if (a) return `撤销邀请码 ${a[1]} 个，在读学生 ${a[2]} 人；原因：${a[3]}`;
     const p = /^temp=(\d+) image=(\d+) learning=(\d+) backup=(\d+) \| (.*)$/.exec(d);
     if (p) return `临时 ${p[1]} 天，图片 ${p[2]} 天，学习记录 ${p[3]} 天，备份 ${p[4]} 天；理由：${p[5]}`;
     return d;

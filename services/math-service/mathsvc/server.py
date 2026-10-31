@@ -180,6 +180,9 @@ class Handler(BaseHTTPRequestHandler):
                     raise MathError("UNSUPPORTED_FAMILY", "unknown job kind")
                 job, created = self.app.start_job(t, kind, req)
                 return self._send(202 if created else 200, job)
+            m = re.fullmatch(r"/v1/artifacts/(ma_[0-9a-f]{32})/delete", self.path)
+            if m:
+                return self._send(200, self.app.store.delete_artifact(t, m.group(1)))
             m = re.fullmatch(r"/v1/jobs/(mj_[0-9a-f]{32})/cancel", self.path)
             if m:
                 return self._send(200, self.app.store.cancel(t, m.group(1)))

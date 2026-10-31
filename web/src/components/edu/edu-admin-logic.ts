@@ -162,6 +162,21 @@ export function assignmentImpactText(i: AssignmentImpact): string {
 }
 
 /** 撤回原因与服务端一致：4 到 200 字，不含尖括号和换行。 */
+/** DEV-106：班级归档的影响预览（服务端 dryRun 返回的计数）。 */
+export type ArchiveImpact = { activeInvites: number; activeEnrollments: number };
+
+export function archiveImpactText(i: ArchiveImpact): string {
+    return `归档后：${i.activeInvites} 个有效邀请码立即撤销；不能再邀请学生或布置任务；${i.activeEnrollments} 名在读学生不再看到本班任务；作答等学习记录保留到学习记录保留期满（从归档时起算）后由清理任务删除。`;
+}
+
+export function archiveReasonProblem(reason: string): string {
+    const r = reason.trim();
+    if ([...r].length < 4) return "请填写归档原因（至少 4 个字）";
+    if ([...r].length > 200) return "归档原因不超过 200 字";
+    if (/[<>\r\n]/.test(r)) return "归档原因不能包含尖括号或换行";
+    return "";
+}
+
 export function withdrawReasonProblem(reason: string): string {
     const r = reason.trim();
     if ([...r].length < 4) return "请填写撤回原因（至少 4 个字）";

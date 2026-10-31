@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 
 import { edu, type EduScope } from "@/services/api/edu";
 
-import { assignmentImpactText, extensionDueISO, INVITE_STATUS_LABEL, withdrawReasonProblem, type AssignmentImpact, type ExtensionRow, type InviteRow, type RosterRow } from "./edu-admin-logic";
+import { archiveImpactText, archiveReasonProblem, assignmentImpactText, extensionDueISO, type ArchiveImpact, INVITE_STATUS_LABEL, withdrawReasonProblem, type AssignmentImpact, type ExtensionRow, type InviteRow, type RosterRow } from "./edu-admin-logic";
 import { teacherError } from "./teacher-errors";
 
 /**
  * 教师端班级管理：建班、邀请码（明文只在创建时显示一次）、撤销、名册、退出班级、同意记录，
- * 以及单个学生的作业延期。所有权限与校验由服务端完成。
+ * 以及单个学生的作业延期和班级归档（DEV-106，先看影响、写原因再确认）。所有权限与校验由服务端完成。
  */
 const btn = "inline-flex h-8 items-center rounded-md bg-stone-900 px-3 text-sm text-white disabled:opacity-40 dark:bg-stone-100 dark:text-stone-900";
 const ghost = "inline-flex h-8 items-center rounded-md border border-stone-300 px-2 text-sm disabled:opacity-40 dark:border-stone-600";
@@ -21,6 +21,8 @@ export function ClassAdmin({ scope, classId, onCreated }: { scope: EduScope; cla
     const [maxUses, setMaxUses] = useState(60);
     const [evidence, setEvidence] = useState("");
     const [msg, setMsg] = useState("");
+    const [archive, setArchive] = useState<ArchiveImpact | null>(null);
+    const [archiveReason, setArchiveReason] = useState("");
 
     const reload = useCallback(() => {
         if (!classId) return;
@@ -29,6 +31,8 @@ export function ClassAdmin({ scope, classId, onCreated }: { scope: EduScope; cla
     }, [classId, scope]);
     useEffect(() => {
         setCode("");
+        setArchive(null);
+        setArchiveReason("");
         reload();
     }, [reload]);
 
@@ -43,6 +47,22 @@ export function ClassAdmin({ scope, classId, onCreated }: { scope: EduScope; cla
         if (!r.ok) return setMsg(teacherError(r));
         setCode(r.data.code);
         reload();
+    };
+    const previewArchive = async () => {
+        const r = await edu<ArchiveImpact>("post", `/classes/${classId}/archive`, scope, {});
+        if (!r.ok) return setMsg(teacherError(r));
+        setArchive(r.data);
+        setMsg("");
+    };
+    const confirmArchive = async () => {
+        const problem = archiveReasonProblem(archiveReason);
+        if (problem) return setMsg(problem);
+        const r = await edu("post", `/classes/${classId}/archive`, scope, { confirm: true, reason: archiveReason.trim() });
+        if (!r.ok) return setMsg(teacherError(r));
+        setArchive(null);
+        setArchiveReason("");
+        setMsg("班级已归档");
+        onCreated("");
     };
     const act = async (path: string, body: unknown, ok: string) => {
         const r = await edu("post", path, scope, body);
@@ -121,6 +141,30 @@ export function ClassAdmin({ scope, classId, onCreated }: { scope: EduScope; cla
                                 </li>
                             ))}
                         </ul>
+                    </div>
+                    <div>
+                        <h3 className="font-medium">归档班级</h3>
+                        {archive ? (
+                            <div className="mt-1 space-y-2">
+                                <p data-testid="archive-impact">{archiveImpactText(archive)}</p>
+                                <label className="block">
+                                    归档原因
+                                    <input className="ml-2 h-8 w-80 rounded-md border px-2" maxLength={200} value={archiveReason} onChange={(e) => setArchiveReason(e.target.value)} />
+                                </label>
+                                <div className="flex gap-2">
+                                    <button className={btn} onClick={() => void confirmArchive()}>
+                                        确认归档
+                                    </button>
+                                    <button className={ghost} onClick={() => setArchive(null)}>
+                                        取消
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <button className={`${ghost} mt-1`} onClick={() => void previewArchive()}>
+                                查看归档影响
+                            </button>
+                        )}
                     </div>
                 </>
             ) : null}
