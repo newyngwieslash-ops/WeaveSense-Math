@@ -31,6 +31,11 @@ func runEdits(t *testing.T, h *harness) {
 	beats := ed["beats"].([]any)
 	b0 := beats[0].(map[string]any)["id"].(string)
 	h0 := ed["lessonHash"].(string)
+	// DEV-071: the lesson schema carries narration anchors and actions; the editor reads them.
+	if cues, _ := beats[0].(map[string]any)["cues"].([]any); ed["schemaVersion"] != "edu.lesson/2" || len(cues) == 0 ||
+		!strings.HasPrefix(cues[0].(map[string]any)["anchor"].(string), b0+".n") {
+		t.Fatalf("editable lesson must carry cues: %v %v", ed["schemaVersion"], beats[0])
+	}
 	var openHint float64 = -1
 	for _, x := range ed["hints"].([]any) {
 		hm := x.(map[string]any)

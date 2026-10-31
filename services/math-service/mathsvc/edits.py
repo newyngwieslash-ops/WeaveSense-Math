@@ -180,6 +180,7 @@ def apply(base, edits, sol):
     q["edited_unverified"] = sorted(unverified)
     if unverified:
         q["math_text"] = "teacher_edited_not_auto_verified"  # constraint 4: never reported as automatically verified
+    L.with_cues(out)  # narration or board edits rebuild their anchors; an edu.lesson/1 base becomes /2 here
     problems = L.presentation_check(out, sol)
     if problems:
         raise MathError("VALIDATION_FAILED", "presentation consistency failed", {"problems": problems})

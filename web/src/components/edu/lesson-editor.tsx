@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { edu, type EduScope } from "@/services/api/edu";
 
-import { changeLabel, changeValue, conflictOf, diffEdits, draftKey, draftOf, draftProblems, EDIT_CLASS_LABEL, estimateText, INHERIT_LABEL, INVALIDATES_LABEL, type Draft, type Editable, type LessonChange } from "./lesson-edit-logic";
+import { changeLabel, changeValue, conflictOf, cueSummary, diffEdits, draftKey, draftOf, draftProblems, EDIT_CLASS_LABEL, estimateText, INHERIT_LABEL, INVALIDATES_LABEL, type Draft, type Editable, type LessonChange } from "./lesson-edit-logic";
 import { durationText, GOAL_LABEL, STYLE_LABEL } from "./lesson-plan-logic";
 import { provenanceText } from "./provenance-logic";
 import { teacherError, jobErrorText } from "./teacher-errors";
@@ -139,6 +139,9 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
                     <input aria-label={`${b.id} 标题`} className={input} value={draft.beats[b.id]?.title ?? ""} onChange={(e) => setBeat(b.id, "title", e.target.value)} />
                     <textarea aria-label={`${b.id} 讲解`} className={`${input} mt-1`} rows={2} value={draft.beats[b.id]?.say ?? ""} onChange={(e) => setBeat(b.id, "say", e.target.value)} />
                     <textarea aria-label={`${b.id} 板书`} className={`${input} mt-1 font-mono`} rows={2} value={draft.beats[b.id]?.board ?? ""} onChange={(e) => setBeat(b.id, "board", e.target.value)} />
+                    <p className="mt-1 text-xs text-stone-500" data-testid={`cues-${b.id}`}>
+                        {cueSummary(b)}
+                    </p>
                 </fieldset>
             ))}
             {ed.hints.map((h) => (
