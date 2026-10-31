@@ -114,10 +114,25 @@ async def resolve_public(host, resolver=None):
     return answers[0]
 
 
-def child_limits():
-    import resource
-    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_BYTES, MAX_BYTES))
-    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+# The child limits itself after exec and then execs the real command, instead
+# of a preexec_fn: preexec_fn runs Python between fork and exec, which is not
+# safe once the parent has threads (asyncio's default executor resolves DNS on
+# threads here) and can deadlock the child before exec while the parent waits
+# outside any timeout. The math service hit exactly this (see its runner).
+# The limits are set before the command's first instruction runs, so the
+# isolation is the same as before; start_new_session stays in C.
+LIMITS_BOOTSTRAP = ('import os,resource,sys\n'
+                    'n=int(sys.argv[1])\n'
+                    'resource.setrlimit(resource.RLIMIT_FSIZE,(n,n))\n'
+                    'resource.setrlimit(resource.RLIMIT_CORE,(0,0))\n'
+                    'os.execvp(sys.argv[2],sys.argv[2:])\n')
+
+
+def limited(args):
+    """Wrap args so the child applies RLIMIT_FSIZE and RLIMIT_CORE, then execs args."""
+    if os.name != 'posix':
+        return list(args)
+    return [sys.executable, '-I', '-S', '-c', LIMITS_BOOTSTRAP, str(MAX_BYTES), *args]
 
 
 async def reap(process):
@@ -144,9 +159,9 @@ async def run_process(args, deadline, cwd=None):
            'TMPDIR': cwd or tempfile.gettempdir(), 'LANG': 'C.UTF-8'}
     if os.name == 'nt':
         env['SystemRoot'] = os.environ.get('SystemRoot', r'C:\Windows')
-    process = await asyncio.create_subprocess_exec(*args, cwd=cwd, env=env,
+    process = await asyncio.create_subprocess_exec(*limited(args), cwd=cwd, env=env,
         stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        **({'start_new_session': True, 'preexec_fn': child_limits} if os.name == 'posix' else {}))
+        **({'start_new_session': True} if os.name == 'posix' else {}))
     total = 0
     async def drain(stream, keep):
         nonlocal total
