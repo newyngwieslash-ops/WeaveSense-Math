@@ -274,6 +274,7 @@ func (s *Service) startJobWith(ctx context.Context, tx *gorm.DB, a Actor, kind, 
 		}
 		job.ReservationID = rsv.ID
 	}
+	s.auditPriceChange(tx, a, job.ID, pb)
 	if err := tx.Create(&job).Error; err != nil {
 		return job, err
 	}

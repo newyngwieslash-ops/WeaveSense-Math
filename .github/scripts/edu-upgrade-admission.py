@@ -40,6 +40,7 @@ SUITES = {
     "cost": [
         "TestStageSettlementOutcomes", "TestLedgerReconcileAndExport", "TestPGLedgerReconcileAndExport",
         "TestBudgetsAndFairness", "TestPGBudgetsAndFairness", "TestDeliveryCostReport", "TestReceiptContract",
+        "TestPriceChangeAudit", "TestPriceChangeDiff",
     ],
     "permissions": [
         "TestClassesInvitesConsentAuthorization", "TestPGEduTablesForceRLS", "TestRoleBindingScopeExpiry",
@@ -91,6 +92,7 @@ RULES = [
     (ED + "lessonplan", ["teaching", "cost"]),
     (ED + "lessoncompare", ["teaching"]),
     (ED + "provenance", ["permissions"]),
+    (ED + "priceaudit", ["cost", "permissions"]),
     (ED + "roles", ["permissions"]),
     (ED + "opsaccess", ["permissions"]),
     (ED + "org", ["permissions"]),

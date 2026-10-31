@@ -85,6 +85,8 @@ REQUIRED = {
     ("edumath", "TestContentProvenance"),
     ("edumath", "TestProvenanceOf"),
     ("edumath", "TestPGProblemImages"),
+    ("edumath", "TestPriceChangeAudit"),
+    ("edumath", "TestPriceChangeDiff"),
 }
 
 
