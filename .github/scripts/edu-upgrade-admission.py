@@ -47,6 +47,7 @@ SUITES = {
         "TestPGRoleBindingScopeExpiry", "TestStudentLeakGuard", "TestPauses", "TestPGPauses",
         "TestPauseFailClosed", "TestPGPauseFailClosed", "TestProblemImages", "TestPGProblemImages", "TestEduResponsesNeverCached",
         "TestContentProvenance", "TestProvenanceOf", "TestPGReadsAndRequestTrace",
+        "TestArtifactPurgeAndClassArchive", "TestPGArtifactPurgeAndClassArchive",
     ],
 }
 
@@ -95,6 +96,8 @@ RULES = [
     (ED + "priceaudit", ["cost", "permissions"]),
     (ED + "views", ["cost", "permissions"]),
     (ED + "trace", ["permissions"]),
+    (ED + "retention", ["permissions"]),
+    (ED + "archive_purge", ["permissions"]),
     (ED + "roles", ["permissions"]),
     (ED + "opsaccess", ["permissions"]),
     (ED + "org", ["permissions"]),

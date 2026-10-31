@@ -89,6 +89,8 @@ REQUIRED = {
     ("edumath", "TestPriceChangeDiff"),
     ("edumath", "TestReadsAndRequestTrace"),
     ("edumath", "TestPGReadsAndRequestTrace"),
+    ("edumath", "TestArtifactPurgeAndClassArchive"),
+    ("edumath", "TestPGArtifactPurgeAndClassArchive"),
 }
 
 
