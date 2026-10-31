@@ -4,6 +4,7 @@ import { edu, type EduScope } from "@/services/api/edu";
 
 import { changeLabel, changeValue, conflictOf, diffEdits, draftKey, draftOf, draftProblems, EDIT_CLASS_LABEL, estimateText, INHERIT_LABEL, INVALIDATES_LABEL, type Draft, type Editable, type LessonChange } from "./lesson-edit-logic";
 import { durationText, GOAL_LABEL, STYLE_LABEL } from "./lesson-plan-logic";
+import { provenanceText } from "./provenance-logic";
 import { teacherError, jobErrorText } from "./teacher-errors";
 
 /**
@@ -117,6 +118,9 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
         <div className="space-y-3" data-testid="lesson-editor">
             <p className="text-xs text-stone-500">
                 基于修订 {ed.lessonRevisionId}（哈希 {ed.lessonHash.slice(7, 19)}）。保存后生成新修订，本修订与已发布版本不变。机构规则：{INHERIT_LABEL[ed.editReviewInherit] || ed.editReviewInherit}（待确认）。
+            </p>
+            <p className="text-xs text-stone-500" data-testid="editor-provenance">
+                {provenanceText(ed.provenance)}（审核与修改都不会删除来源标识）
             </p>
             {ed.duration ? (
                 <p className="text-xs text-stone-500" data-testid="lesson-duration">

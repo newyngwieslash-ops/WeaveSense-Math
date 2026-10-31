@@ -100,7 +100,7 @@ func runMathVersion(t *testing.T, v mathVersion, addr, dataDir string) func() {
 
 // runRenderRollbackDrill (DEV-125, E66) is a real switch between two code
 // versions of the math service. The previous valid version A renders with
-// preview-svg/1.1.0. Candidate B is the same tree with a new renderer version
+// preview-svg/1.2.0. Candidate B is the same tree with a new renderer version
 // and a presentation defect the render check does not catch (the hint list is
 // hidden). The drill upgrades A to B on the same address and data volume,
 // publishes a B lesson and moves a class onto it, finds the defect, pauses the
@@ -110,7 +110,7 @@ func runMathVersion(t *testing.T, v mathVersion, addr, dataDir string) func() {
 // lessons stay paused, and no attempt, job, stage settlement or ledger row was
 // lost. Timings are logged as drill evidence (go test -json keeps them in CI).
 func runRenderRollbackDrill(t *testing.T, mk func(base string) *harness) {
-	const good, bad = "preview-svg/1.1.0", "preview-svg/1.2.0-drill"
+	const good, bad = "preview-svg/1.2.0", "preview-svg/1.3.0-drill"
 	vA := copyMathService(t, "math-A", nil)
 	vB := copyMathService(t, "math-B", map[string][2]string{
 		"mathsvc/render.py": {`RENDERER_VERSION = "` + good + `"`, `RENDERER_VERSION = "` + bad + `"`},

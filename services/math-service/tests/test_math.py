@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import html as _html
 import unittest
 
 import sympy as sp
@@ -99,6 +100,38 @@ class FamilyTests(unittest.TestCase):
             with self.assertRaises(MathError) as cm:
                 L.compose(F.FAMILY_ID, n, s, r, cq, {}, bad)
             self.assertEqual(cm.exception.code, "INPUT_AMBIGUOUS", bad)
+
+    def test_provenance_in_every_format(self):
+        """DEV-101: the student JSON and both preview pages carry the same
+        provenance, explicitly (visible text) and implicitly (a meta tag); the
+        label follows what the lesson records, a teacher edit adds to it, and
+        the "no generative AI" wording needs an explicit ai_generated=False."""
+        import json as _json
+        import re as _re
+        from mathsvc import render as R
+        n = F.normalize(P("2", "1"))
+        s = F.solve(n)
+        les = L.compose(F.FAMILY_ID, n, s, F.verify(n, s), F.check_question(n), {})
+        stu = L.student_projection(les, "none")
+        want = {"kind": "template_only", "ai_generated": False, "generator": "deterministic-template", "ai_parts": [],
+                "teacher_edited": False, "label": "讲解由程序按题族模板生成，平台未调用生成式人工智能撰写内容"}
+        self.assertEqual(stu["meta"]["provenance"], want)
+        for page in (R.page(les, "teacher"), R.page(stu, "student")):
+            self.assertIn('<p class="prov" data-provenance>' + want["label"] + "</p>", page)
+            m = _re.search(r'<meta name="content-provenance" content="([^"]*)">', page)
+            self.assertEqual(_json.loads(_html.unescape(m.group(1))), want)
+        edited = dict(les["meta"], edit_log=[{"class": "wording"}])
+        self.assertEqual(L.provenance(edited)["label"], want["label"] + "；含老师修改")
+        manual = L.provenance({"generator": "teacher-manual", "ai_generated": False})
+        self.assertEqual((manual["kind"], manual["label"]), ("teacher_manual", "讲解由老师人工编写，平台未调用生成式人工智能撰写内容"))
+        # Any recorded model part overrides the generator; nothing recorded is not "no AI".
+        tts = L.provenance({"generator": "deterministic-template", "ai_generated": False, "ai_parts": ["narration", "audio"]})
+        self.assertEqual((tts["kind"], tts["ai_generated"], tts["label"]), ("model_assisted", True, "含人工智能生成内容（旁白、配音）"))
+        self.assertEqual(L.provenance({"ai_generated": True, "generator": "x"})["label"], "含人工智能生成内容")
+        for meta in ({}, {"generator": "deterministic-template"}, {"generator": "other", "ai_generated": False}):
+            p = L.provenance(meta)
+            self.assertEqual((p["kind"], p["ai_generated"], p["label"]), ("unknown", None, "生成方式未记录"), meta)
+            self.assertNotIn("未调用生成式人工智能", p["label"])
 
     def test_guard_catches_leak(self):
         with self.assertRaises(MathError):

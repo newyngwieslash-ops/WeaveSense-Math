@@ -137,6 +137,42 @@ def visible_text(page_html):
     return _html.unescape(s)
 
 
+PROVENANCE_LABEL = {
+    "deterministic-template": "讲解由程序按题族模板生成，平台未调用生成式人工智能撰写内容",
+    "teacher-manual": "讲解由老师人工编写，平台未调用生成式人工智能撰写内容",
+}
+PROVENANCE_KIND = {"deterministic-template": "template_only", "teacher-manual": "teacher_manual"}
+AI_PART_LABEL = {"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "intake": "题目识别", "figure": "图形"}
+
+
+def provenance(meta):
+    """DEV-101: how this revision's content was produced, read from what the
+    lesson itself records (generator, ai_generated, ai_parts, edit_log); it is
+    never an editable field, so review and teacher edits cannot remove it.
+
+    The "no generative AI" wording is only used when the lesson explicitly
+    records ai_generated=False for a known generator; a missing flag is
+    reported as unrecorded, and any recorded model part (ai_generated=True or
+    a non-empty ai_parts, e.g. future TTS narration or OCR intake) makes the
+    label say the content contains AI generated parts. The claim is limited to
+    what the platform did: text a teacher typed or pasted is the teacher's."""
+    gen = str(meta.get("generator") or "unknown")
+    flag = meta.get("ai_generated")
+    parts = [str(p) for p in (meta.get("ai_parts") or [])]
+    edited = bool(meta.get("edit_log"))
+    if flag is True or parts:
+        kind = "model_assisted"
+        label = "含人工智能生成内容" + ("（%s）" % "、".join(AI_PART_LABEL.get(p, p) for p in parts) if parts else "")
+    elif flag is False and gen in PROVENANCE_LABEL:
+        kind, label = PROVENANCE_KIND[gen], PROVENANCE_LABEL[gen]
+    else:
+        kind, label = "unknown", "生成方式未记录"
+    if edited:
+        label += "；含老师修改"
+    return {"kind": kind, "ai_generated": True if kind == "model_assisted" else (False if kind != "unknown" else None),
+            "generator": gen, "ai_parts": parts, "teacher_edited": edited, "label": label}
+
+
 def student_projection(lesson, reveal="none"):
     """Server-side projection for students (PRD constraint 2). reveal=none keeps
     only the problem, the unlabeled figure, and ungated hints; nothing that
@@ -147,7 +183,8 @@ def student_projection(lesson, reveal="none"):
         "schema_version": SCHEMA, "projection": "student", "reveal": reveal,
         "meta": dict({k: lesson["meta"][k] for k in ("family_id", "title", "language", "style")},
                      **({"layout": lesson["meta"]["layout"]} if lesson["meta"].get("layout") else {}),
-                     **({"verification": lesson["meta"]["verification"]} if lesson["meta"].get("verification") else {})),
+                     **({"verification": lesson["meta"]["verification"]} if lesson["meta"].get("verification") else {}),
+                     provenance=provenance(lesson["meta"])),
         "problem": lesson["problem"], "figure": lesson["figure"],
         "hints": [{"level": h["level"], "kind": h["kind"], "text": h["text"]} for h in lesson["hints"] if not h.get("gated")],
         "gated_hint_levels": [h["level"] for h in lesson["hints"] if h.get("gated")],
