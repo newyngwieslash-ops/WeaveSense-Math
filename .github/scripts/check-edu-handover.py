@@ -84,6 +84,7 @@ def check(root):
         if status.get(dev, "完成") == "完成":
             problems.append(f"11: {dev} is listed as a gap but 04 says 完成")
     problems += entity_problems(Path(root), d)
+    problems += image_problems(Path(root), d)
     return problems, total
 
 
@@ -98,6 +99,43 @@ def entity_problems(root, d):
     section = text[start:end] if 0 <= start < end else ""
     named = set(re.findall(r"edu_[a-z_]+", section))
     return [f"09: entity table {t} from models_edu.go is not listed in section 3.1" for t in tables if t not in named]
+
+
+DOCKERFILES = ["Dockerfile", "backend/Dockerfile"]
+
+
+def image_layers(text):
+    """FROM images and apk packages named in one Dockerfile."""
+    images, packages = [], []
+    joined = re.sub(r"\\\n", " ", text)
+    for line in joined.splitlines():
+        words = line.split()
+        if words[:1] == ["FROM"]:
+            refs = [w for w in words[1:] if not w.startswith("--")]
+            if refs:
+                images.append(refs[0])
+        for m in re.finditer(r"apk add((?:\s+[^&;|]+)?)", line):
+            packages += [w for w in m.group(1).split() if not w.startswith("-")]
+    return images, packages
+
+
+def image_problems(root, d):
+    found = list(d.glob("06-*.md"))
+    text = found[0].read_text(encoding="utf-8") if found else ""
+    start = text.find("### 部署镜像基础层")
+    end = text.find("\n### ", start + 1)
+    section = text[start:end] if start >= 0 else ""
+    named = set(re.findall(r"`([^`]+)`", section))
+    problems = []
+    for rel in DOCKERFILES:
+        f = root / rel
+        if not f.exists():
+            continue
+        images, packages = image_layers(f.read_text(encoding="utf-8"))
+        for item in images + packages:
+            if item not in named:
+                problems.append(f"06: {rel} uses {item} but the base layer section does not list it")
+    return problems
 
 
 def main(argv):

@@ -87,5 +87,20 @@ class Handover(unittest.TestCase):
             self.assertEqual(ho.check(root)[0], [])
 
 
+    def test_image_layers_must_be_listed(self):
+        with tempfile.TemporaryDirectory() as root:
+            write(root, BASE)
+            r = pathlib.Path(root)
+            (r / "Dockerfile").write_text("FROM --platform=$X a/b:1 AS build\nFROM c:2\nRUN apk add --no-cache x y \\\n    && adduser -S app\n", encoding="utf-8")
+            d = r / "docs" / "math-workbench"
+            (d / "06-x.md").write_text("### 部署镜像基础层\n| `a/b:1` | `x` |\n### 正式复核\n`c:2` `y`\n", encoding="utf-8")
+            self.assertEqual(ho.check(root)[0], [
+                "06: Dockerfile uses c:2 but the base layer section does not list it",
+                "06: Dockerfile uses y but the base layer section does not list it",
+            ])
+            (d / "06-x.md").write_text("### 部署镜像基础层\n| `a/b:1` | `x` | `c:2` | `y` |\n", encoding="utf-8")
+            self.assertEqual(ho.check(root)[0], [])
+
+
 if __name__ == "__main__":
     unittest.main()
