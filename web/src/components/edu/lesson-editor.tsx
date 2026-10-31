@@ -4,6 +4,7 @@ import { edu, type EduScope } from "@/services/api/edu";
 
 import { changeLabel, changeValue, conflictOf, cueSummary, diffEdits, draftKey, draftOf, draftProblems, EDIT_CLASS_LABEL, estimateText, INHERIT_LABEL, INVALIDATES_LABEL, type Draft, type Editable, type LessonChange } from "./lesson-edit-logic";
 import { durationText, GOAL_LABEL, STYLE_LABEL } from "./lesson-plan-logic";
+import { EXERCISE_NOTE, GEOMETRY_NOTE } from "./problem-params-logic";
 import { provenanceText } from "./provenance-logic";
 import { teacherError, jobErrorText } from "./teacher-errors";
 
@@ -25,7 +26,7 @@ type Impact = {
 type JobRow = { id: string; status: string; stage: string; error?: { code?: string; message?: string } | null; lessonRevisionId?: string };
 type HistoryNode = { id: string; lessonHash: string; state: string; editClasses?: string; approvalInheritedFrom?: string; createdAt: string };
 
-export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduScope; lessonId: string; onOpenRevision: (id: string) => void }) {
+export function LessonEditor({ scope, lessonId, onOpenRevision, onEditProblem, onEditExercises }: { scope: EduScope; lessonId: string; onOpenRevision: (id: string) => void; onEditProblem?: () => void; onEditExercises?: () => void }) {
     const [ed, setEd] = useState<Editable | null>(null);
     const [draft, setDraft] = useState<Draft | null>(null);
     const [undo, setUndo] = useState<Draft[]>([]);
@@ -162,6 +163,21 @@ export function LessonEditor({ scope, lessonId, onOpenRevision }: { scope: EduSc
                     ) : null}
                 </fieldset>
             ) : null}
+            <fieldset className="rounded-md border border-stone-200 p-2 text-sm dark:border-stone-700" data-testid="geometry-exercises">
+                <legend className="px-1 text-xs text-stone-500">图形几何与练习（在题目修订与题组中修改）</legend>
+                <p className="text-xs text-stone-500">{GEOMETRY_NOTE}</p>
+                {onEditProblem ? (
+                    <button className={`${ghost} mt-1`} onClick={onEditProblem}>
+                        修改题目参数
+                    </button>
+                ) : null}
+                <p className="mt-2 text-xs text-stone-500">{EXERCISE_NOTE}</p>
+                {onEditExercises ? (
+                    <button className={`${ghost} mt-1`} onClick={onEditExercises}>
+                        替换练习题
+                    </button>
+                ) : null}
+            </fieldset>
             <div className="text-sm">
                 读音
                 {draft.pronunciations.map((p, i) => (

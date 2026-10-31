@@ -12,6 +12,7 @@ import { ManualLessonForm } from "@/components/edu/manual-lesson";
 import { LessonPlanPanel } from "@/components/edu/lesson-plan";
 import { actionLabel, teachingBody, type Teaching } from "@/components/edu/lesson-plan-logic";
 import { ProblemImagePanel } from "@/components/edu/problem-image";
+import { ProblemParamsForm } from "@/components/edu/problem-params";
 import { TextIntake } from "@/components/edu/text-intake";
 import { MANUAL_NOTICE_TEACHER, MANUAL_TEMPLATE_FAMILY, MANUAL_UNVERIFIED } from "@/components/edu/manual-lesson-logic";
 import { JOB_STATE_TEXT, jobErrorText, lessonStateLine, STAGE_TEXT, teacherError } from "@/components/edu/teacher-errors";
@@ -159,6 +160,11 @@ export default function TeacherAuthoring() {
         }
     }, [params]);
 
+    const jumpTo = (id: string, focus?: string) => {
+        const el = document.getElementById(id);
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (focus) el?.querySelector<HTMLElement>(focus)?.focus({ preventScroll: true });
+    };
     const pickFamily = (f: string) => {
         setFamily(f);
         setJson(JSON.stringify(FAMILY_TEMPLATES[f].structured, null, 2));
@@ -270,7 +276,7 @@ export default function TeacherAuthoring() {
                     {msg}
                 </p>
             ) : null}
-            <section className={box}>
+            <section className={box} id="edu-problem">
                 <h2 className="mb-2 font-semibold">1. 题目与参数</h2>
                 <div className="flex flex-wrap gap-2">
                     <select aria-label="工作区" className="h-9 rounded-md border px-2" value={ws} onChange={(e) => setWs(e.target.value)}>
@@ -301,7 +307,11 @@ export default function TeacherAuthoring() {
                     onManual={() => pickFamily(MANUAL_TEMPLATE_FAMILY)}
                 />
                 <ProblemImagePanel scope={scope} problemId={rev?.problemId} />
-                <textarea aria-label="结构化题目输入（JSON）" className="mt-2 w-full rounded-md border p-2 font-mono text-xs" rows={8} value={json} onChange={(e) => setJson(e.target.value)} />
+                <ProblemParamsForm family={family} json={json} onChange={setJson} />
+                <details className="mt-2">
+                    <summary className="cursor-pointer text-xs text-stone-500">高级：查看结构化输入</summary>
+                    <textarea aria-label="结构化题目输入（JSON）" className="mt-2 w-full rounded-md border p-2 font-mono text-xs" rows={8} value={json} onChange={(e) => setJson(e.target.value)} />
+                </details>
                 <div className="mt-2 flex gap-2">
                     <button className={ghost} onClick={() => void save()}>
                         {rev ? "保存为新修订" : "保存"}
@@ -368,7 +378,7 @@ export default function TeacherAuthoring() {
                             <details className="mt-3" onToggle={(e) => setEditing((e.currentTarget as HTMLDetailsElement).open)}>
                                 <summary className="cursor-pointer text-sm font-medium">修改讲解（生成新修订）</summary>
                                 <div className="mt-2">
-                                    <LessonEditor key={lesson.id} scope={scope} lessonId={lesson.id} onOpenRevision={openLesson} />
+                                    <LessonEditor key={lesson.id} scope={scope} lessonId={lesson.id} onOpenRevision={openLesson} onEditProblem={() => jumpTo("edu-problem", '[data-testid^="param-"]')} onEditExercises={() => jumpTo("edu-variants")} />
                                 </div>
                             </details>
                         )}
@@ -376,7 +386,7 @@ export default function TeacherAuthoring() {
                 ) : null}
             </section>
 
-            <section className={`${box} mt-4`}>
+            <section className={`${box} mt-4`} id="edu-variants">
                 <h2 className="mb-2 font-semibold">4. 举一反三自测题组（可选）</h2>
                 {manual && variantLesson === lesson?.id ? (
                     <p className="text-sm text-stone-500">人工编写的讲解不生成变式题组，也没有自测题。</p>
