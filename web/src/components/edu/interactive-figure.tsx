@@ -1,5 +1,6 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { BOARD_FONT_FAMILY } from "./board-theme";
 import { clamp, fitBox, nearestFrame, project, stepFrame, type FigureSpec, type ParamFrame } from "./figure-math";
 
 /**
@@ -135,7 +136,7 @@ export function InteractiveFigure({ spec, onUse, disabled }: Props) {
                 {Object.entries(geo.pts).map(([k, p]) => (
                     <g key={k}>
                         <circle cx={p.x} cy={p.y} r={s * 0.008} className="fill-current" />
-                        <text x={p.x + font * 0.3} y={p.y - font * 0.3} fontSize={font} className="fill-current">
+                        <text x={p.x + font * 0.3} y={p.y - font * 0.3} fontSize={font} fontFamily={BOARD_FONT_FAMILY} className="fill-current">
                             {p.label}
                         </text>
                     </g>

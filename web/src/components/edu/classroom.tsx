@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { edu, type EduScope } from "@/services/api/edu";
 
+import { BOARD_THEME_VERSION, boardFontStyle } from "./board-theme";
 import { keyAction, shownBeat, step, type ClassroomBeat } from "./classroom-logic";
 import { teacherError } from "./teacher-errors";
 
@@ -46,6 +47,8 @@ export function Classroom({ scope, lessonId, onClose }: { scope: EduScope; lesso
             role="region"
             aria-label="课堂演示"
             data-testid="classroom"
+            data-board-theme={BOARD_THEME_VERSION}
+            style={boardFontStyle}
             className="mt-3 rounded-lg bg-stone-950 p-6 text-white outline-none"
             onKeyDown={(e) => {
                 if (e.key === "Escape") return onClose();
