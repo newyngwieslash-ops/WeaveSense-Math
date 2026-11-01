@@ -9,6 +9,7 @@ Environment:
 
 import json
 import os
+import sys
 import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -248,7 +249,32 @@ def serve(key, data_dir, listen):
     return httpd, app
 
 
+UNSUPPORTED_PLATFORM = (
+    "math service requires Linux (or another POSIX system): job isolation uses "
+    "resource limits (RLIMIT_AS, RLIMIT_CPU, RLIMIT_NOFILE) and SIGXCPU, which are not "
+    "available on {platform}. Run it in Docker or WSL 2 with Python 3.12, for example: "
+    "docker run --rm -p 127.0.0.1:8790:8790 -v <repo>/services/math-service:/app -w /app "
+    "-e MATH_SERVICE_KEY=... -e MATH_LISTEN=0.0.0.0:8790 python:3.12-slim "
+    "bash -lc \"pip install -q -r requirements.txt && python -m mathsvc.server\" "
+    "(see docs/math-workbench/12 section 1.8)"
+)
+
+
+def platform_problem(os_name=None, platform=None):
+    """Return why this platform cannot run isolated jobs, or None when it can.
+
+    Production isolation is POSIX only; there is deliberately no weaker fallback."""
+    os_name = os.name if os_name is None else os_name
+    platform = sys.platform if platform is None else platform
+    if os_name != "posix":
+        return UNSUPPORTED_PLATFORM.format(platform=platform)
+    return None
+
+
 def main():
+    problem = platform_problem()
+    if problem:
+        sys.exit(problem)
     key = os.environ.get("MATH_SERVICE_KEY", "").encode()
     httpd, _ = serve(key, os.environ.get("MATH_DATA_DIR", "./data"), os.environ.get("MATH_LISTEN", "127.0.0.1:8790"))
     httpd.serve_forever()
