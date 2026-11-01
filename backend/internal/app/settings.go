@@ -11,8 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -493,7 +495,21 @@ func publishSettingsKey(path string, key []byte, link func(string, string) error
 		return err
 	}
 	defer dir.Close()
-	return dir.Sync()
+	return tolerateDirSyncError(runtime.GOOS, dir.Sync())
+}
+
+// tolerateDirSyncError drops the error from fsyncing a directory on Windows,
+// where FlushFileBuffers on a directory handle is not supported and Go returns
+// a *fs.PathError even though the file itself was written and synced. NTFS
+// persists the directory entry with the file metadata, so there is nothing more
+// to flush. Every other platform keeps the error, so Linux durability is
+// unchanged.
+func tolerateDirSyncError(goos string, err error) error {
+	var pathErr *fs.PathError
+	if goos == "windows" && errors.As(err, &pathErr) {
+		return nil
+	}
+	return err
 }
 
 func (s *Service) protectTaskSecrets(value interface{}) error {

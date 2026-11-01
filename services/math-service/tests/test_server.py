@@ -138,5 +138,29 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(v["error"]["code"], "UNSUPPORTED_FAMILY")
 
 
+class PlatformGuardTests(unittest.TestCase):
+    def test_non_posix_refuses_with_docker_hint(self):
+        from mathsvc.server import platform_problem
+        msg = platform_problem(os_name="nt", platform="win32")
+        self.assertIn("requires Linux", msg)
+        self.assertIn("win32", msg)
+        self.assertIn("Docker", msg)
+        self.assertIn("127.0.0.1:8790:8790", msg)
+
+    def test_posix_is_supported(self):
+        from mathsvc.server import platform_problem
+        self.assertIsNone(platform_problem(os_name="posix", platform="linux"))
+        self.assertIsNone(platform_problem())
+
+    def test_main_exits_before_serving_on_non_posix(self):
+        from unittest import mock
+        from mathsvc import server
+        with mock.patch.object(server.os, "name", "nt"), mock.patch.object(server, "serve") as serve:
+            with self.assertRaises(SystemExit) as cm:
+                server.main()
+        self.assertIn("requires Linux", str(cm.exception.code))
+        serve.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
