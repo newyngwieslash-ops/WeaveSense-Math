@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -30,7 +31,11 @@ func (s *Service) SignedURL(artifactID, userID string, ttl time.Duration) (strin
 	}
 	exp := s.now().Add(ttl).Truncate(time.Second)
 	q := url.Values{"u": {userID}, "exp": {strconv.FormatInt(exp.Unix(), 10)}, "sig": {s.urlSig(artifactID, userID, exp.Unix())}}
-	return "/api/edu/files/" + artifactID + "?" + q.Encode(), exp
+	path := "/api/edu/files/" + artifactID + "?" + q.Encode()
+	if origin := strings.TrimRight(s.AssetOrigin, "/"); origin != "" {
+		return origin + path, exp
+	}
+	return path, exp
 }
 
 // VerifyURL checks signature and expiry; access is re-checked separately so a

@@ -2,6 +2,7 @@ package edumath
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -217,6 +218,62 @@ func (h *API) liveSource(tx *gorm.DB, a Actor, id string) (model.EduSourceAsset,
 	return src, nil
 }
 
+func (h *API) imageBytes(img model.EduProblemImage) ([]byte, error) {
+	if img.ObjectKey != "" && h.Svc != nil && h.Svc.Blobs != nil {
+		return h.Svc.Blobs.Get(context.Background(), img.ObjectKey)
+	}
+	if len(img.Content) == 0 {
+		return nil, imageErr(404, "NOT_FOUND", "picture bytes are not available")
+	}
+	return img.Content, nil
+}
+
+func (h *API) putImageBlob(img *model.EduProblemImage, data []byte) error {
+	if h.Svc == nil || h.Svc.Blobs == nil {
+		img.Content = data
+		img.ObjectKey, img.Storage = "", ""
+		return nil
+	}
+	key := objectKey(storePrefix(h.Svc.Blobs), img.TenantID, img.ID)
+	if err := h.Svc.Blobs.Put(context.Background(), key, img.Mime, data); err != nil {
+		return imageErr(503, "PROVIDER_UNAVAILABLE", "object store is unavailable")
+	}
+	img.ObjectKey, img.Storage, img.Content = key, "s3", nil
+	return nil
+}
+
+func (h *API) deleteImageBlob(img model.EduProblemImage) {
+	if img.ObjectKey == "" || h.Svc == nil || h.Svc.Blobs == nil {
+		return
+	}
+	_ = h.Svc.Blobs.Delete(context.Background(), img.ObjectKey)
+}
+
+func (s *Service) AdoptProblemImageBlobs(limit int) (int, error) {
+	if s == nil || s.Blobs == nil || limit <= 0 {
+		return 0, nil
+	}
+	var rows []model.EduProblemImage
+	if err := s.DB.Where("object_key = '' AND state = 'active' AND bytes > 0").Limit(limit).Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, img := range rows {
+		if len(img.Content) == 0 {
+			continue
+		}
+		key := objectKey(storePrefix(s.Blobs), img.TenantID, img.ID)
+		if err := s.Blobs.Put(context.Background(), key, img.Mime, img.Content); err != nil {
+			return n, err
+		}
+		if err := s.DB.Model(&img).Updates(map[string]any{"object_key": key, "storage": "s3", "content": []byte{}}).Error; err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 func (h *API) uploadProblemImage(c *gin.Context) {
 	a, tx, ok := h.imageTeacher(c)
 	if !ok {
@@ -250,8 +307,13 @@ func (h *API) uploadProblemImage(c *gin.Context) {
 	now := h.Svc.now()
 	img := model.EduProblemImage{ID: flow.NewID("epi_"), TenantID: a.TenantID, WorkspaceID: a.WorkspaceID, Kind: "original", State: "active",
 		SourceAssetID: src.ID, Mime: mime, Width: w, Height: hh, Bytes: len(clean), SHA256: sha(clean), UploadSHA256: sha(raw),
-		CropW: w, CropH: hh, Content: clean, CreatedBy: a.UserID, CreatedAt: now, UpdatedAt: now}
+		CropW: w, CropH: hh, CreatedBy: a.UserID, CreatedAt: now, UpdatedAt: now}
+	if err := h.putImageBlob(&img, clean); err != nil {
+		h.fail(c, err)
+		return
+	}
 	if err := tx.Create(&img).Error; err != nil {
+		h.deleteImageBlob(img)
 		h.fail(c, err)
 		return
 	}
@@ -305,11 +367,16 @@ func (h *API) problemImageContent(c *gin.Context) {
 		h.fail(c, ErrNotFound)
 		return
 	}
+	body, err := h.imageBytes(img)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
 	c.Header("Cache-Control", "no-store")
 	c.Header("X-Content-Type-Options", "nosniff")
-	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
+	c.Header("Content-Security-Policy", imageCSP())
 	c.Header("Content-Disposition", "inline")
-	c.Data(200, img.Mime, img.Content)
+	c.Data(200, img.Mime, body)
 }
 
 func (h *API) selectProblemImage(c *gin.Context) {
@@ -347,7 +414,12 @@ func (h *API) selectProblemImage(c *gin.Context) {
 		h.fail(c, errImageBusy)
 		return
 	}
-	pix, _, err := image.Decode(bytes.NewReader(img.Content))
+	raw, err := h.imageBytes(img)
+	if err != nil {
+		h.fail(c, err)
+		return
+	}
+	pix, _, err := image.Decode(bytes.NewReader(raw))
 	var out []byte
 	if err == nil {
 		r := image.Rect(in.X, in.Y, in.X+in.W, in.Y+in.H).Add(pix.Bounds().Min)
@@ -363,8 +435,13 @@ func (h *API) selectProblemImage(c *gin.Context) {
 	now := h.Svc.now()
 	single := model.EduProblemImage{ID: flow.NewID("epi_"), TenantID: a.TenantID, WorkspaceID: a.WorkspaceID, Kind: "single", State: "active",
 		ParentID: img.ID, SourceAssetID: img.SourceAssetID, Mime: img.Mime, Width: in.W, Height: in.H, Bytes: len(out), SHA256: sha(out),
-		UploadSHA256: img.UploadSHA256, CropX: in.X, CropY: in.Y, CropW: in.W, CropH: in.H, Content: out, CreatedBy: a.UserID, CreatedAt: now, UpdatedAt: now}
+		UploadSHA256: img.UploadSHA256, CropX: in.X, CropY: in.Y, CropW: in.W, CropH: in.H, CreatedBy: a.UserID, CreatedAt: now, UpdatedAt: now}
+	if err := h.putImageBlob(&single, out); err != nil {
+		h.fail(c, err)
+		return
+	}
 	if err := tx.Create(&single).Error; err != nil {
+		h.deleteImageBlob(single)
 		h.fail(c, err)
 		return
 	}
@@ -442,11 +519,12 @@ func (h *API) withdrawProblemImage(c *gin.Context) {
 		return
 	}
 	now := h.Svc.now()
-	if err := tx.Model(&img).Updates(map[string]any{"state": "withdrawn", "content": []byte{}, "problem_id": "", "updated_at": now}).Error; err != nil {
+	h.deleteImageBlob(img)
+	if err := tx.Model(&img).Updates(map[string]any{"state": "withdrawn", "content": []byte{}, "object_key": "", "storage": "", "problem_id": "", "updated_at": now}).Error; err != nil {
 		h.fail(c, err)
 		return
 	}
-	img.State, img.ProblemID = "withdrawn", ""
+	img.State, img.ProblemID, img.ObjectKey, img.Storage, img.Content = "withdrawn", "", "", "", nil
 	h.Svc.audit(tx, a, "problem_image.withdraw", img.ID, "")
 	reply(c, 200, gin.H{"image": img, "changed": true}, "ok")
 }

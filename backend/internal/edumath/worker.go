@@ -163,5 +163,12 @@ func FromEnv(db *gorm.DB) *Service {
 	if len(uk) < 32 {
 		uk = "edu-artifact-url:" + key
 	}
-	return &Service{DB: db, Client: Client{BaseURL: url, Key: []byte(key)}, URLKey: []byte(uk), Journal: JournalFromEnv()}
+	s := &Service{DB: db, Client: Client{BaseURL: url, Key: []byte(key)}, URLKey: []byte(uk), Journal: JournalFromEnv(), AssetOrigin: AssetOriginFromEnv()}
+	store, err := BlobStoreFromEnv()
+	if err != nil {
+		slog.Error("edumath object store configuration is invalid; problem images stay in the database", "error", err)
+	} else {
+		s.Blobs = store
+	}
+	return s
 }

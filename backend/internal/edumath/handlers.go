@@ -648,7 +648,7 @@ func (h *API) file(c *gin.Context) {
 		return
 	}
 	hd := c.Writer.Header()
-	hd.Set("Content-Security-Policy", "sandbox allow-same-origin; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
+	hd.Set("Content-Security-Policy", fileCSP())
 	hd.Set("X-Content-Type-Options", "nosniff")
 	hd.Set("Cache-Control", "private, no-store")
 	hd.Set("Referrer-Policy", "no-referrer")

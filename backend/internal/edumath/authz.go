@@ -78,6 +78,17 @@ func Middleware(db *gorm.DB, user flow.UserFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		noStore(c)
 		withRequestID(c)
+		if isAssetHost(c) {
+			c.Header("Referrer-Policy", "no-referrer")
+			if !strings.HasPrefix(c.Request.URL.Path, "/api/edu/files/") {
+				c.Status(http.StatusNotFound)
+				c.Abort()
+				return
+			}
+			c.Next()
+			c.Writer.Header().Del("Set-Cookie")
+			return
+		}
 		if strings.HasPrefix(c.Request.URL.Path, "/api/edu/files/") {
 			c.Next() // signed-URL fetch: authorized by signature + access recheck in system context
 			return

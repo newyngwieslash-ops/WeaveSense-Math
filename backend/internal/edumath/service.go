@@ -42,6 +42,12 @@ type Service struct {
 	// Journal records withdrawals and deletions outside the database so a
 	// restore can replay them (DEV-122). Nil when EDU_RESTORE_JOURNAL is unset.
 	Journal *RestoreJournal
+	// Blobs holds education assets (problem images) when EDU_OBJECT_STORE_* is
+	// set. Nil keeps bytes in the database.
+	Blobs BlobStore
+	// AssetOrigin is the independent asset host (EDU_ASSET_DOMAIN), e.g.
+	// https://assets.example.edu. Empty means signed URLs stay on the API host.
+	AssetOrigin string
 }
 
 func (s *Service) now() time.Time {

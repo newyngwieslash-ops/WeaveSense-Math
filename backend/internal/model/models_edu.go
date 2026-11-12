@@ -1173,6 +1173,8 @@ type EduProblemImage struct {
 	CropW         int       `json:"cropW"`
 	CropH         int       `json:"cropH"`
 	Content       []byte    `json:"-"`
+	ObjectKey     string    `json:"objectKey,omitempty" gorm:"size:240"`
+	Storage       string    `json:"storage,omitempty" gorm:"size:16"` // empty = bytes in Content; "s3" = object store
 	CreatedBy     string    `json:"createdBy" gorm:"size:40;not null"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
