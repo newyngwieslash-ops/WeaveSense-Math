@@ -466,6 +466,9 @@ func (s *Service) apply(ctx context.Context, tx *gorm.DB, job model.EduMathJob, 
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&art).Error; err != nil {
 			return job, err
 		}
+		if err := s.recordStorageUsage(tx, job, art); err != nil {
+			return job, err
+		}
 	}
 	if err := s.settleStages(tx, &job, v); err != nil {
 		return job, err

@@ -41,10 +41,14 @@ const (
 	UsageCanvasMedia      = "canvas_media_generations"
 	// Education math workbench: isolated math-service compute time per stage (docs/math-workbench).
 	UsageMathComputeMS = "math_compute_ms"
+	// Education stand-in meters (DEV-065). Distinct from UsageStoredBytes (platform canvas).
+	UsageStorageBytes  = "storage_bytes"
+	UsageTTSCharacters = "tts_characters"
+	UsageEgressBytes   = "egress_bytes"
 )
 
 var UsageTypes = []string{UsageLLMInputTokens, UsageLLMOutputTokens, UsageOCRPages, UsageASRSeconds, UsagePaidSourceCalls, UsageMCPCalls, UsageStoredBytes, UsageNotifications,
-	UsageCanvasModelCalls, UsageCanvasMedia, UsageMathComputeMS}
+	UsageCanvasModelCalls, UsageCanvasMedia, UsageMathComputeMS, UsageStorageBytes, UsageTTSCharacters, UsageEgressBytes}
 
 func validUsageType(t string) bool {
 	for _, u := range UsageTypes {
@@ -70,6 +74,8 @@ var DefaultPriceBook = PriceBook{Version: "price_v1", UnitMicro: map[string]int6
 	UsageCanvasModelCalls: 0, UsageCanvasMedia: 0,
 	// Placeholder compute price pending product confirmation (docs/math-workbench/06-数学目录-限制-许可.md).
 	UsageMathComputeMS: 1,
+	// Stand-in education unit prices (DEV-065, E96). Not production rates (U11).
+	UsageStorageBytes: 1, UsageTTSCharacters: 2, UsageEgressBytes: 1,
 }}
 
 // CurrentPriceBook reads FLOW_PRICE_BOOK (JSON {"version","unit_micro"}) or returns the default.
