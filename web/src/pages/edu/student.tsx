@@ -9,7 +9,8 @@ import { StepViewer } from "@/components/edu/step-viewer";
 import { revisionBadge, revisionNotice, type StudentRevision } from "@/components/edu/student-revision-logic";
 import { provenanceText, type Provenance } from "@/components/edu/provenance-logic";
 import { clearOtherUsers, enqueue, flushQueue, readQueue, type PendingAttempt } from "@/lib/edu-offline-queue";
-import { edu, newClientKey, RESULT_LABEL, type EduAttempt, type EduMe, type HintBody, type LearningState, type StudentLesson } from "@/services/api/edu";
+import { joinCodeKind, joinErrorText, joinSuccessText } from "@/components/edu/roster-import-logic";
+import { edu, eduOpen, newClientKey, RESULT_LABEL, type EduAttempt, type EduMe, type HintBody, type LearningState, type StudentLesson } from "@/services/api/edu";
 import { useUserStore } from "@/stores/use-user-store";
 
 /**
@@ -31,15 +32,52 @@ function useStudentTenant() {
     const [tenants, setTenants] = useState<string[] | null>(null);
     const [tenant, setTenant] = useState("");
     const [error, setError] = useState("");
-    useEffect(() => {
+    const load = useCallback(() => {
         void edu<EduMe>("get", "/me", {}).then((r) => {
             if (!r.ok) return setError(r.message);
+            setError("");
             const ts = [...new Set(r.data.roles.filter((b) => b.role === "student").map((b) => b.tenantId))];
             setTenants(ts);
-            setTenant(ts[0] || "");
+            setTenant((cur) => (cur && ts.includes(cur) ? cur : ts[0] || ""));
         });
     }, []);
-    return { tenants, tenant, setTenant, error };
+    useEffect(load, [load]);
+    return { tenants, tenant, setTenant, error, reload: load };
+}
+
+function JoinClass({ onJoined }: { onJoined: () => void }) {
+    const [code, setCode] = useState("");
+    const [msg, setMsg] = useState("");
+    const [busy, setBusy] = useState(false);
+    const submit = async () => {
+        const kind = joinCodeKind(code);
+        if (kind === "unknown") return setMsg("请输入老师提供的邀请码或名单认领码");
+        setBusy(true);
+        const path = kind === "claim" ? "/edu-roster-claim" : "/edu-join";
+        const r = await eduOpen<{ consentRequired?: boolean }>("post", path, { code: code.trim() });
+        setBusy(false);
+        if (!r.ok) return setMsg(joinErrorText(r));
+        setCode("");
+        setMsg(joinSuccessText(kind, r.data.consentRequired));
+        onJoined();
+    };
+    return (
+        <section className={`${box} mb-4`}>
+            <h2 className="mb-2 font-semibold">加入班级</h2>
+            <p className="mb-2 text-xs text-stone-500">输入老师发给你的邀请码或名单认领码。认领码只能使用一次。</p>
+            <div className="flex flex-wrap gap-2">
+                <input className="h-9 flex-1 rounded-md border px-2 font-mono text-sm" placeholder="邀请码或认领码" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" data-testid="join-code" aria-label="邀请码或名单认领码" />
+                <button className={btn} disabled={busy || !code.trim()} onClick={() => void submit()}>
+                    加入
+                </button>
+            </div>
+            {msg ? (
+                <p role="status" aria-live="polite" className="mt-2 text-sm text-amber-700" data-testid="join-status">
+                    {msg}
+                </p>
+            ) : null}
+        </section>
+    );
 }
 
 function useOfflineFlush(tenant: string, onFlushed: () => void) {
@@ -69,7 +107,7 @@ function useOfflineFlush(tenant: string, onFlushed: () => void) {
 }
 
 export function StudentHome() {
-    const { tenants, tenant, setTenant, error } = useStudentTenant();
+    const { tenants, tenant, setTenant, error, reload } = useStudentTenant();
     const [list, setList] = useState<{ id: string; title: string; revision?: StudentRevision }[]>([]);
     const [review, setReview] = useState<{ id: string; assignmentId: string; title: string; stage: number; dueAt: string; due: boolean }[]>([]);
     const [progress, setProgress] = useState<{
@@ -84,9 +122,10 @@ export function StudentHome() {
         void edu<NonNullable<typeof progress>>("get", "/student/progress", s).then((r) => r.ok && setProgress(r.data));
     }, [tenant]);
     if (error) return <Shell title="我的学习">{error}</Shell>;
-    if (tenants && tenants.length === 0) return <Shell title="我的学习">还没有加入任何班级。请使用老师提供的邀请码加入。</Shell>;
     return (
         <Shell title="我的学习">
+            <JoinClass onJoined={reload} />
+            {tenants && tenants.length === 0 ? <p className="mb-4 text-sm text-stone-500">还没有加入任何班级。请使用老师提供的邀请码或名单认领码加入。</p> : null}
             {tenants && tenants.length > 1 ? (
                 <select className="mb-4 h-9 rounded-md border px-2" value={tenant} onChange={(e) => setTenant(e.target.value)}>
                     {tenants.map((t) => (
@@ -94,51 +133,55 @@ export function StudentHome() {
                     ))}
                 </select>
             ) : null}
-            <section className={box}>
-                <h2 className="mb-2 font-semibold">作业</h2>
-                {list.length === 0 ? <p className="text-sm text-stone-500">暂无作业</p> : null}
-                <ul className="space-y-2">
-                    {list.map((a) => (
-                        <li key={a.id}>
-                            <Link className="underline" to={`/edu/learn/${a.id}?tenant=${encodeURIComponent(tenant)}`}>
-                                {a.title}
-                            </Link>
-                            {a.revision ? <span className="ml-2 rounded bg-amber-100 px-1.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100">{revisionBadge(a.revision)}</span> : null}
-                        </li>
-                    ))}
-                </ul>
-            </section>
-            <section className={`${box} mt-4`}>
-                <h2 className="mb-2 font-semibold">复习</h2>
-                {review.length === 0 ? <p className="text-sm text-stone-500">没有待复习的题目</p> : null}
-                <ul className="space-y-1 text-sm">
-                    {review.map((r) => (
-                        <li key={r.id}>
-                            {r.title}（第 {r.stage + 1} 轮，{r.due ? "已到期" : `${new Date(r.dueAt).toLocaleString()} 到期`}）{" "}
-                            {r.due ? (
-                                <Link className="underline" to={`/edu/learn/${r.assignmentId}?tenant=${encodeURIComponent(tenant)}&review=${r.id}`}>
-                                    去复习
-                                </Link>
-                            ) : null}
-                        </li>
-                    ))}
-                </ul>
-            </section>
-            {progress ? (
-                <section className={`${box} mt-4 text-sm`}>
-                    <h2 className="mb-2 font-semibold">学习记录</h2>
-                    <p>
-                        独立完成的记录 {progress.summary.independentResults} 条{progress.summary.evidence === "insufficient" ? `，少于 ${progress.summary.minimumNeeded} 条，暂不判断掌握程度` : ""}
-                    </p>
-                    <ul className="mt-2 space-y-1">
-                        {progress.assignments.map((a) => (
-                            <li key={a.assignmentId}>
-                                {a.title}：首次作答 {RESULT_LABEL[a.firstAttempt] || a.firstAttempt || "未作答"}，共 {a.attempts} 次
-                                {a.selfTest ? `；同构变式自测 ${RESULT_LABEL[a.selfTest] || a.selfTest}${a.selfTestIndependent ? "（独立）" : "（使用过帮助）"}` : ""}
-                            </li>
-                        ))}
-                    </ul>
-                </section>
+            {tenant ? (
+                <>
+                    <section className={box}>
+                        <h2 className="mb-2 font-semibold">作业</h2>
+                        {list.length === 0 ? <p className="text-sm text-stone-500">暂无作业</p> : null}
+                        <ul className="space-y-2">
+                            {list.map((a) => (
+                                <li key={a.id}>
+                                    <Link className="underline" to={`/edu/learn/${a.id}?tenant=${encodeURIComponent(tenant)}`}>
+                                        {a.title}
+                                    </Link>
+                                    {a.revision ? <span className="ml-2 rounded bg-amber-100 px-1.5 text-xs text-amber-900 dark:bg-amber-900 dark:text-amber-100">{revisionBadge(a.revision)}</span> : null}
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                    <section className={`${box} mt-4`}>
+                        <h2 className="mb-2 font-semibold">复习</h2>
+                        {review.length === 0 ? <p className="text-sm text-stone-500">没有待复习的题目</p> : null}
+                        <ul className="space-y-1 text-sm">
+                            {review.map((r) => (
+                                <li key={r.id}>
+                                    {r.title}（第 {r.stage + 1} 轮，{r.due ? "已到期" : `${new Date(r.dueAt).toLocaleString()} 到期`}）{" "}
+                                    {r.due ? (
+                                        <Link className="underline" to={`/edu/learn/${r.assignmentId}?tenant=${encodeURIComponent(tenant)}&review=${r.id}`}>
+                                            去复习
+                                        </Link>
+                                    ) : null}
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                    {progress ? (
+                        <section className={`${box} mt-4 text-sm`}>
+                            <h2 className="mb-2 font-semibold">学习记录</h2>
+                            <p>
+                                独立完成的记录 {progress.summary.independentResults} 条{progress.summary.evidence === "insufficient" ? `，少于 ${progress.summary.minimumNeeded} 条，暂不判断掌握程度` : ""}
+                            </p>
+                            <ul className="mt-2 space-y-1">
+                                {progress.assignments.map((a) => (
+                                    <li key={a.assignmentId}>
+                                        {a.title}：首次作答 {RESULT_LABEL[a.firstAttempt] || a.firstAttempt || "未作答"}，共 {a.attempts} 次
+                                        {a.selfTest ? `；同构变式自测 ${RESULT_LABEL[a.selfTest] || a.selfTest}${a.selfTestIndependent ? "（独立）" : "（使用过帮助）"}` : ""}
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+                    ) : null}
+                </>
             ) : null}
         </Shell>
     );

@@ -38,6 +38,19 @@ export async function edu<T>(method: "get" | "post" | "put" | "delete", path: st
 }
 
 /** 上传 multipart 表单（DEV-068 题图）。与 edu 相同的错误解包；不设置 Content-Type，由浏览器写入边界。 */
+/** 不经租户前缀的教育入口（加入班级、名单认领），路径如 /edu-join。 */
+export async function eduOpen<T>(method: "post", path: string, body?: unknown): Promise<EduResult<T>> {
+    try {
+        const res = await apiClient.request({ method, url: path, data: body, validateStatus: () => true });
+        const env = (res.data || {}) as { code?: number; data?: unknown; msg?: string };
+        if (res.status < 400 && (env.code ?? 0) === 0) return { ok: true, status: res.status, data: env.data as T };
+        const err = (env.data as { error?: { code?: string; message?: string } } | null)?.error;
+        return { ok: false, status: res.status, code: err?.code || `HTTP_${res.status}`, message: err?.message || env.msg || "请求失败", detail: env.data };
+    } catch {
+        return { ok: false, status: 0, code: "NETWORK", message: "网络不可用", offline: true };
+    }
+}
+
 export async function eduUpload<T>(path: string, scope: EduScope, form: FormData): Promise<EduResult<T>> {
     return edu<T>("post", path, scope, form);
 }
