@@ -104,6 +104,10 @@ func (h *API) exportPublication(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
+	if err := errIfStandinDoc(teacherRaw); err != nil {
+		h.fail(c, err)
+		return
+	}
 	var content map[string]any
 	var omitted []exportField
 	if audience == "student" {

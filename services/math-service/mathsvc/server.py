@@ -32,9 +32,9 @@ TOOLS = [
      "inputSchema": {"type": "object", "required": ["analysis_job_id", "problem"], "properties": {
          "analysis_job_id": {"type": "string"}, "problem": {"type": "object"}, "problem_hash": {"type": "string"},
          "solution_hash": {"type": "string"}, "report_hash": {"type": "string"}, "idempotency_key": {"type": "string"}}}},
-    {"name": "math_media_render_start", "description": "Render narration (TTS) or MP4 for an approved lesson. The local stand-in (MATH_MEDIA_STANDIN, default on) produces silent audio, cue-aligned captions and an optional MP4; it is not a real voice. Disable with MATH_MEDIA_STANDIN=off.",
+    {"name": "math_media_render_start", "description": "Render narration (TTS) or MP4 for an approved lesson. When MATH_MEDIA_STANDIN is explicitly enabled (dev/test only), the local stand-in produces silent audio, cue-aligned captions and an optional MP4; it is not a real voice and must not be published or sent to students.",
      "inputSchema": {"type": "object", "required": ["lesson_artifact_id"], "properties": {"lesson_artifact_id": {"type": "string"}, "media": {"type": "string", "enum": ["tts", "mp4"]}, "speed": {"type": "number"}, "volume": {"type": "number"}, "segment": {"type": "string"}}}},
-    {"name": "math_ocr_intake", "description": "Turn a problem picture into a structured draft that still needs teacher confirmation. The default provider is a local stand-in, not a model.",
+    {"name": "math_ocr_intake", "description": "Turn a problem picture into a structured draft that still needs teacher confirmation. When MATH_MEDIA_STANDIN is explicitly enabled (dev/test only), the provider is a local stand-in, not a model.",
      "inputSchema": {"type": "object", "required": ["image_b64"], "properties": {"image_b64": {"type": "string"}, "mime": {"type": "string"}}}},
     {"name": "math_job_get", "description": "Get the status, stage, progress, result refs and error of a math job.",
      "inputSchema": {"type": "object", "required": ["job_id"], "properties": {"job_id": {"type": "string"}}}},
@@ -132,10 +132,11 @@ class App:
                          volume=args.get("volume") if args.get("volume") is not None else 1.0,
                          segment=args.get("segment"), reveal="released")
         parts = list((lesson.get("meta") or {}).get("ai_parts") or [])
-        for x in ("narration", "audio") + (("video",) if "video" in r else ()):
+        for x in ("narration", "audio") + (("video",) if "video" in r else ()) + ("standin",):
             if x not in parts:
                 parts.append(x)
         lesson.setdefault("meta", {})["ai_parts"] = parts
+        lesson["meta"]["standin"] = True
         lesson["meta"]["media_standin"] = {k: r[k] for k in ("provider", "speed", "volume", "segment", "duration_ms")}
         rid = "mr_" + uuid.uuid4().hex
         put = lambda kind, aud, mt, b: self.store.put_artifact(tenant, rid, kind, aud, mt, b)

@@ -752,6 +752,11 @@ func (s *Service) Review(tx *gorm.DB, a Actor, lessonID, lessonHash, decision, c
 	if decision == "approved" && l.BlockingErrors != "" {
 		return model.EduReviewRecord{}, appErr(409, "VALIDATION_FAILED", "lesson has blocking errors", "teacher_fix")
 	}
+	if decision == "approved" {
+		if err := s.rejectStandinRevision(tx, a.TenantID, l); err != nil {
+			return model.EduReviewRecord{}, err
+		}
+	}
 	checklist, findings, err := rv.check(decision, comment)
 	if err != nil {
 		return model.EduReviewRecord{}, err
@@ -798,6 +803,9 @@ func (s *Service) Publish(tx *gorm.DB, a Actor, lessonID, lessonHash string) (mo
 	}
 	if l.State != "approved" || l.LessonHash != lessonHash || l.BlockingErrors != "" {
 		return model.EduPublication{}, appErr(409, "VALIDATION_FAILED", "only an approved revision with the reviewed hash and no blocking errors can be published", "teacher_review")
+	}
+	if err := s.rejectStandinRevision(tx, a.TenantID, l); err != nil {
+		return model.EduPublication{}, err
 	}
 	if err := lessonAllowed(tx, a.TenantID, l); err != nil {
 		return model.EduPublication{}, err

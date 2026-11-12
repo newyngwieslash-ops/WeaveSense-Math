@@ -27,6 +27,7 @@ def png():
 class StandinMedia(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        os.environ["MATH_MEDIA_STANDIN"] = "1"
         prior, lp = run_all(GOLD["SOLID-ANGLE-01"][0][0])
         cls.lesson = lp["compose_lesson"]["lesson"]
         cls.sol = prior["solve"]["solution"]
@@ -80,6 +81,19 @@ class StandinMedia(unittest.TestCase):
             else:
                 os.environ["MATH_MEDIA_STANDIN"] = old
 
+    def test_unset_env_does_not_enable_standin(self):
+        old = os.environ.pop("MATH_MEDIA_STANDIN", None)
+        try:
+            with self.assertRaises(MathError) as cm:
+                M.render(self.lesson, "tts")
+            self.assertEqual(cm.exception.code, "PROVIDER_UNAVAILABLE")
+            with self.assertRaises(MathError) as cm:
+                O.recognize(png())
+            self.assertEqual(cm.exception.code, "PROVIDER_UNAVAILABLE")
+        finally:
+            if old is not None:
+                os.environ["MATH_MEDIA_STANDIN"] = old
+
     def test_ocr_draft_always_needs_confirmation(self):
         with self.assertRaises(MathError):
             O.recognize(b"")
@@ -105,7 +119,13 @@ class StandinMedia(unittest.TestCase):
         _, data = app.store.get_artifact("t1", les["artifact_id"])
         meta = json.loads(data)["meta"]
         self.assertEqual(L.provenance(meta)["kind"], "model_assisted")
+        self.assertTrue(L.provenance(meta)["standin"])
         self.assertIn("配音", L.provenance(meta)["label"])
+        self.assertIn("本地替身", L.provenance(meta)["label"])
+        self.assertIn("不可作为正式课件发布", L.provenance(meta)["label"])
+        self.assertIn("standin", meta["ai_parts"])
+        self.assertTrue(meta.get("standin"))
+        self.assertEqual(meta["media_standin"]["provider"], "fake-standin")
         # Missing artifact still errors (existing MCP contract).
         with self.assertRaises(MathError):
             app.media_render("t1", {"lesson_artifact_id": "ma_" + "0" * 32, "media": "tts"})

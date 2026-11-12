@@ -112,6 +112,9 @@ func (h *API) lessonFor(c *gin.Context, tx *gorm.DB, tenantID string, pub model.
 	if err != nil {
 		return t, err
 	}
+	if err := errIfStandinDoc(raw); err != nil {
+		return t, err
+	}
 	if json.Unmarshal(raw, &t) != nil || (t.Answer.Exact == "") != (t.Meta.Verification == ManualUnverified) {
 		return t, ErrContract // only a teacher written lesson has no exact answer
 	}

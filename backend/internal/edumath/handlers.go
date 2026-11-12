@@ -498,6 +498,14 @@ func (h *API) studentAssignment(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
+	if err := errIfStandinDoc(teacher); err != nil {
+		h.fail(c, err)
+		return
+	}
+	if err := errIfStandinDoc(raw); err != nil {
+		h.fail(c, err)
+		return
+	}
 	var proj map[string]any
 	if json.Unmarshal(raw, &proj) != nil || StudentLeak(proj, teacher) {
 		reply(c, 500, nil, "student projection rejected by answer guard")

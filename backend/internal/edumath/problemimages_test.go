@@ -398,7 +398,7 @@ func (h *harness) mustSource(user string) string {
 }
 
 func TestProblemImageOCRAndAnswerRetention(t *testing.T) {
-	h := newHarness(t, startMathService(t))
+	h := newHarness(t, startMathServiceEnv(t, "MATH_MEDIA_STANDIN=1"))
 	tenant := h.setupTeacher()
 	src := h.mustSource("u_alice")
 	var buf bytes.Buffer

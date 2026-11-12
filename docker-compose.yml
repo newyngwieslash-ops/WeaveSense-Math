@@ -73,6 +73,7 @@ services:
       MATH_DATA_DIR: /data
       MATH_LISTEN: 0.0.0.0:8790
       MATH_EVENT_URL: ${MATH_EVENT_URL:-http://backend:8080/api/edu-math-events}
+      MATH_MEDIA_STANDIN: ${MATH_MEDIA_STANDIN:-1}
     volumes:
       - ${CANVAS_MATH_DATA_PATH:-math-data}:/data
     ports:

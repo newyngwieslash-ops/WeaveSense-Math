@@ -29,6 +29,17 @@ class MathImageTests(unittest.TestCase):
         self.assertIn("COPY services/math-service/requirements.txt", text)
 
 
+class StandinMediaWiringTests(unittest.TestCase):
+    def test_production_compose_defaults_standin_off(self):
+        self.assertIn("MATH_MEDIA_STANDIN: ${MATH_MEDIA_STANDIN:-0}", read("docker-compose.deploy.yml"))
+        self.assertIn("MATH_MEDIA_STANDIN: ${MATH_MEDIA_STANDIN:-0}", read("docker-compose.server.yml"))
+
+    def test_dev_compose_defaults_standin_on(self):
+        self.assertIn("MATH_MEDIA_STANDIN: ${MATH_MEDIA_STANDIN:-1}", read("docker-compose.dev.yml"))
+        self.assertIn("MATH_MEDIA_STANDIN: ${MATH_MEDIA_STANDIN:-1}", read("docker-compose.local.yml"))
+        self.assertIn("MATH_MEDIA_STANDIN: ${MATH_MEDIA_STANDIN:-1}", read("docker-compose.yml"))
+
+
 class EnsureAppRoleTests(unittest.TestCase):
     def test_script_creates_no_bypass_role_and_verifies(self):
         text = read("deploy/postgres/ensure-app-role.sh")
@@ -78,6 +89,7 @@ class SyncEnvTests(unittest.TestCase):
             self.assertEqual(env["MATH_SERVICE_KEY"], env["FLOW_MATH_SERVICE_KEY"])
             self.assertEqual(env["FLOW_MATH_SERVICE_URL"], "http://math:8790")
             self.assertEqual(env["EDU_MATH_REQUIRE_SERVICE"], "1")
+            self.assertEqual(env["MATH_MEDIA_STANDIN"], "0")
             self.assertEqual(self.url_user(env["MIGRATE_DATABASE_URL"]), "open_ai_canvas")
             self.assertEqual(self.url_user(env["DATABASE_URL"]), "flow_app")
             self.assertNotEqual(env["APP_DB_PASSWORD"], env["POSTGRES_PASSWORD"])
