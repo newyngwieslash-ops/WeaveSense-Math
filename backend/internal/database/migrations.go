@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentSchemaVersion int64 = 99
+const CurrentSchemaVersion int64 = 100
 
 const baselineSchemaChecksum = "sha256:open-ai-canvas-schema-v1-20260830"
 const schemaMigrationAppliedAtIndexChecksum = "sha256:schema-migrations-applied-at-index-v2-20260830"
@@ -489,6 +489,13 @@ var schemaMigrations = []migration{
 		// docs/math-workbench: object_key and storage on edu_problem_images (DEV-059). Additive columns;
 		// existing rows keep bytes in content until AdoptProblemImageBlobs moves them.
 		if err := tx.AutoMigrate(&model.EduProblemImage{}); err != nil {
+			return err
+		}
+		return applyFlowRLS(tx)
+	}},
+	{version: 100, name: "edu_consent_invites_v100", checksum: "sha256:edu-consent-invites-v100-20261112", apply: func(tx *gorm.DB) error {
+		// docs/math-workbench: one-time guardian online consent tokens (DEV-017, E98). New table under FORCE RLS.
+		if err := tx.AutoMigrate(&model.EduConsentInvite{}); err != nil {
 			return err
 		}
 		return applyFlowRLS(tx)

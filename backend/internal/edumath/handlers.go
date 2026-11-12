@@ -24,7 +24,8 @@ type API struct {
 
 // Register mounts /api/edu/* on the given group (expects the group at /api).
 func (h *API) Register(api *gin.RouterGroup) {
-	api.POST("/edu-join", noStore, h.join) // outside the tenant-scoped middleware (see join)
+	api.POST("/edu-join", noStore, h.join)                               // outside the tenant-scoped middleware (see join)
+	api.POST("/edu-guardian-consent", noStore, h.confirmGuardianConsent) // token auth; no platform account (E98)
 	api.POST("/edu-roster-claim", noStore, h.claimRoster)
 	api.POST("/edu-math-events", h.mathEvent)       // service-signed push; no user session (see events.go)
 	api.GET("/edu-metrics", noStore, h.promMetrics) // Prometheus scrape; token only, no session (E95)

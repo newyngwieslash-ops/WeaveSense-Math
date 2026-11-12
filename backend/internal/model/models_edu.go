@@ -119,6 +119,26 @@ type EduConsentRecord struct {
 
 func (EduConsentRecord) TableName() string { return "edu_consent_records" }
 
+// EduConsentInvite is a one-time token a school issues so a guardian can
+// grant or withdraw consent online (DEV-017, E98). It sits beside offline
+// evidenceRef recording and is not a guardian portal (EXT-09).
+type EduConsentInvite struct {
+	ID            string     `json:"id" gorm:"primaryKey;size:40"`
+	TenantID      string     `json:"tenantId" gorm:"size:40;not null;index"`
+	StudentUserID string     `json:"studentUserId" gorm:"size:40;not null;index"`
+	Purpose       string     `json:"purpose" gorm:"size:16;not null"` // grant | withdraw
+	TokenHash     string     `json:"-" gorm:"size:80;not null;uniqueIndex"`
+	NoticeVersion string     `json:"noticeVersion" gorm:"size:40;not null"`
+	Status        string     `json:"status" gorm:"size:16;not null"` // active | used | revoked
+	ExpiresAt     time.Time  `json:"expiresAt"`
+	UsedAt        *time.Time `json:"usedAt,omitempty"`
+	IssuedBy      string     `json:"issuedBy" gorm:"size:40;not null"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
+}
+
+func (EduConsentInvite) TableName() string { return "edu_consent_invites" }
+
 type EduProblem struct {
 	ID             string    `json:"id" gorm:"primaryKey;size:40"`
 	TenantID       string    `json:"tenantId" gorm:"size:40;not null;index"`
@@ -538,7 +558,7 @@ func (EduAuditEvent) TableName() string { return "edu_audit_events" }
 func EduModels() []any {
 	return []any{&EduOrgPolicy{}, &EduRoleBinding{}, &EduClass{}, &EduTeachingAssignment{}, &EduEnrollment{}, &EduProblem{},
 		&EduProblemRevision{}, &EduMathJob{}, &EduStageRun{}, &EduArtifact{}, &EduSolutionRevision{}, &EduLessonRevision{},
-		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{},
+		&EduReviewRecord{}, &EduPublication{}, &EduAssignment{}, &EduAuditEvent{}, &EduClassInvite{}, &EduConsentRecord{}, &EduConsentInvite{},
 		&EduAttempt{}, &EduHintUnlock{}, &EduSelfTest{}, &EduReviewItem{}, &EduHelpRequest{}, &EduHelpReply{},
 		&EduPrediction{}, &EduFigureInteraction{}, &EduVariantSet{}, &EduVariantReview{}, &EduAssignmentExtension{}, &EduLessonEdit{}, &EduLedgerAnomaly{}, &EduJobEvent{}, &EduMathEvent{}, &EduBudget{}, &EduBudgetAlert{}, &EduSupportCost{}, &EduContentIncident{}, &EduAssignmentMigration{}, &EduSourceAsset{}, &EduRegrade{}, &EduCourse{}, &EduCourseAlignment{}, &EduRosterEntry{}, &EduDemoClass{}, &EduDemoRecord{}, &EduVariantReplacement{}, &EduFavorite{}, &EduManualInput{}, &EduRetentionPolicy{}, &EduDataRequest{}, &EduOpsGrant{}, &EduMetricEvent{}, &EduMetricState{}, &EduTeacherTimeSegment{}, &EduTeacherTimeDiary{}, &EduPause{}, &EduIncidentReview{}, &EduRevisionNotice{}, &EduProblemImage{}, &EduAssignmentView{}}
 }
