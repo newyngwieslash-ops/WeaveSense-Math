@@ -261,7 +261,7 @@ PROVENANCE_LABEL = {
     "teacher-manual": "讲解由老师人工编写，平台未调用生成式人工智能撰写内容",
 }
 PROVENANCE_KIND = {"deterministic-template": "template_only", "teacher-manual": "teacher_manual"}
-AI_PART_LABEL = {"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "intake": "题目识别", "figure": "图形"}
+AI_PART_LABEL = {"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "video": "视频", "intake": "题目识别", "figure": "图形"}
 
 
 def provenance(meta):

@@ -15,7 +15,7 @@ import (
 // platform hands out carries the same object, visibly and as machine-readable
 // metadata. It is derived from the lesson document, never stored as an
 // editable field, so review and teacher edits cannot remove it. Audio and
-// video formats do not exist yet (TTS, DEV-022) and have no label here.
+// video stand-in parts (E97) share the same labels as the math service.
 
 // Provenance mirrors mathsvc.lesson.provenance and adds who started the
 // generation, from the platform's own job record.
@@ -34,7 +34,7 @@ var provenanceLabel = map[string]string{
 	"teacher-manual":         "讲解由老师人工编写，平台未调用生成式人工智能撰写内容",
 }
 var provenanceKind = map[string]string{"deterministic-template": "template_only", "teacher-manual": "teacher_manual"}
-var aiPartLabel = map[string]string{"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "intake": "题目识别", "figure": "图形"}
+var aiPartLabel = map[string]string{"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "video": "视频", "intake": "题目识别", "figure": "图形"}
 
 // provenanceOf reads the lesson's own record. "No generative AI" needs an
 // explicit ai_generated=false for a known generator; a missing flag or an

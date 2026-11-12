@@ -61,14 +61,14 @@ func TestMCPProtocolWithGoSDK(t *testing.T) {
 	}
 	defer cs.Close()
 	tools, err := cs.ListTools(context.Background(), nil)
-	if err != nil || len(tools.Tools) != 7 {
+	if err != nil || len(tools.Tools) != 8 {
 		t.Fatalf("tools: %v %d", err, len(tools.Tools))
 	}
 	hashes := map[string]string{}
 	for _, tl := range tools.Tools {
 		hashes[tl.Name] = flow.MCPToolHash(tl.Name, tl.Description, tl.InputSchema)
 	}
-	if hashes["math_analyze_start"] == "" || hashes["math_call_reconcile"] == "" {
+	if hashes["math_analyze_start"] == "" || hashes["math_call_reconcile"] == "" || hashes["math_ocr_intake"] == "" {
 		t.Fatal("expected tools missing")
 	}
 	prob := problem("2", "1")
@@ -109,7 +109,7 @@ func TestMCPProtocolWithGoSDK(t *testing.T) {
 		t.Fatal("cross-tenant job read over MCP must fail")
 	}
 	if out, isErr := callText(t, cs, "math_media_render_start", map[string]any{"lesson_artifact_id": "ma_x", "media": "tts"}, nil); !isErr {
-		t.Fatalf("TTS without provider must report an error: %v", out)
+		t.Fatalf("missing lesson artifact must still report an error: %v", out)
 	}
 }
 

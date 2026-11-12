@@ -150,8 +150,9 @@ func applyRetention(tx *gorm.DB, tenant string, p model.EduRetentionPolicy, now 
 	}
 	// Problem pictures never attached to a problem are temporary files: removed
 	// with their bytes after the temporary period. Attached ones stay with the problem.
+	// kind=answer (student or teacher answer pictures) use imageDays instead (E97).
 	imgQ := func() *gorm.DB {
-		return tx.Model(&model.EduProblemImage{}).Where("tenant_id = ? AND (problem_id = '' OR problem_id IS NULL) AND created_at < ?", tenant, now.AddDate(0, 0, -p.TempDays))
+		return tx.Model(&model.EduProblemImage{}).Where("tenant_id = ? AND kind <> ? AND (problem_id = '' OR problem_id IS NULL) AND created_at < ?", tenant, "answer", now.AddDate(0, 0, -p.TempDays))
 	}
 	var ni int64
 	if err := imgQ().Count(&ni).Error; err != nil {
@@ -160,6 +161,20 @@ func applyRetention(tx *gorm.DB, tenant string, p model.EduRetentionPolicy, now 
 	sum.ProblemImages = int(ni)
 	if !dry && ni > 0 {
 		if err := imgQ().Delete(&model.EduProblemImage{}).Error; err != nil {
+			return sum, err
+		}
+	}
+	// DEV-106 hook: wipe kind=answer content after imageDays and withdraw the row.
+	ansQ := func() *gorm.DB {
+		return tx.Model(&model.EduProblemImage{}).Where("tenant_id = ? AND kind = ? AND state = ? AND created_at < ?", tenant, "answer", "active", now.AddDate(0, 0, -p.ImageDays))
+	}
+	var na int64
+	if err := ansQ().Count(&na).Error; err != nil {
+		return sum, err
+	}
+	sum.ProblemImages += int(na)
+	if !dry && na > 0 {
+		if err := ansQ().Updates(map[string]any{"state": "withdrawn", "content": []byte{}, "object_key": "", "storage": "", "updated_at": now}).Error; err != nil {
 			return sum, err
 		}
 	}
@@ -174,7 +189,7 @@ func retentionView(p model.EduRetentionPolicy, confirmed bool, preview Retention
 			"learning": "withdrawn_enrollments",
 			"temp":     "revoked_on_platform; bytes deleted from the math service store by the scheduled run; unattached problem images deleted",
 			"archived": "learning records of archived classes deleted after the learning period",
-			"images":   "no_image_answers_yet",
+			"images":   "kind=answer pictures wiped after imageDays; unattached uploads still use tempDays",
 			"backup":   "deployment (07)",
 		},
 		"keptSeparately": []string{"ledger", "usage", "audit"},
