@@ -16,7 +16,7 @@ var flowRLSTables = []string{
 	"edu_org_policies", "edu_role_bindings", "edu_classes", "edu_teaching_assignments", "edu_enrollments", "edu_problems",
 	"edu_problem_revisions", "edu_math_jobs", "edu_stage_runs", "edu_artifacts", "edu_solution_revisions", "edu_lesson_revisions",
 	"edu_review_records", "edu_publications", "edu_assignments", "edu_audit_events",
-	"edu_class_invites", "edu_consent_records",
+	"edu_class_invites", "edu_consent_records", "edu_consent_invites",
 	"edu_attempts", "edu_hint_unlocks", "edu_self_tests", "edu_review_items", "edu_help_requests", "edu_help_replies",
 	"edu_predictions", "edu_figure_interactions", "edu_variant_sets", "edu_variant_reviews", "edu_assignment_extensions", "edu_lesson_edits",
 	"edu_ledger_anomalies",
