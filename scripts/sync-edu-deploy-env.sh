@@ -151,6 +151,11 @@ fi
 if [[ -z "$(env_get EDU_MATH_REQUIRE_SERVICE)" ]]; then
     env_set EDU_MATH_REQUIRE_SERVICE "1"
 fi
+# Stand-in TTS/OCR/MP4 is a local fake. Production must leave it off so silent
+# audio, minimal MP4 and OCR drafts cannot be published or sent to students.
+if [[ -z "$(env_get MATH_MEDIA_STANDIN)" ]]; then
+    env_set MATH_MEDIA_STANDIN "0"
+fi
 # FLOW_PRICE_BOOK is optional; leave unset to use the built-in book.
 # EDU_* passthroughs stay optional.
 

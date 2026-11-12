@@ -3,7 +3,7 @@
 
 The fake provider is for automatic tests only. Real voices, term readings,
 regions and licences stay with U5; a production renderer stays with U6.
-Disable with MATH_MEDIA_STANDIN=off.
+Disabled unless MATH_MEDIA_STANDIN is 1/on/true/yes (dev and test only).
 """
 from __future__ import annotations
 
@@ -33,8 +33,14 @@ _SILENT_MP3_FRAME = bytes.fromhex(
 
 
 def standin_enabled():
-    v = (os.environ.get("MATH_MEDIA_STANDIN") or "1").strip().lower()
-    return v not in ("0", "off", "false", "no")
+    """Stand-in media is off unless explicitly enabled.
+
+    Production must leave MATH_MEDIA_STANDIN unset or set it to 0/off.
+    Dev, CI and local tests set 1/on/true/yes. Silent MP3, minimal MP4 and
+    fake OCR drafts must never ship to students or be published as real media.
+    """
+    v = (os.environ.get("MATH_MEDIA_STANDIN") or "").strip().lower()
+    return v in ("1", "on", "true", "yes")
 
 
 def _clamp(n, lo, hi):

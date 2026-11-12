@@ -145,7 +145,7 @@ class FamilyTests(unittest.TestCase):
         les = L.compose(F.FAMILY_ID, n, s, F.verify(n, s), F.check_question(n), {})
         stu = L.student_projection(les, "none")
         want = {"kind": "template_only", "ai_generated": False, "generator": "deterministic-template", "ai_parts": [],
-                "teacher_edited": False, "label": "讲解由程序按题族模板生成，平台未调用生成式人工智能撰写内容"}
+                "teacher_edited": False, "standin": False, "label": "讲解由程序按题族模板生成，平台未调用生成式人工智能撰写内容"}
         self.assertEqual(stu["meta"]["provenance"], want)
         for page in (R.page(les, "teacher"), R.page(stu, "student")):
             self.assertIn('<p class="prov" data-provenance>' + want["label"] + "</p>", page)

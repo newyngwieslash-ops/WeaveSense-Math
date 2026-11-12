@@ -261,7 +261,7 @@ PROVENANCE_LABEL = {
     "teacher-manual": "讲解由老师人工编写，平台未调用生成式人工智能撰写内容",
 }
 PROVENANCE_KIND = {"deterministic-template": "template_only", "teacher-manual": "teacher_manual"}
-AI_PART_LABEL = {"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "video": "视频", "intake": "题目识别", "figure": "图形"}
+AI_PART_LABEL = {"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "video": "视频", "intake": "题目识别", "figure": "图形", "standin": "本地替身"}
 
 
 def provenance(meta):
@@ -278,6 +278,7 @@ def provenance(meta):
     gen = str(meta.get("generator") or "unknown")
     flag = meta.get("ai_generated")
     parts = [str(p) for p in (meta.get("ai_parts") or [])]
+    standin = bool(meta.get("standin") or meta.get("media_standin") or "standin" in parts)
     edited = bool(meta.get("edit_log"))
     if flag is True or parts:
         kind = "model_assisted"
@@ -288,8 +289,10 @@ def provenance(meta):
         kind, label = "unknown", "生成方式未记录"
     if edited:
         label += "；含老师修改"
+    if standin:
+        label += "；本地替身媒体，不可作为正式课件发布"
     return {"kind": kind, "ai_generated": True if kind == "model_assisted" else (False if kind != "unknown" else None),
-            "generator": gen, "ai_parts": parts, "teacher_edited": edited, "label": label}
+            "generator": gen, "ai_parts": parts, "teacher_edited": edited, "standin": standin, "label": label}
 
 
 def student_projection(lesson, reveal="none"):

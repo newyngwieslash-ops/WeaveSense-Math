@@ -25,6 +25,7 @@ type Provenance struct {
 	Generator     string   `json:"generator"`
 	AIParts       []string `json:"ai_parts"`
 	TeacherEdited bool     `json:"teacher_edited"`
+	Standin       bool     `json:"standin"`
 	InitiatedBy   string   `json:"initiated_by,omitempty"` // teacher | agent (the build job's idempotency key)
 	Label         string   `json:"label"`
 }
@@ -34,7 +35,7 @@ var provenanceLabel = map[string]string{
 	"teacher-manual":         "讲解由老师人工编写，平台未调用生成式人工智能撰写内容",
 }
 var provenanceKind = map[string]string{"deterministic-template": "template_only", "teacher-manual": "teacher_manual"}
-var aiPartLabel = map[string]string{"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "video": "视频", "intake": "题目识别", "figure": "图形"}
+var aiPartLabel = map[string]string{"lesson": "讲解", "hints": "提示", "narration": "旁白", "audio": "配音", "video": "视频", "intake": "题目识别", "figure": "图形", "standin": "本地替身"}
 
 // provenanceOf reads the lesson's own record. "No generative AI" needs an
 // explicit ai_generated=false for a known generator; a missing flag or an
@@ -43,15 +44,19 @@ var aiPartLabel = map[string]string{"lesson": "讲解", "hints": "提示", "narr
 func provenanceOf(teacherLesson []byte) Provenance {
 	var doc struct {
 		Meta struct {
-			AIGenerated *bool           `json:"ai_generated"`
-			Generator   string          `json:"generator"`
-			AIParts     []string        `json:"ai_parts"`
-			EditLog     json.RawMessage `json:"edit_log"`
+			AIGenerated  *bool           `json:"ai_generated"`
+			Generator    string          `json:"generator"`
+			AIParts      []string        `json:"ai_parts"`
+			EditLog      json.RawMessage `json:"edit_log"`
+			Standin      bool            `json:"standin"`
+			MediaStandin json.RawMessage `json:"media_standin"`
+			Provider     string          `json:"provider"`
 		} `json:"meta"`
 	}
 	_ = json.Unmarshal(teacherLesson, &doc)
 	m := doc.Meta
 	p := Provenance{Generator: m.Generator, AIParts: m.AIParts}
+	p.Standin = standinDoc(m.Standin, m.MediaStandin, m.Provider, m.AIParts)
 	if p.Generator == "" {
 		p.Generator = "unknown"
 	}
@@ -81,6 +86,9 @@ func provenanceOf(teacherLesson []byte) Provenance {
 	}
 	if p.TeacherEdited {
 		p.Label += "；含老师修改"
+	}
+	if p.Standin {
+		p.Label += "；本地替身媒体，不可作为正式课件发布"
 	}
 	return p
 }
