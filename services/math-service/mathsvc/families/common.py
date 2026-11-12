@@ -30,7 +30,8 @@ def naming(inp, family_id, standard):
         raise MathError("UNSUPPORTED_FAMILY", "only the standard naming of %s is supported" % family_id)
 
 
-def positive_params(params, names, max_value):
+def positive_params(params, names, max_value, family_id=None):
+    from .. import catalog
     params = params or {}
     extra = set(params) - set(names)
     if extra:
@@ -45,8 +46,9 @@ def positive_params(params, names, max_value):
             raise MathError(e.code, "%s: %s" % (k, e))
         if v.is_positive is not True:
             raise MathError("CONDITION_CONFLICT", "%s must be positive" % k)
-        if (v - max_value).is_positive:
-            raise MathError("PARAMETER_LIMIT", "%s must be <= %s" % (k, max_value))
+        cap = catalog.effective_param_max(family_id, k, max_value) if family_id else max_value
+        if (v - cap).is_positive:
+            raise MathError("PARAMETER_LIMIT", "%s must be <= %s" % (k, cap))
         vals[k] = v
     return vals
 

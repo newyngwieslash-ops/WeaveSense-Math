@@ -34,7 +34,7 @@ def normalize(inp):
     C.naming(inp, FAMILY_ID, STANDARD_NAMING)
     if inp.get("oblique") or inp.get("shape", "cuboid") != "cuboid":
         raise MathError("UNSUPPORTED_FAMILY", "only right cuboids with three perpendicular edges are supported")
-    vals = C.positive_params(inp.get("params"), EDGES, MAX_VALUE)
+    vals = C.positive_params(inp.get("params"), EDGES, MAX_VALUE, FAMILY_ID)
     base = C.unit(inp, UNITS)
     units = dict((k, base) for k in EDGES)
     raw = inp.get("units") or {}

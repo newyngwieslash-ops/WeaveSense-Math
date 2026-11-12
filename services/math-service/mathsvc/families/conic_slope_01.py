@@ -33,7 +33,7 @@ def normalize(inp):
     C.header(inp, FAMILY_ID, TARGET)
     C.naming(inp, FAMILY_ID, STANDARD_NAMING)
     C.unit(inp, ("",))
-    vals = C.positive_params(inp.get("params"), ("a", "b"), MAX_VALUE)
+    vals = C.positive_params(inp.get("params"), ("a", "b"), MAX_VALUE, FAMILY_ID)
     if not (vals["a"] - vals["b"]).is_positive:
         raise MathError("CONDITION_CONFLICT", "requires a > b > 0")
     method, usable = C.methods(inp, FAMILY_ID, METHODS)

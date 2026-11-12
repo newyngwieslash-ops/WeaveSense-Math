@@ -36,7 +36,7 @@ def normalize(inp):
     C.unit(inp, ("",))
     if inp.get("focus", "right") != "right":
         raise MathError("UNSUPPORTED_FAMILY", "only chords through the right focus are supported")
-    vals = C.positive_params(inp.get("params"), ("a", "b"), MAX_VALUE)
+    vals = C.positive_params(inp.get("params"), ("a", "b"), MAX_VALUE, FAMILY_ID)
     if not (vals["a"] - vals["b"]).is_positive:
         raise MathError("CONDITION_CONFLICT", "requires a > b > 0 (foci on the x axis, not a circle)")
     method, usable = C.methods(inp, FAMILY_ID, METHODS)

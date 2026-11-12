@@ -1,0 +1,6 @@
+{
+  "kind": "sample_fixture_not_official",
+  "version": "sample-2026-11-12",
+  "note": "Fictional sample for automatic tests of the import/blind/report tooling (E94). This is not the FR-Q01 frozen set, must not be signed, and must not change catalog admission.",
+  "counts_toward_admission": false
+}

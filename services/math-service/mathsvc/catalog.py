@@ -1,6 +1,13 @@
 # -*- coding: utf-8 -*-
 """Versioned capability catalog (PRD §6.2, FR-M02).
 
+Optional overlays (B4 / E94), off by default:
+  MATH_CATALOG_ADMISSION_OVERLAY  JSON; only a signed official_frozen_set may
+                                  raise a family from dev to admitted.
+  MATH_FROZEN_PARAM_RANGES        JSON; only a signed official_frozen_set may
+                                  tighten per-family parameter maxima.
+Engineering admission sets and sample fixtures must not flip admission.
+
 admission:
   planned      not implemented, the UI must not offer automatic verification;
   dev          implemented, development regression only, NOT admitted;
@@ -54,11 +61,90 @@ FAMILIES = [
 
 
 def catalog():
-    return {"catalog_version": CATALOG_VERSION, "limits": LIMITS, "families": FAMILIES}
+    overlay = admission_overlay()
+    families = [_apply_admission(f, overlay) for f in FAMILIES]
+    out = {"catalog_version": CATALOG_VERSION, "limits": LIMITS, "families": families}
+    if overlay:
+        out["admission_overlay"] = {k: overlay[k] for k in ("error", "source_kind", "frozen_set_version") if k in overlay}
+    return out
 
 
 def family(fid):
+    overlay = admission_overlay()
     for f in FAMILIES:
         if f["id"] == fid:
-            return f
+            return _apply_admission(f, overlay)
     return None
+
+
+def _read_json_env(name):
+    import json
+    import os
+    path = (os.environ.get(name) or "").strip()
+    if not path:
+        return None, None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh), path
+    except (OSError, ValueError) as e:
+        return {"_error": "unreadable:%s" % e}, path
+
+
+def admission_overlay():
+    data, path = _read_json_env("MATH_CATALOG_ADMISSION_OVERLAY")
+    if data is None:
+        return None
+    if data.get("_error"):
+        return {"error": data["_error"], "path": path}
+    if data.get("kind") != "catalog_admission_overlay":
+        return {"error": "bad_kind", "path": path}
+    if data.get("source_kind") != "official_frozen_set" or not data.get("signed"):
+        return {"error": "not_official_or_unsigned", "path": path, "source_kind": data.get("source_kind")}
+    if data.get("catalog_version") and data["catalog_version"] != CATALOG_VERSION:
+        return {"error": "catalog_version_mismatch", "path": path}
+    return {"error": None, "path": path, "source_kind": data.get("source_kind"),
+            "frozen_set_version": data.get("frozen_set_version"), "families": data.get("families") or {}}
+
+
+def _apply_admission(f, overlay):
+    out = dict(f)
+    if overlay and overlay.get("error") is None:
+        st = (overlay.get("families") or {}).get(f["id"])
+        if st in ("dev", "admitted", "planned"):
+            out["admission"] = st
+    return out
+
+
+def frozen_param_ranges():
+    data, path = _read_json_env("MATH_FROZEN_PARAM_RANGES")
+    if data is None:
+        return None
+    if data.get("_error"):
+        return {"error": data["_error"], "path": path, "families": {}}
+    if data.get("kind") != "frozen_param_ranges":
+        return {"error": "bad_kind", "path": path, "families": {}}
+    if data.get("source_kind") != "official_frozen_set" or not data.get("signed"):
+        return {"error": "not_official_or_unsigned", "path": path, "families": {}}
+    return {"error": None, "path": path, "families": data.get("families") or {}}
+
+
+def effective_param_max(family_id, name, default_max):
+    """Return the tighter of the family default and a signed official frozen cap."""
+    from .params import parse_exact
+    cap = default_max
+    ranges = frozen_param_ranges()
+    if not ranges or ranges.get("error"):
+        return cap
+    spec = ((ranges.get("families") or {}).get(family_id) or {}).get(name) or {}
+    raw = spec.get("max")
+    if raw is None or raw == "":
+        return cap
+    try:
+        frozen = parse_exact(str(raw))
+    except Exception:
+        return cap
+    try:
+        default = parse_exact(str(default_max))
+        return frozen if (default - frozen).is_positive else default
+    except Exception:
+        return frozen
