@@ -1,0 +1,56 @@
+# promtool test rules deploy/flow/monitoring/edu-alerts.test.yml
+rule_files: [edu-alerts.yml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: edu_math_jobs_stuck
+        values: "1x20"
+      - series: edu_math_jobs_oldest_queued_seconds
+        values: "1200x20"
+      - series: edu_math_jobs_reconciliation_required
+        values: "1x20"
+      - series: edu_math_jobs_unknown_cost
+        values: "1x20"
+      - series: edu_math_jobs_unsettled_reservations
+        values: "1x20"
+      - series: edu_ledger_anomalies_open
+        values: "1x20"
+      - series: edu_math_jobs_finished_window
+        values: "10x20"
+      - series: edu_math_jobs_failure_ratio
+        values: "0.5x20"
+      - series: 'up{job="edu-platform"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: EduStuckJobs
+        exp_alerts: [{ exp_labels: { severity: warning }, exp_annotations: { summary: "Education jobs have been silent for more than 30 minutes" } }]
+      - eval_time: 6m
+        alertname: EduQueueAge
+        exp_alerts: [{ exp_labels: { severity: warning }, exp_annotations: { summary: "An education job has been queued for more than 15 minutes" } }]
+      - eval_time: 16m
+        alertname: EduReconciliationRequired
+        exp_alerts: [{ exp_labels: { severity: warning }, exp_annotations: { summary: "Education jobs need operator reconciliation (unknown service outcome)" } }]
+      - eval_time: 11m
+        alertname: EduUnknownCost
+        exp_alerts: [{ exp_labels: { severity: warning }, exp_annotations: { summary: "Education reservations are held because the provider charge is unknown" } }]
+      - eval_time: 11m
+        alertname: EduUnsettledReservations
+        exp_alerts: [{ exp_labels: { severity: warning }, exp_annotations: { summary: "Finished education jobs still have an open reservation after 10 minutes" } }]
+      - eval_time: 16m
+        alertname: EduLedgerAnomalies
+        exp_alerts: [{ exp_labels: { severity: warning }, exp_annotations: { summary: "Unresolved education ledger anomalies" } }]
+      - eval_time: 11m
+        alertname: EduFailureRate
+        exp_alerts: [{ exp_labels: { severity: warning }, exp_annotations: { summary: "Education job failure ratio is above 20% (at least 5 finished jobs in 24h)" } }]
+  - interval: 1m
+    input_series:
+      - series: edu_math_jobs_failure_ratio
+        values: "1x20"
+      - series: edu_math_jobs_finished_window
+        values: "3x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: EduFailureRate
+        exp_alerts: []

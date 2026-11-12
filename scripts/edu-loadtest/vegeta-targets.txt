@@ -1,0 +1,6 @@
+# Vegeta targets for the education auth-read scenario (DEV-119, E95).
+# Replace BASE with the target origin. Do not commit real tokens or hostnames.
+# Usage:
+#   sed "s#BASE#http://127.0.0.1:18080#" vegeta-targets.txt | vegeta attack -duration=10s -rate=5 | vegeta report
+GET BASE/api/edu/me
+GET BASE/api/edu/observability

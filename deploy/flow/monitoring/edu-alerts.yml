@@ -1,0 +1,45 @@
+# Education module alert rules (DEV-121, E95). Thresholds match
+# GET /edu/observability. Delivery channels and recipients are a deployment concern.
+groups:
+  - name: edu
+    rules:
+      - alert: EduMetricsDown
+        expr: up{job="edu-platform"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Education /api/edu-metrics is not scrapeable" }
+      - alert: EduStuckJobs
+        expr: edu_math_jobs_stuck > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Education jobs have been silent for more than 30 minutes" }
+      - alert: EduQueueAge
+        expr: edu_math_jobs_oldest_queued_seconds > 900
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "An education job has been queued for more than 15 minutes" }
+      - alert: EduReconciliationRequired
+        expr: edu_math_jobs_reconciliation_required > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations: { summary: "Education jobs need operator reconciliation (unknown service outcome)" }
+      - alert: EduUnknownCost
+        expr: edu_math_jobs_unknown_cost > 0
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Education reservations are held because the provider charge is unknown" }
+      - alert: EduUnsettledReservations
+        expr: edu_math_jobs_unsettled_reservations > 0
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Finished education jobs still have an open reservation after 10 minutes" }
+      - alert: EduLedgerAnomalies
+        expr: edu_ledger_anomalies_open > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations: { summary: "Unresolved education ledger anomalies" }
+      - alert: EduFailureRate
+        expr: edu_math_jobs_finished_window >= 5 and edu_math_jobs_failure_ratio > 0.2
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: "Education job failure ratio is above 20% (at least 5 finished jobs in 24h)" }

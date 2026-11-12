@@ -4,11 +4,15 @@
 global:
   scrape_interval: 30s
   evaluation_interval: 30s
-rule_files: [alerts.yml]
+rule_files: [alerts.yml, edu-alerts.yml]
 scrape_configs:
   - job_name: loom-engine
     static_configs: [{ targets: ["loom-engine:8080"] }]
   - job_name: flow-platform
     metrics_path: /metrics/flow
+    authorization: { type: Bearer, credentials_file: /etc/prometheus/platform.token }
+    static_configs: [{ targets: ["platform:8080"] }]
+  - job_name: edu-platform
+    metrics_path: /api/edu-metrics
     authorization: { type: Bearer, credentials_file: /etc/prometheus/platform.token }
     static_configs: [{ targets: ["platform:8080"] }]

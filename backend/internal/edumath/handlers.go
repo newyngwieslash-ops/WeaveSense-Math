@@ -26,7 +26,8 @@ type API struct {
 func (h *API) Register(api *gin.RouterGroup) {
 	api.POST("/edu-join", noStore, h.join) // outside the tenant-scoped middleware (see join)
 	api.POST("/edu-roster-claim", noStore, h.claimRoster)
-	api.POST("/edu-math-events", h.mathEvent) // service-signed push; no user session (see events.go)
+	api.POST("/edu-math-events", h.mathEvent)       // service-signed push; no user session (see events.go)
+	api.GET("/edu-metrics", noStore, h.promMetrics) // Prometheus scrape; token only, no session (E95)
 	g := api.Group("/edu", Middleware(h.DB, h.User))
 	h.registerClasses(g)
 	h.registerLedger(g)

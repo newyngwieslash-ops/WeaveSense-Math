@@ -91,6 +91,8 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 ../.github/scripts/test_check_edu_handover.py
           python3 ../.github/scripts/check-edu-handover.py ..
           PYTHONDONTWRITEBYTECODE=1 python3 ../scripts/test_edu_deploy_wiring.py
+          PYTHONDONTWRITEBYTECODE=1 python3 ../scripts/test_edu_pitr_scripts.py
+          PYTHONDONTWRITEBYTECODE=1 python3 ../scripts/edu-loadtest/test_harness.py
       - name: Run Go tests
         shell: bash
         run: |
@@ -257,10 +259,16 @@ jobs:
             -c 'set -e; /b/restore-drill.sh postgres://postgres:ci@pgbk/postgres postgres://postgres:ci@pgbk/drill_t /tmp/drill | tee /tmp/d.log
                 grep -q "restore drill OK" /tmp/d.log
                 if /b/restore-drill.sh postgres://postgres:ci@pgbk/postgres postgres://postgres:ci@pgbk/drill_t /tmp/drill2; then echo "a non empty scratch database must be refused"; exit 1; fi'
+      - name: WAL continuous archive and PITR drill (DEV-122)
+        run: |
+          docker run --rm -v "$PWD/deploy/flow/backup:/b:ro" --entrypoint /bin/bash postgres:17-alpine \
+            -c 'set -e; /b/pitr-drill.sh /tmp/pitr | tee /tmp/pitr.log; grep -q "pitr drill OK" /tmp/pitr.log'
       - name: Validate alert rules (promtool)
         run: |
           docker run --rm -v "$PWD/deploy/flow/monitoring:/m:ro" -w /m --entrypoint promtool prom/prometheus:v3.5.0 check rules alerts.yml
           docker run --rm -v "$PWD/deploy/flow/monitoring:/m:ro" -w /m --entrypoint promtool prom/prometheus:v3.5.0 test rules alerts.test.yml
+          docker run --rm -v "$PWD/deploy/flow/monitoring:/m:ro" -w /m --entrypoint promtool prom/prometheus:v3.5.0 check rules edu-alerts.yml
+          docker run --rm -v "$PWD/deploy/flow/monitoring:/m:ro" -w /m --entrypoint promtool prom/prometheus:v3.5.0 test rules edu-alerts.test.yml
 
   payment-plugins:
     name: Payment plugin artifacts
