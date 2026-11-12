@@ -150,7 +150,7 @@ def entity_problems(root, d):
     return [f"09: entity table {t} from models_edu.go is not listed in section 3.1" for t in tables if t not in named]
 
 
-DOCKERFILES = ["Dockerfile", "backend/Dockerfile"]
+DOCKERFILES = ["Dockerfile", "backend/Dockerfile", "services/math-service/Dockerfile"]
 
 
 def image_layers(text):

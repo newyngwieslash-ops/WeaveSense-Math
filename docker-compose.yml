@@ -24,6 +24,19 @@ services:
       CANVAS_LOG_LEVEL: ${CANVAS_LOG_LEVEL:-info}
       CANVAS_LOG_FORMAT: ${CANVAS_LOG_FORMAT:-text}
       GIN_MODE: release
+      FLOW_MATH_SERVICE_URL: ${FLOW_MATH_SERVICE_URL:-}
+      FLOW_MATH_SERVICE_KEY: ${FLOW_MATH_SERVICE_KEY:-${MATH_SERVICE_KEY:-}}
+      FLOW_PRICE_BOOK: ${FLOW_PRICE_BOOK:-}
+      EDU_MATH_REQUIRE_SERVICE: ${EDU_MATH_REQUIRE_SERVICE:-}
+      EDU_MATH_JOB_BUDGET_MICRO: ${EDU_MATH_JOB_BUDGET_MICRO:-}
+      EDU_PAUSE_GENERATION: ${EDU_PAUSE_GENERATION:-}
+      EDU_RETENTION_EVERY: ${EDU_RETENTION_EVERY:-}
+      EDU_LEDGER_RECONCILE_EVERY: ${EDU_LEDGER_RECONCILE_EVERY:-}
+      EDU_METRICS_EVERY: ${EDU_METRICS_EVERY:-}
+      EDU_RESTORE_JOURNAL: ${EDU_RESTORE_JOURNAL:-}
+      EDU_BUDGET_TZ: ${EDU_BUDGET_TZ:-}
+      EDU_ARTIFACT_URL_KEY: ${EDU_ARTIFACT_URL_KEY:-}
+      EDU_APP_VERSION: ${EDU_APP_VERSION:-}
     volumes:
       - backend-data:/data
     restart: unless-stopped
@@ -41,5 +54,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  math:
+    profiles: ["edu"]
+    image: open-ai-canvas-math:local
+    build:
+      context: .
+      dockerfile: services/math-service/Dockerfile
+    environment:
+      MATH_SERVICE_KEY: ${MATH_SERVICE_KEY:?启动教育功能时须设置 MATH_SERVICE_KEY（至少 32 字节）}
+      MATH_DATA_DIR: /data
+      MATH_LISTEN: 0.0.0.0:8790
+      MATH_EVENT_URL: ${MATH_EVENT_URL:-http://backend:8080/api/edu-math-events}
+    volumes:
+      - ${CANVAS_MATH_DATA_PATH:-math-data}:/data
+    ports:
+      - "127.0.0.1:${MATH_HOST_PORT:-8790}:8790"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
 volumes:
   backend-data:
+  math-data:

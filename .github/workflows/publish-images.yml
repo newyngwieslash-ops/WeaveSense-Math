@@ -86,6 +86,11 @@ jobs:
             arch: multi
             platforms: linux/amd64,linux/arm64
             runner: ubuntu-24.04
+          - image: weavesense-math-math-service
+            dockerfile: services/math-service/Dockerfile
+            arch: multi
+            platforms: linux/amd64,linux/arm64
+            runner: ubuntu-24.04
     env:
       IMAGE: ghcr.io/${{ needs.prepare.outputs.owner }}/${{ matrix.image }}
     steps:
@@ -150,7 +155,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [weavesense-math-web, weavesense-math-backend, weavesense-math-yingce-agent]
+        image: [weavesense-math-web, weavesense-math-backend, weavesense-math-yingce-agent, weavesense-math-math-service]
     # 不同提交可并行编译，但同一镜像的可变标签更新必须串行。
     concurrency:
       group: image-tags-${{ matrix.image }}-${{ github.ref }}
