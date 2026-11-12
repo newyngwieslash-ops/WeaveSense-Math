@@ -262,7 +262,7 @@ jobs:
       - name: WAL continuous archive and PITR drill (DEV-122)
         run: |
           docker run --rm -u postgres -v "$PWD/deploy/flow/backup:/b:ro" --entrypoint /bin/bash postgres:17-alpine \
-            -c 'set -e; /b/pitr-drill.sh /tmp/pitr | tee /tmp/pitr.log; grep -q "pitr drill OK" /tmp/pitr.log'
+            -c 'set -euo pipefail; /b/pitr-drill.sh /tmp/pitr'
       - name: Validate alert rules (promtool)
         run: |
           docker run --rm -v "$PWD/deploy/flow/monitoring:/m:ro" -w /m --entrypoint promtool prom/prometheus:v3.5.0 check rules alerts.yml
