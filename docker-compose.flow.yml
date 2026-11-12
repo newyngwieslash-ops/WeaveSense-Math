@@ -254,7 +254,7 @@ services:
       postgres: { condition: service_healthy }
     networks: [internal]
   # Monitoring (§14): Prometheus scrapes loom-engine /metrics and platform /metrics/flow
-  # (FLOW_METRICS_TOKEN). Rules: deploy/flow/monitoring/alerts.yml. Bound to localhost only.
+  # (FLOW_METRICS_TOKEN, also used for /api/edu-metrics). Rules: alerts.yml and edu-alerts.yml. Bound to localhost only.
   prometheus:
     <<: *restart
     profiles: [monitoring]
