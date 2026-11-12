@@ -67,6 +67,21 @@ class WalArchiveHelper(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("not empty", r.stderr)
 
+    def test_pitr_restore_sets_data_dir_mode(self):
+        base = os.path.join(self.tmp, "base")
+        wal = os.path.join(self.tmp, "wal")
+        dest = os.path.join(self.tmp, "dest")
+        os.makedirs(base)
+        os.makedirs(wal)
+        Path(base, "PG_VERSION").write_text("17")
+        r = subprocess.run(
+            [os.path.join(BACKUP, "pitr-restore.sh"), base, wal, dest, "2026-11-12 12:00:00"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        mode = os.stat(dest).st_mode & 0o777
+        self.assertIn(mode, (0o700, 0o750), oct(mode))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -20,6 +20,7 @@ if [ -e "$dest" ] && [ -n "$(ls -A "$dest" 2>/dev/null || true)" ]; then
   exit 2
 fi
 mkdir -p "$dest"
+chmod 0700 "$dest"
 # pg_basebackup -Ft format unpacks as base.tar + pg_wal.tar (or a directory copy).
 if [ -f "$base/base.tar" ]; then
   tar -C "$dest" -xf "$base/base.tar"
@@ -30,6 +31,9 @@ if [ -f "$base/base.tar" ]; then
 else
   cp -a "$base/." "$dest/"
 fi
+# Postgres refuses to start if the data directory is group/world accessible
+# (mkdir -p follows umask, typically 0755).
+chmod 0700 "$dest"
 rm -f "$dest/postmaster.pid"
 touch "$dest/recovery.signal"
 cat > "$dest/postgresql.auto.conf" <<AUTO
