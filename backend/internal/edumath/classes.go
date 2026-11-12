@@ -132,6 +132,8 @@ func (h *API) registerClasses(g *gin.RouterGroup) {
 	g.GET("/classes/:id/assignments", h.listAssignments)
 	g.POST("/assignments/:id/withdraw", h.withdrawAssignment)
 	g.POST("/consents", h.recordConsent)
+	g.POST("/consents/online-invites", h.issueConsentInvite)
+	g.POST("/consents/online-invites/:id/revoke", h.revokeConsentInvite)
 	g.PUT("/policy", h.setPolicy)
 	g.GET("/policy", h.getPolicy)
 }
