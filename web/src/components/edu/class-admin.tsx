@@ -3,11 +3,25 @@ import { useCallback, useEffect, useState } from "react";
 import { edu, type EduScope } from "@/services/api/edu";
 
 import { archiveImpactText, archiveReasonProblem, assignmentImpactText, extensionDueISO, type ArchiveImpact, INVITE_STATUS_LABEL, withdrawReasonProblem, type AssignmentImpact, type ExtensionRow, type InviteRow, type RosterRow } from "./edu-admin-logic";
+import {
+    DEFAULT_CLAIM_TTL_HOURS,
+    formatClaimCodes,
+    ROSTER_CSV_TEMPLATE,
+    ROSTER_ENTRY_STATE_LABEL,
+    ROSTER_ROW_STATUS_LABEL,
+    rosterCodesNotice,
+    rosterConfirmProblem,
+    rosterPreviewSummary,
+    type IssuedClaimCode,
+    type RosterEntryRow,
+    type RosterImportPreview,
+    type RosterImportRow,
+} from "./roster-import-logic";
 import { teacherError } from "./teacher-errors";
 
 /**
  * 教师端班级管理：建班、邀请码（明文只在创建时显示一次）、撤销、名册、退出班级、同意记录，
- * 以及单个学生的作业延期和班级归档（DEV-106，先看影响、写原因再确认）。所有权限与校验由服务端完成。
+ * 名单 CSV 导入与认领码分发（DEV-016，先预览再确认，认领码只显示一次），以及单个学生的作业延期和班级归档（DEV-106，先看影响、写原因再确认）。所有权限与校验由服务端完成。
  */
 const btn = "inline-flex h-8 items-center rounded-md bg-stone-900 px-3 text-sm text-white disabled:opacity-40 dark:bg-stone-100 dark:text-stone-900";
 const ghost = "inline-flex h-8 items-center rounded-md border border-stone-300 px-2 text-sm disabled:opacity-40 dark:border-stone-600";
@@ -142,6 +156,7 @@ export function ClassAdmin({ scope, classId, onCreated }: { scope: EduScope; cla
                             ))}
                         </ul>
                     </div>
+                    <RosterImportPanel scope={scope} classId={classId} />
                     <div>
                         <h3 className="font-medium">归档班级</h3>
                         {archive ? (
@@ -168,6 +183,177 @@ export function ClassAdmin({ scope, classId, onCreated }: { scope: EduScope; cla
                     </div>
                 </>
             ) : null}
+        </div>
+    );
+}
+
+function RosterImportPanel({ scope, classId }: { scope: EduScope; classId: string }) {
+    const [csv, setCsv] = useState(ROSTER_CSV_TEMPLATE);
+    const [ttl, setTtl] = useState(DEFAULT_CLAIM_TTL_HOURS);
+    const [preview, setPreview] = useState<RosterImportPreview | null>(null);
+    const [codes, setCodes] = useState<IssuedClaimCode[]>([]);
+    const [entries, setEntries] = useState<RosterEntryRow[]>([]);
+    const [issued, setIssued] = useState("");
+    const [msg, setMsg] = useState("");
+    const [busy, setBusy] = useState(false);
+
+    const reloadEntries = useCallback(() => {
+        void edu<RosterEntryRow[]>("get", `/classes/${classId}/roster-entries`, scope).then((r) => r.ok && setEntries(Array.isArray(r.data) ? r.data : []));
+    }, [classId, scope]);
+    useEffect(() => {
+        setPreview(null);
+        setCodes([]);
+        setIssued("");
+        setMsg("");
+        reloadEntries();
+    }, [reloadEntries]);
+
+    const previewImport = async () => {
+        setBusy(true);
+        const r = await edu<RosterImportPreview>("post", `/classes/${classId}/roster-import`, scope, { csv, confirm: false, ttlHours: ttl });
+        setBusy(false);
+        if (!r.ok) return setMsg(teacherError(r));
+        setPreview(r.data);
+        setCodes([]);
+        setMsg(rosterPreviewSummary(r.data));
+    };
+    const confirmImport = async () => {
+        const problem = rosterConfirmProblem(preview, csv);
+        if (problem) return setMsg(problem);
+        setBusy(true);
+        const r = await edu<RosterImportPreview>("post", `/classes/${classId}/roster-import`, scope, { csv, confirm: true, ttlHours: ttl });
+        setBusy(false);
+        if (!r.ok) return setMsg(teacherError(r));
+        const issuedCodes = r.data.codes || [];
+        setPreview(r.data);
+        setCodes(issuedCodes);
+        setIssued("");
+        setMsg(rosterCodesNotice(issuedCodes.length));
+        setCsv(ROSTER_CSV_TEMPLATE);
+        reloadEntries();
+    };
+    const reissue = async (id: string) => {
+        setBusy(true);
+        const r = await edu<IssuedClaimCode>("post", `/classes/${classId}/roster-entries/${id}/reissue`, scope, { ttlHours: ttl });
+        setBusy(false);
+        if (!r.ok) return setMsg(teacherError(r));
+        setIssued(r.data.code);
+        setMsg(rosterCodesNotice(1));
+        reloadEntries();
+    };
+    const revoke = async (id: string) => {
+        if (!confirm("作废这条待认领记录？认领码将立即失效。")) return;
+        setBusy(true);
+        const r = await edu("post", `/classes/${classId}/roster-entries/${id}/revoke`, scope, {});
+        setBusy(false);
+        setMsg(r.ok ? "已作废该名单条目" : teacherError(r));
+        reloadEntries();
+    };
+    const onFile = (f: File | undefined) => {
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            const text = typeof reader.result === "string" ? reader.result : "";
+            setCsv(text);
+            setPreview(null);
+            setCodes([]);
+        };
+        reader.readAsText(f);
+    };
+    const copyCodes = async () => {
+        const text = formatClaimCodes(codes);
+        try {
+            await navigator.clipboard.writeText(text);
+            setMsg("已复制认领码，请现在分发");
+        } catch {
+            setMsg("无法自动复制，请手动选中认领码后复制");
+        }
+    };
+
+    return (
+        <div>
+            <h3 className="font-medium">导入名单</h3>
+            <p className="mt-1 text-xs text-stone-500">只填写假名编号和短显示名，不要填写真实姓名、手机号、身份证号或邮箱。先预览，核对后再确认。认领码只显示一次。</p>
+            <textarea
+                className="mt-1 h-28 w-full rounded-md border px-2 font-mono text-xs"
+                value={csv}
+                onChange={(e) => {
+                    setCsv(e.target.value);
+                    setPreview(null);
+                    setCodes([]);
+                }}
+                spellCheck={false}
+                data-testid="roster-import-csv"
+                aria-label="名单 CSV"
+            />
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+                <label className="text-xs">
+                    选择 CSV 文件
+                    <input className="ml-2 text-xs" type="file" accept=".csv,text/csv,text/plain" onChange={(e) => onFile(e.target.files?.[0])} />
+                </label>
+                <label>
+                    认领有效小时 <input type="number" className="h-8 w-20 rounded-md border px-2" min={1} max={336} value={ttl} onChange={(e) => setTtl(Number(e.target.value))} />
+                </label>
+                <button className={ghost} disabled={busy || !csv.trim()} onClick={() => void previewImport()}>
+                    预览名单
+                </button>
+                <button className={btn} disabled={busy || !!rosterConfirmProblem(preview, csv)} onClick={() => void confirmImport()}>
+                    确认导入
+                </button>
+            </div>
+            {msg ? (
+                <p role="status" aria-live="polite" className="mt-1 text-amber-700" data-testid="roster-import-status">
+                    {msg}
+                </p>
+            ) : null}
+            {preview && !preview.confirmed ? (
+                <ul className="mt-1 max-h-48 space-y-1 overflow-auto text-xs" data-testid="roster-import-preview">
+                    {preview.rows.map((row: RosterImportRow) => (
+                        <li key={`${row.line}-${row.externalRef}`}>
+                            第 {row.line} 行 {row.externalRef}
+                            {row.displayName ? `（${row.displayName}）` : ""}：{ROSTER_ROW_STATUS_LABEL[row.status] || row.status}
+                            {row.error ? `，${row.error}` : ""}
+                        </li>
+                    ))}
+                </ul>
+            ) : null}
+            {codes.length ? (
+                <div className="mt-1 rounded-md bg-amber-50 p-2 dark:bg-amber-950" data-testid="roster-import-codes">
+                    <p className="text-xs">{rosterCodesNotice(codes.length)}</p>
+                    <pre className="mt-1 overflow-auto font-mono text-xs">{formatClaimCodes(codes)}</pre>
+                    <button className={`${ghost} mt-1`} onClick={() => void copyCodes()}>
+                        复制全部认领码
+                    </button>
+                </div>
+            ) : null}
+            {issued ? (
+                <p className="mt-1 rounded-md bg-amber-50 p-2 font-mono text-xs dark:bg-amber-950" data-testid="roster-reissue-code">
+                    {issued}
+                    <span className="ml-2 font-sans">只显示这一次，请现在发给学生</span>
+                </p>
+            ) : null}
+            <ul className="mt-2 space-y-1" data-testid="roster-entries">
+                {entries.map((e) => (
+                    <li key={e.id} className="flex flex-wrap items-center gap-2">
+                        <span>
+                            {e.externalRef}
+                            {e.displayName ? `（${e.displayName}）` : ""}：{ROSTER_ENTRY_STATE_LABEL[e.state] || e.state}
+                            {e.state === "pending" && e.expiresAt ? `，到期 ${new Date(e.expiresAt).toLocaleString()}` : ""}
+                            {e.state === "claimed" && e.claimedBy ? `，已由 ${e.claimedBy} 认领` : ""}
+                        </span>
+                        {e.state === "pending" ? (
+                            <>
+                                <button className={ghost} disabled={busy} onClick={() => void reissue(e.id)}>
+                                    重发认领码
+                                </button>
+                                <button className={ghost} disabled={busy} onClick={() => void revoke(e.id)}>
+                                    作废
+                                </button>
+                            </>
+                        ) : null}
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 }
