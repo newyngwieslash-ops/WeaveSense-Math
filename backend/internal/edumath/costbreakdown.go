@@ -7,6 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+
+	"yingce/backend/internal/flow"
 )
 
 // Cost breakdown (DEV-118). The batch is the problem revision: every machine job
@@ -93,8 +95,9 @@ func splitEven(total int64, n int) []int64 {
 }
 
 // CostBreakdown computes the stratified report for one tenant and period. Jobs are
-// selected exactly as in CostReport (by creation time, settled statuses), so the
-// total reconciles with the period report's machine and support lines.
+// selected exactly as in CostReport (by creation time, settled statuses). The
+// total reconciles with the period report, including stand-in storage, TTS and
+// egress lines (DEV-065, E96).
 func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostBreakdown, error) {
 	from, to, err := periodRange(period)
 	if err != nil {
@@ -218,6 +221,32 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 	if err := tx.Raw(`SELECT cost_micro, subject_ref FROM edu_support_costs WHERE tenant_id = ? AND period = ?`, tenantID, period).Scan(&sup).Error; err != nil {
 		return out, err
 	}
+	// Stand-in meters (E96): storage follows the job's problem revision so it
+	// splits like machine cost; TTS/egress without a batch are usage_not_split.
+	pb := flow.CurrentPriceBook()
+	var stor []struct {
+		ProblemRevisionID string
+		Bytes             int64
+	}
+	if err := tx.Raw(`SELECT j.problem_revision_id, COALESCE(SUM(a.size), 0) AS bytes
+		FROM edu_artifacts a JOIN edu_math_jobs j ON j.id = a.job_id
+		WHERE a.tenant_id = ? AND j.tenant_id = ? AND j.created_at >= ? AND j.created_at < ?
+		GROUP BY j.problem_revision_id`, tenantID, tenantID, from, to).Scan(&stor).Error; err != nil {
+		return out, err
+	}
+	if u := pb.UnitMicro[flow.UsageStorageBytes]; u > 0 {
+		for _, x := range stor {
+			get(x.ProblemRevisionID).machine += x.Bytes * u
+		}
+	}
+	unattribUsage := int64(0)
+	if u := pb.UnitMicro[flow.UsageTTSCharacters]; u > 0 {
+		unattribUsage += usageQuantity(tx, tenantID, flow.UsageTTSCharacters, from, to) * u
+	}
+	if u := pb.UnitMicro[flow.UsageEgressBytes]; u > 0 {
+		unattribUsage += usageQuantity(tx, tenantID, flow.UsageEgressBytes, from, to) * u
+	}
+
 	famSupport, classSupport := map[string]int64{}, map[string]int64{}
 	for _, x := range sup {
 		kind, id, _ := strings.Cut(x.SubjectRef, ":")
@@ -242,7 +271,7 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 		}
 		return r
 	}
-	total := out.UnattributedMicro
+	total := out.UnattributedMicro + unattribUsage
 	for _, b := range batches {
 		total += b.machine + b.support
 	}
@@ -304,6 +333,13 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 				key = "tenant"
 			}
 			row(key).SupportMicro += out.UnattributedMicro
+		}
+		if unattribUsage > 0 {
+			key := "usage_not_split"
+			if by == "tenant" {
+				key = "tenant"
+			}
+			row(key).MachineMicro += unattribUsage
 		}
 	default: // per accepted lesson: class, reuse, template, model, terminal
 		for _, rev := range revs {
@@ -381,6 +417,9 @@ func (s *Service) CostBreakdown(tx *gorm.DB, tenantID, period, by string) (CostB
 		}
 		if out.UnattributedMicro > 0 {
 			row("support_unattributed").SupportMicro += out.UnattributedMicro
+		}
+		if unattribUsage > 0 {
+			row("usage_not_split").MachineMicro += unattribUsage
 		}
 	}
 	for _, r := range rows {

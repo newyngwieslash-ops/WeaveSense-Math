@@ -14,7 +14,8 @@ import (
 
 // Full delivery cost accounting (DEV-065). The report never invents numbers:
 // every line names its source, and lines whose provider is not connected yet
-// (TTS, egress) are reported as not metered instead of zero cost.
+// Stand-in unit prices for storage, TTS and egress (DEV-065, E96) are used when
+// the price book has a positive rate; they are labelled stand-in, not production rates.
 
 var (
 	periodRe        = regexp.MustCompile(`^20[0-9]{2}-(0[1-9]|1[0-2])$`)
@@ -100,9 +101,18 @@ func (s *Service) CostReport(tx *gorm.DB, tenantID, period string) (CostReport, 
 	r.Lines = append(r.Lines, CostLine{Component: "open_holds", Source: "edu_math_jobs(settlement=open)", Metered: true, Quantity: held, Unit: "micro_held"})
 	var bytes int64
 	tx.Raw("SELECT COALESCE(SUM(size), 0) FROM edu_artifacts WHERE tenant_id = ? AND job_id IN ("+jobs+")", tenantID, tenantID, from, to).Scan(&bytes)
-	add("storage", "edu_artifacts.size (no storage price configured)", "bytes", 0, bytes, false)
-	add("tts", "provider not connected", "characters", 0, 0, false)
-	add("egress", "not metered", "bytes", 0, 0, false)
+	pb := flow.CurrentPriceBook()
+	addMetered := func(component, typ, source, unit string, qty int64) {
+		price := pb.UnitMicro[typ]
+		if price > 0 {
+			add(component, source+" * price_book "+typ+" (stand-in unit price, not a production rate; math_compute_ms remains a placeholder)", unit, qty*price, qty, true)
+		} else {
+			add(component, source+" (no "+typ+" price configured)", unit, 0, qty, false)
+		}
+	}
+	addMetered("storage", flow.UsageStorageBytes, "edu_artifacts.size", "bytes", bytes)
+	addMetered("tts", flow.UsageTTSCharacters, "flow_usage_records.tts_characters", "characters", usageQuantity(tx, tenantID, flow.UsageTTSCharacters, from, to))
+	addMetered("egress", flow.UsageEgressBytes, "flow_usage_records.egress_bytes", "bytes", usageQuantity(tx, tenantID, flow.UsageEgressBytes, from, to))
 	// Human support with attribution.
 	var sup []model.EduSupportCost
 	if err := tx.Where("tenant_id = ? AND period = ?", tenantID, period).Find(&sup).Error; err != nil {

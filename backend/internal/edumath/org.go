@@ -119,7 +119,7 @@ func (h *API) orgOverview(c *gin.Context) {
 		"tenantId": a.TenantID, "staff": staff, "courses": courses, "classes": classes,
 		"students":   gin.H{"enrolled": enrolled, "guardianConsent": consented, "consentMissing": enrolled - consented},
 		"policy":     gin.H{"reviewMode": p.ReviewMode, "consentMode": p.ConsentMode, "editReviewInherit": p.EditReviewInherit, "updatedAt": p.UpdatedAt},
-		"region":     gin.H{"state": "not_configured", "blockedBy": "DEV-105"},
+		"region":     LoadEgressPolicy().Overview(),
 		"retention":  retentionOverview(tx, a.TenantID),
 		"individual": gin.H{"requiresPurpose": true, "header": accessPurposeHeader},
 	}, "ok")
