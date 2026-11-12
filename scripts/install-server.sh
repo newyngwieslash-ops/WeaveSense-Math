@@ -91,14 +91,12 @@ prepare_environment() {
             ((configured_http_port >= 1 && configured_http_port <= 65535)) || fail ".env 中的 CANVAS_HTTP_PORT 无效"
             CANVAS_HTTP_PORT="$configured_http_port"
         fi
-        return
-    fi
-
-    step "生成 PostgreSQL 随机密码和部署配置"
-    local database_password
-    database_password="$(openssl rand -hex 32)"
-    umask 077
-    cat >.env <<EOF
+    else
+        step "生成 PostgreSQL 随机密码和部署配置"
+        local database_password
+        database_password="$(openssl rand -hex 32)"
+        umask 077
+        cat >.env <<EOF
 POSTGRES_DB=open_ai_canvas
 POSTGRES_USER=open_ai_canvas
 POSTGRES_PASSWORD=${database_password}
@@ -109,14 +107,18 @@ CANVAS_ALLOW_PRIVATE_UPSTREAMS=false
 CANVAS_ALLOWED_PRIVATE_UPSTREAM_HOSTS=
 CANVAS_CORS_ORIGINS=
 EOF
+    fi
+
+    step "同步教育部署环境（应用角色与数学服务密钥）"
+    bash "$INSTALL_DIR/scripts/sync-edu-deploy-env.sh" "$INSTALL_DIR/.env"
 }
 
 start_services() {
-    step "从源码构建网页与后端镜像"
+    step "从源码构建网页、后端与数学服务镜像"
     # 标准一键部署已下载完整仓库，直接本地构建可避免公开项目被 GHCR 包可见性阻断。
-    docker compose --env-file .env -f "$COMPOSE_FILE" -f "$BUILD_COMPOSE_FILE" build backend web
+    docker compose --env-file .env -f "$COMPOSE_FILE" -f "$BUILD_COMPOSE_FILE" build backend web math
 
-    step "启动 PostgreSQL、Redis、后端和网页服务"
+    step "启动 PostgreSQL、Redis、数学服务、后端和网页服务"
     docker compose --env-file .env -f "$COMPOSE_FILE" -f "$BUILD_COMPOSE_FILE" up -d --remove-orphans --wait --wait-timeout 600
 }
 

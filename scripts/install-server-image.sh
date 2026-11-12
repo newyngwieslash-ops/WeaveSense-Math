@@ -13,6 +13,9 @@ CANVAS_WEB_IMAGE=""
 COMPOSE_FILE="docker-compose.deploy.yml"
 COMPOSE_URL="${COMPOSE_URL:-https://raw.githubusercontent.com/ddcat-ai/open-ai-canvas/${REPOSITORY_REF}/${COMPOSE_FILE}}"
 UPDATER_INSTALL_URL="${UPDATER_INSTALL_URL:-https://raw.githubusercontent.com/ddcat-ai/open-ai-canvas/${REPOSITORY_REF}/scripts/install-host-updater.sh}"
+COMPOSE_BASE_URL="${COMPOSE_URL%/*}"
+SYNC_ENV_URL="${SYNC_ENV_URL:-${COMPOSE_BASE_URL}/scripts/sync-edu-deploy-env.sh}"
+ENSURE_APP_ROLE_URL="${ENSURE_APP_ROLE_URL:-${COMPOSE_BASE_URL}/deploy/postgres/ensure-app-role.sh}"
 
 step() {
     printf '\n==> %s\n' "$1"
@@ -119,10 +122,12 @@ prepare_environment() {
         CANVAS_BACKEND_IMAGE="${IMAGE_REPOSITORY}-backend:${CANVAS_IMAGE_TAG}"
         CANVAS_WEB_IMAGE="${IMAGE_REPOSITORY}-web:${CANVAS_IMAGE_TAG}"
         CANVAS_YINGCE_AGENT_IMAGE="${IMAGE_REPOSITORY}-yingce-agent:${CANVAS_IMAGE_TAG}"
+        CANVAS_MATH_IMAGE="${IMAGE_REPOSITORY}-math-service:${CANVAS_IMAGE_TAG}"
         set_env_value .env CANVAS_IMAGE_TAG "$CANVAS_IMAGE_TAG"
         set_env_value .env CANVAS_BACKEND_IMAGE "$CANVAS_BACKEND_IMAGE"
         set_env_value .env CANVAS_WEB_IMAGE "$CANVAS_WEB_IMAGE"
         set_env_value .env CANVAS_YINGCE_AGENT_IMAGE "$CANVAS_YINGCE_AGENT_IMAGE"
+        set_env_value .env CANVAS_MATH_IMAGE "$CANVAS_MATH_IMAGE"
         if ! grep -Eq '^YINGCE_AGENT_TOKEN=.{32,}$' .env; then
             set_env_value .env YINGCE_AGENT_TOKEN "$(openssl rand -hex 32)"
         fi
@@ -146,6 +151,7 @@ CANVAS_IMAGE_TAG=${CANVAS_IMAGE_TAG}
 CANVAS_BACKEND_IMAGE=${IMAGE_REPOSITORY}-backend:${CANVAS_IMAGE_TAG}
 CANVAS_WEB_IMAGE=${IMAGE_REPOSITORY}-web:${CANVAS_IMAGE_TAG}
 CANVAS_YINGCE_AGENT_IMAGE=${IMAGE_REPOSITORY}-yingce-agent:${CANVAS_IMAGE_TAG}
+CANVAS_MATH_IMAGE=${IMAGE_REPOSITORY}-math-service:${CANVAS_IMAGE_TAG}
 YINGCE_AGENT_TOKEN=$(openssl rand -hex 32)
 CANVAS_REGISTRATION_ENABLED=false
 CANVAS_ALLOW_PRIVATE_UPSTREAMS=false
@@ -176,6 +182,13 @@ download_compose() {
     temporary_file="$(mktemp "${INSTALL_DIR}/.docker-compose.deploy.XXXXXX")"
     curl -fsSL "$COMPOSE_URL" -o "$temporary_file"
     mv "$temporary_file" "$COMPOSE_FILE"
+
+    step "下载应用角色脚本与教育环境同步脚本"
+    curl -fsSL "$ENSURE_APP_ROLE_URL" -o "$INSTALL_DIR/ensure-app-role.sh"
+    chmod 755 "$INSTALL_DIR/ensure-app-role.sh"
+    curl -fsSL "$SYNC_ENV_URL" -o "$INSTALL_DIR/sync-edu-deploy-env.sh"
+    chmod 755 "$INSTALL_DIR/sync-edu-deploy-env.sh"
+    set_env_value .env CANVAS_ENSURE_APP_ROLE_SCRIPT "$INSTALL_DIR/ensure-app-role.sh"
 }
 
 install_host_updater() {
@@ -188,20 +201,28 @@ install_host_updater() {
 }
 
 start_services() {
-    step "拉取并启动 GHCR 网页与后端镜像"
+    step "拉取并启动 GHCR 网页、后端与数学服务镜像"
+    CANVAS_BACKEND_IMAGE="$(sed -n 's/^CANVAS_BACKEND_IMAGE=//p' .env | tail -n 1)"
+    CANVAS_WEB_IMAGE="$(sed -n 's/^CANVAS_WEB_IMAGE=//p' .env | tail -n 1)"
+    CANVAS_YINGCE_AGENT_IMAGE="$(sed -n 's/^CANVAS_YINGCE_AGENT_IMAGE=//p' .env | tail -n 1)"
+    CANVAS_MATH_IMAGE="$(sed -n 's/^CANVAS_MATH_IMAGE=//p' .env | tail -n 1)"
+    [[ -n "$CANVAS_BACKEND_IMAGE" && -n "$CANVAS_WEB_IMAGE" && -n "$CANVAS_YINGCE_AGENT_IMAGE" && -n "$CANVAS_MATH_IMAGE" ]] || fail ".env 缺少镜像地址"
     if ! docker compose --env-file .env -f "$COMPOSE_FILE" pull; then
         fail "GHCR 镜像拉取失败；如果容器包尚未公开，请通过 GHCR_USERNAME 和 GHCR_TOKEN 登录后重试"
     fi
-    local backend_digest web_digest agent_digest
+    local backend_digest web_digest agent_digest math_digest
     backend_digest="$(docker image inspect "$CANVAS_BACKEND_IMAGE" --format '{{range .RepoDigests}}{{println .}}{{end}}' | awk -v repository="${IMAGE_REPOSITORY}-backend" '$0 ~ "^" repository "@sha256:" { print; exit }')"
     web_digest="$(docker image inspect "$CANVAS_WEB_IMAGE" --format '{{range .RepoDigests}}{{println .}}{{end}}' | awk -v repository="${IMAGE_REPOSITORY}-web" '$0 ~ "^" repository "@sha256:" { print; exit }')"
     agent_digest="$(docker image inspect "$CANVAS_YINGCE_AGENT_IMAGE" --format '{{range .RepoDigests}}{{println .}}{{end}}' | awk -v repository="${IMAGE_REPOSITORY}-yingce-agent" '$0 ~ "^" repository "@sha256:" { print; exit }')"
+    math_digest="$(docker image inspect "$CANVAS_MATH_IMAGE" --format '{{range .RepoDigests}}{{println .}}{{end}}' | awk -v repository="${IMAGE_REPOSITORY}-math-service" '$0 ~ "^" repository "@sha256:" { print; exit }')"
     [[ "$backend_digest" =~ ^${IMAGE_REPOSITORY//\//\/}-backend@sha256:[a-f0-9]{64}$ ]] || fail "后端镜像未返回可验证的仓库 digest"
     [[ "$web_digest" =~ ^${IMAGE_REPOSITORY//\//\/}-web@sha256:[a-f0-9]{64}$ ]] || fail "Web 镜像未返回可验证的仓库 digest"
     [[ "$agent_digest" =~ ^${IMAGE_REPOSITORY//\//\/}-yingce-agent@sha256:[a-f0-9]{64}$ ]] || fail "Agent 镜像未返回可验证的仓库 digest"
+    [[ "$math_digest" =~ ^${IMAGE_REPOSITORY//\//\/}-math-service@sha256:[a-f0-9]{64}$ ]] || fail "数学服务镜像未返回可验证的仓库 digest"
     set_env_value .env CANVAS_BACKEND_IMAGE "$backend_digest"
     set_env_value .env CANVAS_WEB_IMAGE "$web_digest"
     set_env_value .env CANVAS_YINGCE_AGENT_IMAGE "$agent_digest"
+    set_env_value .env CANVAS_MATH_IMAGE "$math_digest"
     docker compose --env-file .env -f "$COMPOSE_FILE" up -d --remove-orphans --wait --wait-timeout 600
 }
 
@@ -225,6 +246,11 @@ main() {
     login_ghcr
     prepare_environment
     download_compose
+    step "同步教育部署环境（应用角色与数学服务密钥）"
+    bash "$INSTALL_DIR/sync-edu-deploy-env.sh" "$INSTALL_DIR/.env"
+    # Re-apply image names after sync so first-time keys do not drop them.
+    CANVAS_MATH_IMAGE="${CANVAS_MATH_IMAGE:-${IMAGE_REPOSITORY}-math-service:${CANVAS_IMAGE_TAG}}"
+    set_env_value .env CANVAS_MATH_IMAGE "$CANVAS_MATH_IMAGE"
     start_services
     install_host_updater
     print_result

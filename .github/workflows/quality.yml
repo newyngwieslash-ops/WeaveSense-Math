@@ -90,6 +90,7 @@ jobs:
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 ../.github/scripts/test_check_edu_handover.py
           python3 ../.github/scripts/check-edu-handover.py ..
+          PYTHONDONTWRITEBYTECODE=1 python3 ../scripts/test_edu_deploy_wiring.py
       - name: Run Go tests
         shell: bash
         run: |
@@ -131,7 +132,7 @@ jobs:
   math-service:
     name: Math service tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: services/math-service
@@ -143,6 +144,31 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Run math-service unit tests (solver, verifier, isolation, jobs, auth, MCP)
         run: python -m unittest -v tests.test_math tests.test_jobs tests.test_server tests.test_families tests.test_regression tests.test_grade tests.test_intake tests.test_events tests.test_hostile tests.test_notice tests.test_cues tests.test_admission
+      - uses: docker/setup-buildx-action@v3
+      - name: Build math-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ github.workspace }}
+          file: ${{ github.workspace }}/services/math-service/Dockerfile
+          load: true
+          tags: weavesense-math-math-service:ci
+          cache-from: type=gha,scope=math-service-image
+          cache-to: type=gha,mode=max,scope=math-service-image
+      - name: Smoke math-service image
+        working-directory: ${{ github.workspace }}
+        run: |
+          key="$(openssl rand -hex 32)"
+          cid="$(docker run -d --name math-ci -e MATH_SERVICE_KEY="$key" -e MATH_LISTEN=0.0.0.0:8790 weavesense-math-math-service:ci)"
+          trap 'docker logs math-ci || true; docker rm -f math-ci >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if docker exec math-ci python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/healthz', timeout=2)" >/dev/null 2>&1; then
+              echo "math-service image healthy"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "math-service image failed to become healthy" >&2
+          exit 1
 
   loom-engine:
     name: Loom Engine flow tests
