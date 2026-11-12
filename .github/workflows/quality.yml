@@ -261,7 +261,7 @@ jobs:
                 if /b/restore-drill.sh postgres://postgres:ci@pgbk/postgres postgres://postgres:ci@pgbk/drill_t /tmp/drill2; then echo "a non empty scratch database must be refused"; exit 1; fi'
       - name: WAL continuous archive and PITR drill (DEV-122)
         run: |
-          docker run --rm -v "$PWD/deploy/flow/backup:/b:ro" --entrypoint /bin/bash postgres:17-alpine \
+          docker run --rm -u postgres -v "$PWD/deploy/flow/backup:/b:ro" --entrypoint /bin/bash postgres:17-alpine \
             -c 'set -e; /b/pitr-drill.sh /tmp/pitr | tee /tmp/pitr.log; grep -q "pitr drill OK" /tmp/pitr.log'
       - name: Validate alert rules (promtool)
         run: |

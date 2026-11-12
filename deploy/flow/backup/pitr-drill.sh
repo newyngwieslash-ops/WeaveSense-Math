@@ -6,6 +6,18 @@
 # the two writes. The later row must be absent; the earlier row must be present.
 # Never touches an existing data directory or a live database URL.
 set -euo pipefail
+# initdb and postgres refuse to run as root. Official images stay root when the
+# entrypoint is overridden (as in CI). Re-exec as the postgres package user.
+if [ "$(id -u)" = "0" ]; then
+  if command -v su-exec >/dev/null 2>&1; then
+    exec su-exec postgres "$0" "$@"
+  elif command -v gosu >/dev/null 2>&1; then
+    exec gosu postgres "$0" "$@"
+  else
+    echo "pitr-drill cannot run as root; re-run as the postgres user (or install su-exec/gosu)" >&2
+    exit 2
+  fi
+fi
 here="$(cd "$(dirname "$0")" && pwd)"
 work="${1:-$(mktemp -d)}"
 mkdir -p "$work"
