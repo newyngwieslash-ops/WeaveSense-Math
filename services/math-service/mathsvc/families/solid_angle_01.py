@@ -31,7 +31,7 @@ def normalize(inp):
     C.header(inp, FAMILY_ID, TARGET)
     C.naming(inp, FAMILY_ID, STANDARD_NAMING)
     u = C.unit(inp, UNITS)
-    vals = C.positive_params(inp.get("params"), ("e",), MAX_VALUE)
+    vals = C.positive_params(inp.get("params"), ("e",), MAX_VALUE, FAMILY_ID)
     method, usable = C.methods(inp, FAMILY_ID, METHODS)
     return {"family_id": FAMILY_ID, "target": TARGET, "unit": u, "naming": STANDARD_NAMING, "params": C.texts(vals),
             "method": method, "methods_allowed": usable, "_exact": vals}

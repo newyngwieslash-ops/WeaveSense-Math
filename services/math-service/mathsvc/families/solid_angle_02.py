@@ -18,6 +18,7 @@ import sympy as sp
 from .. import fmt
 from ..errors import MathError
 from ..kernel import geometry_kernel as K
+from .. import catalog
 from ..params import ParamError, exact_text, parse_exact
 from . import common as C
 
@@ -61,8 +62,9 @@ def normalize(inp):
             raise MathError(e.code, "%s: %s" % (k, e))
         if not (v.is_positive is True):
             raise MathError("CONDITION_CONFLICT", "%s must be positive" % k)
-        if (v - MAX_VALUE).is_positive:
-            raise MathError("PARAMETER_LIMIT", "%s must be <= %d" % (k, MAX_VALUE))
+        cap = catalog.effective_param_max(FAMILY_ID, k, MAX_VALUE)
+        if (v - cap).is_positive:
+            raise MathError("PARAMETER_LIMIT", "%s must be <= %s" % (k, cap))
         vals[k] = v
     mp = inp.get("method_profile") or {}
     allowed = mp.get("allowed") or list(METHODS)

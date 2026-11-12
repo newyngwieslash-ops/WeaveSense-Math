@@ -36,7 +36,7 @@ def normalize(inp):
     C.unit(inp, ("",))
     if inp.get("convention", "y2=2px") != "y2=2px":
         raise MathError("UNSUPPORTED_FAMILY", "only the y² = 2px convention is supported")
-    vals = C.positive_params(inp.get("params"), ("p",), MAX_VALUE)
+    vals = C.positive_params(inp.get("params"), ("p",), MAX_VALUE, FAMILY_ID)
     method, usable = C.methods(inp, FAMILY_ID, METHODS)
     return {"family_id": FAMILY_ID, "target": TARGET, "unit": "", "naming": STANDARD_NAMING, "params": C.texts(vals),
             "convention": "y2=2px", "method": method, "methods_allowed": usable, "_exact": vals}
