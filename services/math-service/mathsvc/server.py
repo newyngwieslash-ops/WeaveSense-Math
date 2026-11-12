@@ -32,8 +32,10 @@ TOOLS = [
      "inputSchema": {"type": "object", "required": ["analysis_job_id", "problem"], "properties": {
          "analysis_job_id": {"type": "string"}, "problem": {"type": "object"}, "problem_hash": {"type": "string"},
          "solution_hash": {"type": "string"}, "report_hash": {"type": "string"}, "idempotency_key": {"type": "string"}}}},
-    {"name": "math_media_render_start", "description": "Start narration (TTS) or MP4 rendering for an approved lesson. Requires a configured provider.",
-     "inputSchema": {"type": "object", "required": ["lesson_artifact_id"], "properties": {"lesson_artifact_id": {"type": "string"}, "media": {"type": "string", "enum": ["tts", "mp4"]}}}},
+    {"name": "math_media_render_start", "description": "Render narration (TTS) or MP4 for an approved lesson. The local stand-in (MATH_MEDIA_STANDIN, default on) produces silent audio, cue-aligned captions and an optional MP4; it is not a real voice. Disable with MATH_MEDIA_STANDIN=off.",
+     "inputSchema": {"type": "object", "required": ["lesson_artifact_id"], "properties": {"lesson_artifact_id": {"type": "string"}, "media": {"type": "string", "enum": ["tts", "mp4"]}, "speed": {"type": "number"}, "volume": {"type": "number"}, "segment": {"type": "string"}}}},
+    {"name": "math_ocr_intake", "description": "Turn a problem picture into a structured draft that still needs teacher confirmation. The default provider is a local stand-in, not a model.",
+     "inputSchema": {"type": "object", "required": ["image_b64"], "properties": {"image_b64": {"type": "string"}, "mime": {"type": "string"}}}},
     {"name": "math_job_get", "description": "Get the status, stage, progress, result refs and error of a math job.",
      "inputSchema": {"type": "object", "required": ["job_id"], "properties": {"job_id": {"type": "string"}}}},
     {"name": "math_job_cancel", "description": "Request cancellation of a math job (cooperative, between stages).",
@@ -90,10 +92,9 @@ class App:
             job, _ = self.start_job(tenant, TOOL_KIND[name], {"idempotency_key": key, "payload": payload})
             return job
         if name == "math_media_render_start":
-            # DEV-101 contract: a future TTS or MP4 provider must add its parts
-            # ("narration", "audio") to the lesson's meta.ai_parts, so the
-            # provenance label stops saying the platform used no generative AI.
-            raise MathError("PROVIDER_UNAVAILABLE", "no TTS/MP4 provider is configured for this service")
+            return self.media_render(tenant, args or {})
+        if name == "math_ocr_intake":
+            return self.ocr_intake(args or {})
         if name == "math_job_get":
             return self.store.get(tenant, args.get("job_id", ""))
         if name == "math_job_cancel":
@@ -111,6 +112,52 @@ class App:
                 meta_["content"] = json.loads(data)
             return meta_
         raise MathError("UNSUPPORTED_FAMILY", "unknown tool")
+
+    def media_render(self, tenant, args):
+        """TTS / MP4 stand-in (DEV-049, DEV-098, DEV-100, E97). Synchronous.
+
+        DEV-101 contract: narration and audio (and video) are added to the
+        lesson's meta.ai_parts so the provenance label stops saying the
+        platform used no generative AI."""
+        import uuid
+        from . import standin_media as media
+        meta, data = self.store.get_artifact(tenant, (args or {}).get("lesson_artifact_id") or "")
+        if meta["kind"] != "lesson" or meta["audience"] != "teacher" or meta["media_type"] != "application/json":
+            raise MathError("VALIDATION_FAILED", "lesson_artifact_id must be a teacher lesson document")
+        try:
+            lesson = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as e:
+            raise MathError("VALIDATION_FAILED", "lesson artifact is not JSON") from e
+        r = media.render(lesson, media=args.get("media") or "tts", speed=args.get("speed") or 1.0,
+                         volume=args.get("volume") if args.get("volume") is not None else 1.0,
+                         segment=args.get("segment"), reveal="released")
+        parts = list((lesson.get("meta") or {}).get("ai_parts") or [])
+        for x in ("narration", "audio") + (("video",) if "video" in r else ()):
+            if x not in parts:
+                parts.append(x)
+        lesson.setdefault("meta", {})["ai_parts"] = parts
+        lesson["meta"]["media_standin"] = {k: r[k] for k in ("provider", "speed", "volume", "segment", "duration_ms")}
+        rid = "mr_" + uuid.uuid4().hex
+        put = lambda kind, aud, mt, b: self.store.put_artifact(tenant, rid, kind, aud, mt, b)
+        refs = [put("lesson", "teacher", "application/json", json.dumps(lesson, ensure_ascii=False).encode("utf-8")),
+                put("audio", "teacher", media.AUDIO_MPEG, r["audio"]), put("audio", "student", media.AUDIO_MPEG, r["audio"]),
+                put("captions", "teacher", media.VTT, r["teacher_vtt"]), put("captions", "student", media.VTT, r["student_vtt"])]
+        if "video" in r:
+            refs += [put("video", "teacher", media.VIDEO_MP4, r["video"]), put("video", "student", media.VIDEO_MP4, r["video"])]
+        return {"status": "succeeded", "render_id": rid, "provider": r["provider"], "media": r["media"], "characters": r["characters"],
+                "duration_ms": r["duration_ms"], "speed": r["speed"], "volume": r["volume"], "segment": r["segment"],
+                "video_encoder": r.get("video_encoder"), "ai_parts": parts, "artifacts": refs}
+
+    def ocr_intake(self, args):
+        """Stand-in OCR (DEV-069, E97): a draft that still needs confirmation."""
+        import base64
+        import binascii
+        from . import standin_ocr as ocr
+        try:
+            image = base64.b64decode((args or {}).get("image_b64") or "", validate=True)
+        except (binascii.Error, ValueError) as e:
+            raise MathError("VALIDATION_FAILED", "image_b64 is not valid base64") from e
+        return ocr.recognize(image, mime=(args or {}).get("mime") or "image/png")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -132,7 +179,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _body(self):
         n = int(self.headers.get("Content-Length") or 0)
-        if n > MAX_BODY:
+        # /v1/ocr may carry a 10 MB image as base64 (~14 MB JSON).
+        limit = 14 * 1024 * 1024 if self.path == "/v1/ocr" else MAX_BODY
+        if n > limit:
             raise MathError("PARAMETER_LIMIT", "request body too large")
         return self.rfile.read(n) if n else b""
 
@@ -191,6 +240,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, self.app.grade(req))
             if self.path == "/v1/normalize":
                 return self._send(200, self.app.normalize(req))
+            if self.path == "/v1/ocr":
+                return self._send(200, self.app.ocr_intake(req))
+            if self.path == "/v1/media-render":
+                return self._send(200, self.app.media_render(t, req))
             if self.path == "/v1/reconcile":
                 j = self.app.store.find_by_key(t, req.get("kind", ""), req.get("idempotency_key", ""))
                 return self._send(200, {"found": bool(j), "job": j})

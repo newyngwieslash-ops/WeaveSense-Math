@@ -396,3 +396,61 @@ func (h *harness) mustSource(user string) string {
 	}
 	return id
 }
+
+func TestProblemImageOCRAndAnswerRetention(t *testing.T) {
+	h := newHarness(t, startMathService(t))
+	tenant := h.setupTeacher()
+	src := h.mustSource("u_alice")
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, testPicture(32, 24)); err != nil {
+		t.Fatal(err)
+	}
+	c, out, raw := h.uploadImage("u_alice", buf.Bytes(), "q.png", "image/png", src)
+	if c != 201 {
+		t.Fatalf("upload: %d %s", c, raw)
+	}
+	id := data(out)["id"].(string)
+
+	c, out, raw, _ = h.call("u_alice", "POST", "/api/edu/problem-images/"+id+"/ocr", nil)
+	if c != 200 {
+		t.Fatalf("ocr: %d %s", c, raw)
+	}
+	draft, _ := data(out)["draft"].(map[string]any)
+	if draft["state"] != "needs_confirmation" || draft["family_id"] != "SOLID-ANGLE-01" || draft["provider"] != "fake-standin" {
+		t.Fatalf("draft: %v", draft)
+	}
+	// Students must not run OCR or see the picture.
+	if c, out, raw, _ := h.call("u_bob", "POST", "/api/edu/problem-images/"+id+"/ocr", nil); c == 200 {
+		t.Fatalf("student ocr: %d %s", c, raw)
+	} else if errCode(out) == "" && c != 401 && c != 403 && c != 404 {
+		t.Fatalf("student ocr unexpected: %d %s", c, raw)
+	}
+
+	// kind=answer past imageDays is withdrawn and wiped; a recent one stays.
+	var fresh, old model.EduProblemImage
+	if err := h.db.First(&fresh, "id = ?", id).Error; err != nil {
+		t.Fatal(err)
+	}
+	old = fresh
+	old.ID = "epi_answer_old"
+	old.Kind = "answer"
+	old.CreatedAt = time.Now().UTC().AddDate(0, 0, -91)
+	old.UpdatedAt = old.CreatedAt
+	if err := h.db.Create(&old).Error; err != nil {
+		t.Fatal(err)
+	}
+	pol := model.EduRetentionPolicy{TempDays: 7, ImageDays: 90, LearningDays: 180, BackupDays: 30}
+	sum, err := applyRetention(h.db, tenant, pol, time.Now().UTC(), false)
+	if err != nil || sum.ProblemImages != 1 {
+		t.Fatalf("answer retention: %+v %v", sum, err)
+	}
+	var gone, kept model.EduProblemImage
+	h.db.First(&gone, "id = ?", old.ID)
+	h.db.First(&kept, "id = ?", id)
+	if gone.State != "withdrawn" || len(gone.Content) != 0 {
+		t.Fatalf("old answer not wiped: %+v bytes=%d", gone, len(gone.Content))
+	}
+	if kept.State != "active" || len(kept.Content) == 0 || kept.Kind != "original" {
+		t.Fatalf("recent original should stay: kind=%s state=%s bytes=%d", kept.Kind, kept.State, len(kept.Content))
+	}
+}

@@ -31,10 +31,11 @@ import (
 // stores only a re-encoded copy, which carries no EXIF, GPS, ICC or text
 // chunks. A picture may hold several problems, so it can only be attached to
 // a problem after the teacher selects one region (or confirms the whole
-// picture holds one problem), which produces a new single image. OCR is not
-// done here (DEV-069 needs model credentials): the teacher types the
-// statement next to the picture. Problem images are teacher material and are
-// never served to students.
+// picture holds one problem), which produces a new single image. A stand-in
+// OCR draft is available at POST /problem-images/:id/ocr (E97); it always
+// needs teacher confirmation and never auto-admits a problem. A real model
+// and the confirmation page remain U7. Problem images are teacher material
+// and are never served to students.
 
 const (
 	maxProblemImageBytes  = 10 << 20
@@ -60,6 +61,7 @@ func (h *API) registerProblemImages(g *gin.RouterGroup) {
 	g.GET("/problem-images/:id/content", h.problemImageContent)
 	g.POST("/problem-images/:id/select", h.selectProblemImage)
 	g.POST("/problem-images/:id/withdraw", h.withdrawProblemImage)
+	g.POST("/problem-images/:id/ocr", h.ocrProblemImage)
 	g.PUT("/problems/:id/image", h.attachProblemImage)
 }
 
@@ -527,4 +529,55 @@ func (h *API) withdrawProblemImage(c *gin.Context) {
 	img.State, img.ProblemID, img.ObjectKey, img.Storage, img.Content = "withdrawn", "", "", "", nil
 	h.Svc.audit(tx, a, "problem_image.withdraw", img.ID, "")
 	reply(c, 200, gin.H{"image": img, "changed": true}, "ok")
+}
+
+// ocrProblemImage (DEV-069, E97) asks the math service for a structured draft
+// of a teacher-uploaded problem picture. The draft always needs confirmation
+// and is not saved as a problem.
+func (h *API) ocrProblemImage(c *gin.Context) {
+	a, tx, ok := h.imageTeacher(c)
+	if !ok {
+		return
+	}
+	// loadProblemImage omits content (list/get never send bytes). OCR needs the
+	// stored copy: reload the row, or the object store if the bytes live there.
+	var img model.EduProblemImage
+	if tx.First(&img, "id = ? AND tenant_id = ? AND workspace_id = ?", c.Param("id"), a.TenantID, a.WorkspaceID).Error != nil {
+		h.fail(c, ErrNotFound)
+		return
+	}
+	if img.State != "active" {
+		h.fail(c, appErr(404, "NOT_FOUND", "image withdrawn", "teacher_fix"))
+		return
+	}
+	raw, err := h.imageBytes(img)
+	if err != nil || len(raw) == 0 {
+		h.fail(c, appErr(404, "NOT_FOUND", "image has no bytes", "teacher_fix"))
+		return
+	}
+	if !h.Svc.Client.Configured() {
+		h.fail(c, appErr(http.StatusServiceUnavailable, "PROVIDER_UNAVAILABLE", "math service unavailable", "retry_later"))
+		return
+	}
+	ctx, cancel := ctx15(c)
+	defer cancel()
+	d, err := h.Svc.Client.OCR(ctx, a.TenantID, a.UserID, raw, img.Mime)
+	var se *ServiceError
+	switch {
+	case errors.As(err, &se):
+		reply(c, http.StatusUnprocessableEntity, intakeRefusal(se), se.Code)
+		return
+	case errors.Is(err, ErrContract):
+		h.fail(c, err)
+		return
+	case err != nil:
+		h.fail(c, appErr(http.StatusServiceUnavailable, "PROVIDER_UNAVAILABLE", "math service unavailable", "retry_later"))
+		return
+	}
+	if d.State != "needs_confirmation" {
+		h.fail(c, appErr(http.StatusBadGateway, "CONTRACT", "ocr draft was not offered for confirmation", "retry_later"))
+		return
+	}
+	h.Svc.audit(tx, a, "problem_image.ocr", img.ID, d.FamilyID)
+	reply(c, 200, gin.H{"draft": d, "imageId": img.ID}, "ok")
 }

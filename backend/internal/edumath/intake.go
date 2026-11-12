@@ -3,6 +3,7 @@ package edumath
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,6 +70,51 @@ func (c Client) Normalize(ctx context.Context, tenant, actor, text string) (Draf
 			return d, e.Error
 		}
 		return d, fmt.Errorf("%w: normalize http %d", ErrContract, st)
+	}
+	if err := strictJSON(data, &d); err != nil {
+		return d, fmt.Errorf("%w: %v", ErrContract, err)
+	}
+	return d, d.validate()
+}
+
+// OCRDraft is Normalize's draft plus the stand-in provider label (E97).
+// State is still always needs_confirmation; the teacher must confirm the wording.
+type OCRDraft struct {
+	Draft
+	Provider string   `json:"provider"`
+	AIParts  []string `json:"ai_parts"`
+}
+
+func (d OCRDraft) validate() error {
+	if err := d.Draft.validate(); err != nil {
+		return err
+	}
+	if d.Provider == "" {
+		return fmt.Errorf("%w: ocr provider", ErrContract)
+	}
+	return nil
+}
+
+// OCR asks the math service to turn a problem picture into a draft (synchronous).
+// The default provider is the local stand-in, not a model. The draft is never
+// auto-admitted.
+func (c Client) OCR(ctx context.Context, tenant, actor string, image []byte, mime string) (OCRDraft, error) {
+	var d OCRDraft
+	st, data, _, err := c.doLimit(ctx, http.MethodPost, "/v1/ocr", tenant, actor, map[string]any{
+		"image_b64": base64.StdEncoding.EncodeToString(image),
+		"mime":      mime,
+	}, maxDraftBytes)
+	if err != nil {
+		return d, err
+	}
+	if st != http.StatusOK {
+		var e struct {
+			Error *ServiceError `json:"error"`
+		}
+		if json.Unmarshal(data, &e) == nil && e.Error != nil && e.Error.Code != "" {
+			return d, e.Error
+		}
+		return d, fmt.Errorf("%w: ocr http %d", ErrContract, st)
 	}
 	if err := strictJSON(data, &d); err != nil {
 		return d, fmt.Errorf("%w: %v", ErrContract, err)
