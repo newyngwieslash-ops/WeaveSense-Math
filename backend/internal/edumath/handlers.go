@@ -657,6 +657,10 @@ func (h *API) file(c *gin.Context) {
 		h.fail(c, err)
 		return
 	}
+	if err := h.Svc.refuseStandinFile(ctx, h.DB, art, uid, data); err != nil {
+		h.fail(c, err)
+		return
+	}
 	hd := c.Writer.Header()
 	hd.Set("Content-Security-Policy", fileCSP())
 	hd.Set("X-Content-Type-Options", "nosniff")
