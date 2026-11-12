@@ -318,3 +318,81 @@ func runProblemImages(t *testing.T, h *harness) {
 		t.Fatalf("audits: %d", n)
 	}
 }
+
+func TestProblemImagesUseObjectStore(t *testing.T) {
+	h := newHarness(t, startMathService(t))
+	store := NewMemoryBlobStore()
+	h.svc.Blobs = store
+	_ = h.setupTeacher()
+	src := h.mustSource("u_alice")
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, testPicture(32, 24))
+	c, out, _ := h.uploadImage("u_alice", buf.Bytes(), "q.png", "image/png", src)
+	if c != 201 {
+		t.Fatalf("upload: %d %v", c, out)
+	}
+	id := data(out)["id"].(string)
+	if data(out)["objectKey"] == "" || data(out)["storage"] != "s3" {
+		t.Fatalf("expected object key, got %+v", out)
+	}
+	var row model.EduProblemImage
+	if err := h.db.First(&row, "id = ?", id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(row.Content) != 0 || row.ObjectKey == "" || store.Len() != 1 {
+		t.Fatalf("bytes should live in the store: content=%d key=%s store=%d", len(row.Content), row.ObjectKey, store.Len())
+	}
+	c, _, body, hdr := h.call("u_alice", "GET", "/api/edu/problem-images/"+id+"/content", nil)
+	if c != 200 || len(body) == 0 || hdr.Get("Cache-Control") != "no-store" {
+		t.Fatalf("content via store: %d %d %v", c, len(body), hdr)
+	}
+	c, out, _, _ = h.call("u_alice", "POST", "/api/edu/problem-images/"+id+"/select", map[string]any{"whole": true})
+	if c != 201 {
+		t.Fatalf("select: %d %v", c, out)
+	}
+	if store.Len() != 2 {
+		t.Fatalf("select should add a second object, got %d", store.Len())
+	}
+	c, _, _, _ = h.call("u_alice", "POST", "/api/edu/problem-images/"+id+"/withdraw", nil)
+	if c != 200 {
+		t.Fatalf("withdraw: %d", c)
+	}
+	if err := h.db.First(&row, "id = ?", id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.State != "withdrawn" || row.ObjectKey != "" || len(row.Content) != 0 {
+		t.Fatalf("withdraw should drop the key: %+v", row)
+	}
+
+	// Adopt moves a database-backed row into the store.
+	now := h.svc.now()
+	legacy := model.EduProblemImage{ID: "epi_legacy", TenantID: row.TenantID, WorkspaceID: row.WorkspaceID, Kind: "original", State: "active",
+		SourceAssetID: src, Mime: "image/png", Width: 8, Height: 8, Bytes: 3, SHA256: "sha256:x", UploadSHA256: "sha256:y",
+		Content: []byte("abc"), CreatedBy: "u_alice", CreatedAt: now, UpdatedAt: now}
+	if err := h.db.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	n, err := h.svc.AdoptProblemImageBlobs(10)
+	if err != nil || n != 1 {
+		t.Fatalf("adopt: %d %v", n, err)
+	}
+	if err := h.db.First(&legacy, "id = ?", "epi_legacy").Error; err != nil {
+		t.Fatal(err)
+	}
+	if legacy.ObjectKey == "" || len(legacy.Content) != 0 {
+		t.Fatalf("adopted %+v", legacy)
+	}
+}
+
+func (h *harness) mustSource(user string) string {
+	h.t.Helper()
+	c, out, raw, _ := h.call(user, "POST", "/api/edu/source-assets", map[string]any{"title": "自编题", "kind": "teacher_original", "allowStudent": true})
+	if c != 201 {
+		h.t.Fatalf("source: %d %s", c, raw)
+	}
+	id, _ := data(out)["id"].(string)
+	if id == "" {
+		h.t.Fatalf("source id: %v", out)
+	}
+	return id
+}
